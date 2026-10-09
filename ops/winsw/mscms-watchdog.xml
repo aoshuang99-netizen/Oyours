@@ -1,0 +1,59 @@
+<service>
+  <!--
+    MSCMS v14 — WinSW v3 service definition for the WATCHDOG (service orchestrator).
+    ============================================================
+    This is the PRIMARY carrier. The watchdog process owns and health-checks
+    every sub-service below (it spawns them detached, probes TCP + HTTP, and
+    auto-restarts any that die). Wrapping the watchdog in WinSW gives the WHOLE
+    tree process-level auto-recovery (Restart on failure), with NO risk of
+    double-launching a service (which would otherwise fight the watchdog's
+    single-instance lock on :3011 or the per-port LISTENING ownership).
+
+    Install (see README.md):
+      1. Rename the WinSW binary to mscms-watchdog.exe and drop it next to this file.
+      2. mscms-watchdog.exe install
+      3. Open services.msc -> set "Log On" to your interactive account (.\AS) so the
+         service inherits the same environment as your session (localhost proxy :10808,
+         D:\ paths, C:\Users\AS\...). Do NOT put the  in this XML.
+      4. mscms-watchdog.exe start
+  -->
+  <id>mscms-watchdog</id>
+  <name>MSCMS v14 Watchdog (Service Orchestrator)</name>
+  <description>
+    WinSW carrier for the MSCMS v14 watchdog. The watchdog owns and health-checks all
+    sub-services: 3002 main (server.js @ D:\MSCMS-Desktop\resources), 3005 nurture
+    (tumblr-nurture-server.js), 3010 content-gen (content-gen/service.js), 8001 kkmatch
+    (D:\kk-match-backend\.venv\Scripts\pythonw.exe _run.py), 3307 MySQL (tcpOnly),
+    8080 MPT (uvicorn @ D:\MoneyPrinterTurbo), 20779 exit-guard, 3012 visitor-profile,
+    3013 desktop-sync. WinSW gives the watchdog itself Restart-on-failure recovery.
+  </description>
+
+  <!-- Node interpreter. The watchdog re-resolves the newest node for its children;
+       this path only needs to be *a* working node. Update if node is upgraded. -->
+  <executable>C:\Users\AS\\binaries\node\versions\22.22.2-6\node.exe</executable>
+  <arguments>tools\mscms-watchdog.js</arguments>
+  <workingdirectory>C:\Users\AS\WorkBuddy\2026-06-13-19-42-19</workingdirectory>
+
+  <priority>Normal</priority>
+  <startmode>Automatic</startmode>
+  <stoptimeout>30 sec</stoptimeout>
+
+  <logpath>D:\mscms-ws\logs\winsw</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+
+  <!-- Recovery: restart on first/second/third failure, then keep retrying. -->
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <onfailure action="restart" delay="60 sec"/>
+  <resetfailure>3600 sec</resetfailure>
+
+  <!--
+    SECURITY: intentionally NO <serviceaccount> with a .
+    After `install`, set the Log On account to .\AS in services.msc (or via
+    `sc config mscms-watchdog obj= ".\AS" = "***"`). LocalSystem also
+    works for D: + localhost but may lack ACLs to user-scoped resources.
+  -->
+</service>

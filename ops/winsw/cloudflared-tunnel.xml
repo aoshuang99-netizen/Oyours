@@ -1,0 +1,51 @@
+<service>
+  <!--
+    Cloudflared Tunnel — REFERENCE / OPTIONAL. READ BEFORE ENABLING.
+    ============================================================
+    Cloudflared is currently NOT launched by _autostart_mscms.bat and NOT by the
+    watchdog/exit-layer scripts (verified: exit-guard.js / cf-tunnel.js /
+    cf-worker-exit.js only READ cloudflared creds, they do not spawn the binary).
+    It is launched out-of-band (a separate scheduled task / .bat / or interactively).
+
+    DOUBLE-LAUNCH RISK: if cloudflared is already running elsewhere and you also
+    install+start this service, two cloudflared processes will fight for the same
+    tunnel lease (the second one fails to acquire the lock and the tunnel flaps).
+
+    ONLY enable this service AFTER you have confirmed and stopped the existing
+    cloudflared launch path. Otherwise leave this file as reference only.
+  -->
+  <id>cloudflared-tunnel</id>
+  <name>Cloudflared Tunnel (MSCMS external access) [REFERENCE - READ README]</name>
+  <description>
+    OPTIONAL WinSW carrier for cloudflared. Cloudflared is currently launched
+    out-of-band; installing this service without disabling that path causes a
+    double-launch conflict. Verify the active launch method first.
+  </description>
+
+  <executable>C:\Users\AS\\binaries\cloudflared.exe</executable>
+  <!--
+    DO NOT FABRICATE the tunnel UUID/name. Fill in from your real cloudflared config.
+    Pick the correct tunnel UUID from C:\Users\AS\.cloudflared\*.json (verify which one
+    serves mscms.lokfeel.com). Two valid shapes:
+      A) using a config file:  point cloudflared at C:\Users\AS\.cloudflared\config.yml then "tunnel run"
+      B) direct:              tunnel run &lt;YOUR_TUNNEL_UUID&gt;
+    The line below is a SAFE PLACEHOLDER and will NOT start a real tunnel until edited.
+  -->
+  <arguments>tunnel run &lt;YOUR_TUNNEL_UUID&gt;</arguments>
+  <workingdirectory>C:\Users\AS\.cloudflared</workingdirectory>
+
+  <priority>Normal</priority>
+  <startmode>Automatic</startmode>
+  <stoptimeout>30 sec</stoptimeout>
+
+  <logpath>D:\mscms-ws\logs\winsw</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <onfailure action="restart" delay="60 sec"/>
+  <resetfailure>3600 sec</resetfailure>
+</service>

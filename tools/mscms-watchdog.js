@@ -229,7 +229,21 @@ const SERVICES = [
   },
 ];
 
+// ── P0.3 防误杀闸门（2026-10-09）─────────────────────────────────────
+// 旧行为：HTTP 探活连续 maxFailStreak 次失败即强杀重启。但 3002 在高峰期的 CPU
+// 争抢下会偶发 HTTP 探活超时（25s），若此时服务其实还在写日志（繁忙/慢，不是真死），
+// 误杀会导致正在跑的注入/批次全灭（历史事故：3002 每 5~7 分钟抖一次，5/5 探活失败即强杀）。
+// 新行为：必须同时满足 ① 连续失败 ≥ RESTART_MIN_FAIL ② 日志已静默 ≥ RESTART_LOG_SILENT_MS
+// 才重启。只要日志近期还在写，就判定为「繁忙而非假死」，重置失败计数、再给一个观察窗口，
+// 避免杀掉活着的进程。
+// （日志文件取 launch() 时记录的子进程 outPath；若该服务不往 outPath 写，stat 失败 →
+//  _silentMs=Infinity → 退化为仅按 HTTP 判定的旧行为，绝不因此更激进。）
+const RESTART_MIN_FAIL = 3;
+const RESTART_LOG_SILENT_MS = 60 * 1000;
+
 const state = new Map();
+// 记录每个服务最近一次 launch 的子进程日志路径，供「日志静默」判断使用
+const lastLog = new Map();
 
  log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`;
@@ -268,6 +282,7 @@ const state = new Map();
  launch(svc) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outPath = path.join(LOG, '..', `${svc.logName}-${stamp}.log`);
+  lastLog.set(svc.name, outPath);
   let out;
   try { out = fs.openSync(outPath, 'a'); } catch (_) { out = 'ignore'; }
   const child = spawn(svc.cmd, svc.args, {
@@ -322,8 +337,15 @@ async  check(svc) {
   } else {
     st.failStreak = (st.failStreak || 0) + 1;
     log(`⚠️ ${svc.name} 探活失败 ${st.failStreak}/${svc.maxFailStreak} (HTTP ${r.status})`);
-    if (st.failStreak >= svc.maxFailStreak && Date.now() >= st.startingUntil) {
-      log(`🔄 ${svc.name} 判定假死 → 强制重启`);
+    // ── P0.3 防误杀：估算日志静默时长 ──
+    // 仅用于「不杀」判断；若该服务的日志路径不存在/不可读，_silentMs=Infinity，
+    // 退化为仅按 HTTP 判定的旧行为，绝不因此更激进。
+    const _lf = lastLog.get(svc.name);
+    let _silentMs = Infinity;
+    try { if (_lf && fs.existsSync(_lf)) _silentMs = Date.now() - fs.statSync(_lf).mtimeMs; } catch (_) {}
+    const _canRestart = st.failStreak >= RESTART_MIN_FAIL && _silentMs >= RESTART_LOG_SILENT_MS && Date.now() >= st.startingUntil;
+    if (_canRestart) {
+      log(`🔄 ${svc.name} 判定假死（失败${st.failStreak}次 + 日志静默${(_silentMs / 1000) | 0}s）→ 强制重启`);
       try {
         // 按端口找 PID 并杀掉整棵树（Windows 下 kill 单个进程会留下子进程）
         const { execSync } = require('child_process');
@@ -341,7 +363,13 @@ async  check(svc) {
         s2.startingUntil = Date.now() + svc.bootGraceMs;
         state.set(svc.name, s2);
       }, 5000);
+    } else if (st.failStreak >= RESTART_MIN_FAIL) {
+      // 失败次数已达标，但日志近期仍在写 → 判定「繁忙而非假死」，重置计数再观察，避免误杀活进程
+      log(`⏸️ ${svc.name} HTTP 失败${st.failStreak}次，但日志${(_silentMs / 1000) | 0}s前仍在写，疑似繁忙，暂不重启`);
+      st.failStreak = 0;
+      state.set(svc.name, st);
     }
+    // 其余情况：失败次数未达标，仅计数，等待下一轮探活
   }
   state.set(svc.name, st);
 }
