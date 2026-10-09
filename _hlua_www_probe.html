@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Hlua — Discover Exclusive Creators & Premium Content</title>
+<meta name="description" content="Hlua connects you with exclusive creators. Browse premium profiles, unlock videos, and chat with top content creators. Join thousands of members discovering new talent daily.">
+<meta name="keywords" content="exclusive creators, premium content, creator profiles, unlock videos, top creators, discover talent">
+<meta name="author" content="Hlua">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<link rel="canonical" href="https://www.hlua.cc.cd/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hlua">
+<meta property="og:title" content="Hlua — Discover Exclusive Creators & Premium Content">
+<meta property="og:description" content="Browse exclusive creator profiles, unlock premium videos, and chat with top content creators. Join the community discovering new talent daily.">
+<meta property="og:url" content="https://www.hlua.cc.cd/">
+<meta property="og:image" content="https://www.hlua.cc.cd/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@hlua_cc">
+<meta name="twitter:title" content="Hlua — Discover Exclusive Creators & Premium Content">
+<meta name="twitter:description" content="Browse exclusive creator profiles, unlock premium videos, and chat with top content creators.">
+<meta name="twitter:image" content="https://www.hlua.cc.cd/og-image.png">
+<!-- Schema.org -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","name":"Hlua","url":"https://www.hlua.cc.cd/","description":"Discover exclusive creators and premium content. Browse profiles, unlock videos, and connect with top talent.","potentialAction":{"@type":"SearchAction","target":"https://www.hlua.cc.cd/app#search?q={search_term_string}","query-input":"required name=search_term_string"}}
+</script>
+<meta http-equiv="" content="no-cache, , must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<style>
+:root {
+  --bg: #0a0a14;
+  --surface: #12121a;
+  --border: #1e1e2e;
+  --text: #e8e8f0;
+  --dim: #8888a0;
+  --accent: #7c3aed;
+  --accent-glow: rgba(124,58,237,0.3);
+  --online: #22c55e;
+  --gradient-start: #7c3aed;
+  --gradient-end: #a78bfa;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* 海报帧（26KB）随 HTML 一起被发现，首屏立刻有画面；
+     背景视频稍后加载完毕再淡入覆盖它。视频加载失败也不会留白。 */
+  background: #0a0a14 url('/background-poster.jpg') center center / cover no-repeat fixed;
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img { max-; height:auto; }
+a { color:inherit; text-decoration:none; }
+
+/* ═══ BACKGROUND VIDEO ═══ */
+/* 视频改为延迟加载：先铺一层渐变底保证首屏立即有画面，视频就绪后淡入 */
+.video-bg {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  object-fit: cover;
+  z-index: 0;
+  background: radial-gradient(1200px 700px at 25% 30%, #241a45 0%, #151030 45%, #0a0a14 100%);
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+.video-bg.playing { opacity: 1; }
+.video-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: linear-gradient(135deg, rgba(10,10,20,0.65) 0%, rgba(10,10,20,0.35) 50%, rgba(10,10,20,0.75) 100%);
+  z-index: 1;
+}
+
+/* ═══ NAV ═══ */
+.navbar {
+  position: fixed; top:0; left:0; right:0; z-index:100;
+  background: rgba(10,10,20,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(124,58,237,0.15);
+  height: 60px; display:flex; align-items:center;
+  padding: 0 32px; justify-content: space-between;
+}
+.nav-logo {
+  font-weight: 900; font-size: 1.4rem;
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text; cursor:pointer;
+}
+.nav-links { display:flex; gap:6px; align-items:center; }
+.nav-links a {
+  color: var(--dim); font-size:0.85rem; font-weight:600;
+  padding: 8px 16px; border-radius:20px; transition: all 0.2s;
+}
+.nav-links a:hover { color:#fff; background:rgba(255,255,255,0.04); }
+.nav-cta {
+  background: var(--accent); color:#fff !important;
+  padding: 8px 22px; border-radius:20px; font-weight:700;
+}
+.nav-cta:hover { box-shadow: 0 4px 14px var(--accent-glow); }
+
+/* ═══ MAIN LAYOUT ═══ */
+.main-layout {
+  position: relative; z-index: 10;
+  min-height: 100vh;
+  display: flex; align-items: center;
+  padding: 80px 64px 40px;
+  max-width: 1400px; margin: 0 auto;
+  gap: 80px;
+}
+
+/* ─── Left: Copy ─── */
+.copy-side { flex:1; max-width: 580px; }
+.copy-badge {
+  display: inline-flex; align-items:center; gap:6px;
+  background: rgba(124,58,237,0.12);
+  border: 1px solid rgba(124,58,237,0.25);
+  padding: 6px 14px; border-radius:20px;
+  font-size: 0.78rem; color: var(--accent); margin-bottom: 20px;
+}
+.copy-badge .pulse {
+  width:8px; height:8px; border-radius:50%;
+  background: #22c55e; animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+.copy-side h1 {
+  font-size: 3.6rem; font-weight: 900; line-height: 1.08;
+  margin-bottom: 22px;
+  background: linear-gradient(135deg, #fff 0%, var(--gradient-end) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.copy-side .subtitle {
+  font-size: 1.1rem; color: var(--dim); line-height: 1.75;
+  margin-bottom: 36px; max-width: 480px;
+}
+.copy-stats { display:flex; gap:32px; margin-top: 40px; }
+.stat-num { font-size:1.8rem; font-weight:900; color:#fff; }
+.stat-label { font-size:0.75rem; color:var(--dim); margin-top:2px; }
+
+.features-mini { margin-top: 36px; display:flex; flex-direction:column; gap:14px; }
+.feature-mini {
+  display:flex; align-items:center; gap:12px;
+  font-size:0.88rem; color: var(--text);
+}
+.feature-mini .icon {
+  width:32px; height:32px; border-radius:10px;
+  background: rgba(124,58,237,0.12);
+  display:flex; align-items:center; justify-content:center;
+  font-size:1rem; flex-shrink:0;
+}
+
+/* ═══ RIGHT: AUTH CARD (Beeg Style) ═══ */
+.auth-side { flex:0 0 440px; display:flex; align-items:center; }
+.auth-card {
+  background: rgba(10,14,20,0.92);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 48px 40px 40px;
+  width: 100%;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+.brand-logo { text-align:center; margin-bottom:28px; }
+.logo-text {
+  display:block;
+  font-size:2.2rem;
+  font-weight:900;
+  color:#fff;
+  letter-spacing:2px;
+  text-transform:lowercase;
+}
+.brand-logo .tagline {
+  display:block; font-size:0.7rem; color:var(--dim);
+  margin-top:6px; letter-spacing:0.5px;
+}
+
+/* Tabs */
+.auth-tabs {
+  display:flex; gap:0; margin-bottom:24px;
+  border-bottom:1px solid var(--border);
+}
+.auth-tab {
+  flex:1; padding:10px 0; background:none; border:none;
+  color:var(--dim); font-size:0.9rem; font-weight:600;
+  cursor:pointer; transition:all 0.2s;
+  border-bottom:2px solid transparent; margin-bottom:-1px;
+}
+.auth-tab.active { color:#fff; border-bottom-color:var(--accent); }
+
+/* Inputs */
+.input-group { margin-bottom:14px; position:relative; }
+.input-group input {
+  ; padding:15px 16px;
+  background:rgba(255,255,255,0.04); border:1px solid var(--border);
+  border-radius:11px; color:var(--text); font-size:0.93rem;
+  outline:none; transition:border-color 0.2s;
+}
+.input-group input:focus { border-color:var(--accent); }
+.input-group input::placeholder { color:var(--dim); opacity:0.55; }
+
+/* Checkbox — WHITE on dark background */
+.-wrap { margin:16px 0 20px; text-align:left; }
+/* Checkbox - Standard design like Twitter/Facebook */
+.-item {
+  display:flex; align-items:center; gap:10px;
+  cursor:pointer; font-size:0.85rem; color:var(--dim); line-height:1.4;
+  margin:12px 0 16px;
+}
+.-box {
+  width:20px; height:20px; border-radius:4px;
+  border:2px solid rgba(255,255,255,0.4);
+  flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  transition:all 0.15s ease;
+  background:transparent;
+}
+.-item:hover .-box {
+  border-color:rgba(255,255,255,0.7);
+}
+.-item.checked .-box {
+  background:var(--accent); border-color:var(--accent);
+}
+.-item.checked .-box::after {
+  content:'✓'; color:#fff; font-size:13px; font-weight:bold;
+}
+/* Error shake */
+@keyframes shake {
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-6px)}
+  40%{transform:translateX(6px)}
+  60%{transform:translateX(-4px)}
+  80%{transform:translateX(4px)}
+}
+.-item.shake { animation:shake 0.35s ease; }
+.error-msg { font-size:0.8rem; color:#f87171; margin-top:8px; min-height:1.2em; }
+.-label a { color:var(--accent); text-decoration:none; }
+.-label a:hover { text-decoration:underline; }
+
+/* Buttons */
+. {
+  ; padding:14px; border-radius:11px;
+  background:var(--accent); color:#fff;
+  font-size:0.97rem; font-weight:700; border:none;
+  cursor:pointer; transition:all 0.2s;
+}
+.:hover:not(:disabled) { background:#e63250; box-shadow:0 4px 18px var(--accent-glow); }
+.:disabled { opacity:0.4; cursor:not-allowed; }
+
+.btn-guest {
+  ; padding:13px; border-radius:11px;
+  background:#fff; border:1px solid #dadce0;
+  color:#3c4043; font-size:0.9rem; font-weight:600;
+  cursor:pointer; transition:all 0.25s;
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  margin-top:13px;
+}
+.btn-guest:hover:not(:disabled) { background:#f8f9fa; border-color:#c6c9cc; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+.btn-guest:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-guest svg { width:19px; height:19px; flex-shrink:0; }
+
+.divider {
+  text-align:center; color:var(--dim); font-size:0.76rem;
+  margin:18px 0; position:relative;
+}
+.divider::before { content:''; position:absolute; left:0; top:50%; width:calc(50% - 28px); height:1px; background:var(--border); }
+.divider::after  { content:''; position:absolute; right:0; top:50%; width:calc(50% - 28px); height:1px; background:var(--border); }
+
+.error-msg { color:#ff4455; font-size:0.8rem; margin-top:11px; text-align:center; }
+
+.footer-text { text-align:center; font-size:0.76rem; color:var(--dim); margin-top:22px; line-height:1.55; }
+.footer-text a { color:var(--text); }
+.footer-text a:hover { color:var(--accent); }
+
+/* ═══ FOOTER ═══ */
+.site-footer {
+  position: relative; z-index: 10;
+  background: rgba(18,18,26,0.92);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  padding: 40px 32px 20px; margin-top: auto;
+}
+.footer-inner { max-width:1200px; margin:0 auto; }
+.footer-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:40px; margin-bottom:32px; }
+.footer-col h4 { font-size:0.7rem; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); margin-bottom:14px; }
+.footer-col ul { list-style:none; }
+.footer-col li { margin-bottom:7px; }
+.footer-col a { color:var(--text); font-size:0.82rem; transition:color 0.15s; }
+.footer-col a:hover { color:var(--accent); }
+.footer-brand .brand-name { font-size:1.2rem; font-weight:900; background:linear-gradient(135deg,var(--gradient-start),var(--gradient-end)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.footer-brand p { color:var(--dim); font-size:0.78rem; margin-top:6px; line-height:1.6; max-width:240px; }
+.footer-bottom { border-top:1px solid var(--border); padding-top:16px; display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:var(--dim); }
+
+/* ═══ RESPONSIVE ═══ */
+@media(max-width:1024px) {
+  .main-layout { flex-direction:column; padding:80px 32px 40px; gap:48px; }
+  .copy-side { max-; text-align:center; }
+  .copy-side h1 { font-size:2.6rem; }
+  .copy-side .subtitle { margin-left:auto; margin-right:auto; }
+  .copy-stats { justify-content:center; }
+  .features-mini { align-items:center; }
+  .auth-side { flex:0 0 100%; max-width:440px; margin:0 auto; ; }
+}
+@media(max-width:640px) {
+  body { background-image: url('/background-poster-mobile.jpg'); }
+  .navbar { padding:0 16px; }
+  .main-layout { padding:72px 16px 32px; }
+  .copy-side h1 { font-size:2rem; }
+  .auth-card { padding:28px 22px; }
+  .footer-grid { grid-template-columns:1fr 1fr; gap:24px; }
+  /* Mobile: show mobile video */
+  .video-bg.desktop-only { display:none; }
+}
+@media(min-width:641px) {
+  .video-bg.mobile-only { display:none; }
+}
+
+/* ═══ LOADING ═══ */
+.loading-overlay {
+  position:fixed; inset:0; z-index:9999;
+  background:var(--bg); display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:16px; transition:opacity 0.5s;
+}
+.loading-overlay.hidden { opacity:0; pointer-events:none; }
+.spinner { width:36px; height:36px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div style="color:var(--dim);font-size:0.85rem;">Loading Hlua...</div>
+</div>
+
+<!-- Background Video — 刻意不用 preload="auto"／autoplay：
+     桌面源 10.29MB、移动源 0.56MB，一旦自动预载会抢光首屏带宽，
+     是"首页打开慢"的主因。改由 JS 在 window.load 后按网络状况决定是否加载。 -->
+<video class="video-bg desktop-only" id="bgVidDesktop" muted loop playsinline preload="none" aria-hidden="true"></video>
+<video class="video-bg mobile-only" id="bgVidMobile" muted loop playsinline preload="none" aria-hidden="true"></video>
+<div class="video-overlay"></div>
+
+<!-- Navbar -->
+<nav class="navbar">
+  <div class="nav-logo">Hlua</div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#science">Science</a>
+    <a href="/app" class="nav-cta">Open App</a>
+  </div>
+</nav>
+
+<!-- Main: Copy Left + Auth Right -->
+<div class="main-layout" id="app" style="display:none;">
+  <!-- Left: Copy -->
+  <div class="copy-side">
+    <div class="copy-badge">
+      <span class="pulse"></span>
+      AI-Powered Compatibility
+    </div>
+    <h1> Dating, reimagined<br>by emotional AI</h1>
+    <div class="copy-stats">
+      <div class="stat-item">
+        <div class="stat-num">500K+</div>
+        <div class="stat-label">active members</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">4.8★</div>
+        <div class="stat-label">average rating</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Auth Card (Beeg Style) -->
+  <div class="auth-side">
+    <div class="auth-card">
+      <!-- Logo -->
+      <div class="brand-logo">
+        <span class="logo-text">Hlua</span>
+        <span class="tagline">AI Emotional Intelligence Dating</span>
+      </div>
+
+      <!-- Tabs -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabSignin" onclick="switchMode('signin')">Sign In</button>
+        <button class="auth-tab" id="tabSignup" onclick="switchMode('signup')">Sign Up</button>
+      </div>
+
+      <!-- Name (signup only) -->
+      <div class="input-group" id="nameGroup" style="display:none;">
+        <input type="text" id="authName" placeholder="Username" autocomplete="">
+      </div>
+
+      <!-- Email -->
+      <div class="input-group">
+        <input type="email" id="authEmail" placeholder="Email address" autocomplete="email">
+      </div>
+
+      <!--  -->
+      <div class="input-group">
+        <input type="" id="" placeholder="" autocomplete="current-">
+      </div>
+
+      <!-- Combined : Terms + Privacy + 18+ -->
+      <div class="-wrap" id="termsWrap">
+        <div class="-item" id="termsBox" onclick="agreedTerms=!agreedTerms;renderAuth()">
+          <div class="-box" id="termsCheck"></div>
+          <div class="-label">
+            I agree to the <a href="/terms" target="_blank">Terms</a> and <a href="/privacy" target="_blank">Privacy</a>, and confirm I am 18+
+          </div>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <button class="" id="authBtn" onclick="doAuth()">Sign In</button>
+
+      <!-- Error -->
+      <div class="error-msg" id="authError"></div>
+
+      <!-- Divider -->
+      <div class="divider">or</div>
+
+      <!-- Guest / No-Login (Continue without login) -->
+      <button class="btn-guest" id="guestBtn" onclick="doGuestAuth()">
+        <svg viewBox="0 0 48 48" width="19" height="19"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0124 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>
+        Continue with Google
+      </button>
+
+      <!-- Footer switch -->
+      <div class="footer-text">
+        <span id="switchText">Don't have an account? <a href="#" onclick="event.preventDefault();switchMode('signup')">Sign Up</a></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-grid">
+      <div class="footer-col footer-brand">
+        <div class="brand-name">Hlua</div>
+        <p>AI-powered emotional intelligence for meaningful dating connections. Built on real relationship science.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#science">Science</a></li>
+          <li><a href="/app">Open App</a></li>
+          <li><a href="/pricing">Pricing</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="/about">About</a></li>
+          <li><a href="/blog">Blog</a></li>
+          <li><a href="/careers">Careers</a></li>
+          <li><a href="/contact">Contact</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacy">Privacy Policy</a></li>
+          <li><a href="/terms">Terms of Service</a></li>
+          <li><a href="/cookies">Cookie Policy</a></li>
+          <li><a href="/safety">Safety Center</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Hlua Inc. All rights reserved.</span>
+      <span>Made with ♥ in San Francisco</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// ─── State ──────────────────────────────────────────
+let signinMode = true;   // true = sign in, false = sign up
+let agreedTerms = false;
+let authLoading = false;
+
+// ─── Switch Mode ───────────────────────────────────
+ switchMode(mode) {
+  if (mode === 'signin') signinMode = true;
+  else signinMode = false;
+  agreedTerms = false;
+  document.getElementById('authError').textContent = '';
+  renderAuth();
+}
+
+// ─── Render Auth Card ──────────────────────────────
+ renderAuth() {
+  // Tabs
+  document.getElementById('tabSignin').classList.toggle('active', signinMode);
+  document.getElementById('tabSignup').classList.toggle('active', !signinMode);
+  // Name field (signup only)
+  document.getElementById('nameGroup').style.display = signinMode ? 'none' : 'flex';
+  // Button text
+  document.getElementById('authBtn').textContent = authLoading
+    ? 'Please wait...'
+    : (signinMode ? 'Sign In' : 'Create Account');
+  document.getElementById('authBtn').disabled = authLoading;
+  document.getElementById('guestBtn').disabled = authLoading;
+  // Switch text
+  document.getElementById('switchText').innerHTML = signinMode
+    ? 'Don\'t have an account? <a href="#" onclick="event.preventDefault();switchMode(\'signup\')">Sign Up</a>'
+    : 'Already have an account? <a href="#" onclick="event.preventDefault();switchMode(\'signin\')">Sign In</a>';
+  // Checkbox visual
+  document.getElementById('termsBox').classList.toggle('checked', agreedTerms);
+}
+
+// ─── Do Auth (Login / Register) ──────────────────
+async  doAuth() {
+  if (!agreedTerms) {
+    document.getElementById('authError').textContent = 'You must agree to the Terms and confirm you are 18+';
+    document.getElementById('termsBox').classList.add('shake');
+    setTimeout(()=>document.getElementById('termsBox').classList.remove('shake'),400);
+    return;
+  }
+  const email = document.getElementById('authEmail').value.trim();
+  const pass  = document.getElementById('').value;
+  const name  = document.getElementById('authName').value.trim();
+  if (!email || !pass) { document.getElementById('authError').textContent = 'Please fill all fields'; return; }
+  if (!signinMode && !name) { document.getElementById('authError').textContent = 'Please enter your name'; return; }
+
+  authLoading = true;
+  renderAuth();
+  document.getElementById('authError').textContent = '';
+
+  try {
+    const url    = signinMode ? '/api/auth/login' : '/api/auth/';
+    const payload = signinMode ? { email, : pass } : { email, : pass, name };
+    const res    = await fetch(url, {
+      method: 'POST', headers:{'':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('userName', data.name || '');
+      window.location.href = '/app';
+    } else {
+      document.getElementById('authError').textContent = data.error || 'Authentication failed';
+    }
+  } catch(e) {
+    document.getElementById('authError').textContent = 'Network error — please try again';
+  }
+  authLoading = false;
+  renderAuth();
+}
+
+// ─── Guest Auth (也需要勾选条款) ────────────────────────
+async  doGuestAuth() {
+  if (!agreedTerms) {
+    document.getElementById('authError').textContent = 'You must agree to the Terms and confirm you are 18+';
+    document.getElementById('termsBox').classList.add('shake');
+    setTimeout(()=>document.getElementById('termsBox').classList.remove('shake'),400);
+    return;
+  }
+  authLoading = true;
+  renderAuth();
+  try {
+    const res  = await fetch('/api/auth/guest', { method:'POST', headers:{'':'application/json'}, body:JSON.stringify({}) });
+    const data = await res.json();
+    if (data.token) {
+      localStorage.setItem('', data.token);
+      localStorage.setItem('lokfeel_user', 'Guest');
+      localStorage.setItem('lokfeel_admin', '0');
+      window.location.href = '/app';
+    } else {
+      document.getElementById('authError').textContent = data.msg || 'Guest login failed';
+    }
+  } catch(e) {
+    document.getElementById('authError').textContent = 'Network error — please try again';
+  }
+  authLoading = false;
+  renderAuth();
+}
+
+// ─── Init ──────────────────────────────────────────
+renderAuth();
+// 立即显示首屏内容（原来是固定 setTimeout 600ms，纯人为延迟）
+document.getElementById('loading').classList.add('hidden');
+document.getElementById('app').style.display = 'flex';
+
+// ─── 背景视频延迟加载 ───────────────────────────────
+( () {
+  var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
+  var isMobile = window.matchMedia('(max-width: 640px)').matches;
+  var id  = isMobile ? 'bgVidMobile' : 'bgVidDesktop';
+  var src = isMobile ? '/background-mobile.mp4' : '/video/background-hd-720p.mp4';
+
+   start() {
+    var v = document.getElementById(id);
+    if (!v || v.src) return;
+    v.addEventListener('canplay',  () { v.classList.add('playing'); }, { once: true });
+    v.src = src;
+    var p = v.play();
+    if (p && p.catch) p.catch( () { /* 自动播放被拦 → 保留渐变底，不影响可用性 */ });
+  }
+
+   schedule() {
+    // 省流模式 / 2G / 3G → 完全不加载背景视频，只留渐变底（省流量、保速度）
+    if (conn.saveData) return;
+    if (conn.effectiveType && /^(slow-)?2g$|^3g$/.test(conn.effectiveType)) return;
+    setTimeout(start, 200);
+  }
+
+  if (document.readyState === 'complete') schedule();
+  else window.addEventListener('load', schedule);
+})();
+</script>
+<script src="/js/behavior-track.js"></script>
+<script src="/js/share-widget.js"></script>
+</body>
+</html>

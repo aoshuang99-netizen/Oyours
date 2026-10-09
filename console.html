@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Matrix-Link 2026 — 控制台</title>
+<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+<style>
+:root {
+  --bg: #0f1117; --bg2: #1a1d27; --bg3: #242836; --border: #2e3344;
+  --text: #c9d1d9; --muted: #6e7681; --accent: #58a6ff; --green: #3fb950;
+  --red: #f85149; --orange: #d29922; --purple: #a371f7;
+  --radius: 8px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:1.25rem 0;position:sticky;top:0;height:100vh;overflow-y:auto}
+.sidebar .logo{padding:0 1.25rem 1.25rem;border-bottom:1px solid var(--border);margin-bottom:0.75rem}
+.sidebar .logo h2{font-size:1rem;font-weight:600;color:var(--accent);letter-spacing:0.04em}
+.sidebar .logo span{font-size:0.72rem;color:var(--muted);display:block;margin-top:0.25rem}
+.sidebar nav a{display:flex;align-items:center;gap:0.6rem;padding:0.6rem 1.25rem;color:var(--muted);text-decoration:none;font-size:0.88rem;transition:all 0.15s;cursor:pointer}
+.sidebar nav a:hover,.sidebar nav a.active{color:var(--text);background:var(--bg3);border-right:2px solid var(--accent)}
+.sidebar nav a .ico{font-size:1rem;width:20px;text-align:center}
+.main{padding:1.5rem 2rem;overflow-y:auto}
+.main h1{font-size:1.4rem;font-weight:600;margin-bottom:0.25rem}
+.main .sub{color:var(--muted);font-size:0.85rem;margin-bottom:1.5rem}
+
+/* Stats cards */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.5rem}
+.{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem}
+. .label{font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem}
+. .value{font-size:1.6rem;font-weight:700}
+. .value.green{color:var(--green)}. .value.red{color:var(--red)}. .value.orange{color:var(--orange)}. .value.blue{color:var(--accent)}
+
+/* Tables */
+.table-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:1.5rem}
+.table-wrap .t-header{padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.table-wrap .t-header h3{font-size:0.92rem;font-weight:600}
+table{;border-collapse:collapse}
+thead{background:var(--bg3)}
+th{padding:0.6rem 0.8rem;font-size:0.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;text-align:left;white-space:nowrap}
+td{padding:0.55rem 0.8rem;font-size:0.82rem;border-top:1px solid var(--border);white-space:nowrap}
+tr:hover td{background:rgba(88,166,255,0.04)}
+.badge{display:inline-block;padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem;font-weight:600}
+.badge.active{background:rgba(63,185,80,0.15);color:var(--green)}
+.badge.warming{background:rgba(210,153,34,0.15);color:var(--orange)}
+.badge.shadowbanned{background:rgba(248,81,73,0.15);color:var(--red)}
+.badge.dead{background:rgba(110,118,129,0.2);color:var(--muted)}
+.badge.converted{background:rgba(63,185,80,0.15);color:var(--green)}
+.badge.pending{background:rgba(110,118,129,0.15);color:var(--muted)}
+.mono{font-family:'SF Mono',Consolas,monospace;font-size:0.78rem}
+
+/* Forms */
+.{display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem}
+input,select,button,{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:0.5rem 0.75rem;border-radius:6px;font-size:0.85rem;font-family:inherit;outline:none}
+input:focus,select:focus,:focus{border-color:var(--accent)}
+button{cursor:pointer;font-weight:600;transition:all 0.15s;display:inline-flex;align-items:center;gap:0.4rem}
+button:hover{opacity:0.85}
+.{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-green{background:var(--green);color:#fff;border-color:var(--green)}
+.btn-red{background:var(--red);color:#fff;border-color:var(--red)}
+.btn-sm{padding:0.3rem 0.6rem;font-size:0.78rem}
+select{appearance:none;-webkit-appearance:none;padding-right:2rem}
+
+/* Response box */
+.resp{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-top:0.75rem;;font-size:0.8rem;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto}
+.resp.success{border-color:var(--green)}.resp.error{border-color:var(--red)}
+
+/* Gateway tester */
+.ua-presets{display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.75rem}
+.ua-preset{background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:0.3rem 0.75rem;font-size:0.75rem;cursor:pointer;transition:all 0.15s}
+.ua-preset:hover,.ua-preset.selected{border-color:var(--accent);color:var(--accent)}
+
+/* Tabs */
+.tabs{display:flex;gap:0;margin-bottom:1rem;border-bottom:1px solid var(--border)}
+.tab{padding:0.5rem 1rem;font-size:0.85rem;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+.refresh-btn{font-size:0.78rem;color:var(--accent);cursor:pointer}
+.loading{opacity:0.5;pointer-events:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.spin{animation:spin 1.5s linear infinite;display:inline-block}
+.pulse-bar{animation:pulse 2s ease-in-out infinite}
+
+@media(max-width:900px){.app{grid-template-columns:1fr}.sidebar{display:none}}
+</style>
+</head>
+<body>
+
+<div id="app" class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo"><h2>Matrix-Link</h2><span>Control Panel v2</span></div>
+    <nav>
+      <a :class="{active:page==='dashboard'}" @click="page='dashboard'"><span class="ico">📊</span> 仪表盘</a>
+      <a :class="{active:page===''}" @click="page=''"><span class="ico">👤</span> 账号矩阵</a>
+      <a :class="{active:page==='managed'}" @click="page='managed'"><span class="ico">🔐</span> 账号管理</a>
+      <a :class="{active:page===''}" @click="page=''"><span class="ico">🏭</span> 全自动注册</a>
+      <a :class="{active:page==='conversions'}" @click="page='conversions'"><span class="ico">💰</span> 转化记录</a>
+      <a :class="{active:page==='gateway'}" @click="page='gateway'"><span class="ico">🛡️</span> 网关测试</a>
+      <a :class="{active:page==='postback'}" @click="page='postback'"><span class="ico">📡</span> Postback</a>
+      <a :class="{active:page==='proxy'}" @click="page='proxy'"><span class="ico">🌐</span> 代理池</a>
+      <a :class="{active:page==='health'}" @click="page='health'"><span class="ico">❤️</span> 健康检查</a>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <!-- ========== DASHBOARD ========== -->
+    <template v-if="page==='dashboard'">
+      <h1>系统概览</h1>
+      <p class="sub">Matrix-Link 2026 · 实时状态监控</p>
+
+      <div class="stats">
+        <div class=""><div class="label">账号总数</div><div class="value blue">{{stats.?.total||0}}</div></div>
+        <div class=""><div class="label">活跃账号</div><div class="value green">{{stats.?.active||0}}</div></div>
+        <div class=""><div class="label">被降权</div><div class="value red">{{stats.?.shadowbanned||0}}</div></div>
+        <div class=""><div class="label">养护中</div><div class="value orange">{{stats.?.warming||0}}</div></div>
+        <div class=""><div class="label">总转化</div><div class="value green">{{stats.conversions?.converted||0}}</div></div>
+        <div class=""><div class="label">总佣金</div><div class="value blue">${{Number(stats.conversions?.total_payout||0).toFixed(2)}}</div></div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>最近账号</h3><span class="refresh-btn" @click="loadData">🔄 刷新</span></div>
+        <table><thead><tr><th>Bot ID</th><th>平台</th><th>状态</th><th>权重</th><th>点击数</th><th>转化</th></tr></thead>
+        <tbody>
+          <tr v-for="a in .slice(0,10)" :key="a.id">
+            <td class="mono">{{a.bot_id}}</td><td>{{a.}}</td>
+            <td><span :class="'badge '+a.status">{{a.status}}</span></td>
+            <td>{{a.weight}}</td><td>{{a.total_clicks}}</td><td>{{a.total_conversions}}</td>
+          </tr>
+        </tbody></table>
+      </div>
+    </template>
+
+    <!-- ========== ACCOUNTS ========== -->
+    <template v-if="page===''">
+      <h1>账号矩阵</h1>
+      <p class="sub">管理 traffic_ · 创建 / 查看 / 状态监控</p>
+
+      <div class="table-wrap">
+        <div class="t-header">
+          <h3>新建测试账号</h3>
+        </div>
+        <div style="padding:1rem">
+          <div class="">
+            <input v-model="newAcct.bot_id" placeholder="Bot ID (如 bot_01)" style="width:140px">
+            <select v-model="newAcct.">
+              <option value="">选择平台</option>
+              <option>X</option><option>Reddit</option><option>Instagram</option><option>TikTok</option><option>Tumblr</option><option>Discord</option>
+            </select>
+            <input v-model="newAcct.proxy_server" placeholder="代理地址" style="width:220px">
+            <input v-model="newAcct.bound_country" placeholder="国家 (US)" style="width:80px">
+            <button class="" @click="createAccount">+ 创建账号</button>
+          </div>
+          <div v-if="newAcct.resp" :class="'resp '+(newAcct.ok?'success':'error')">{{newAcct.resp}}</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>全部账号 ({{.length}})</h3><span class="refresh-btn" @click="loadAccounts">🔄</span></div>
+        <div style="overflow-x:auto">
+        <table><thead><tr>
+          <th>ID</th><th>Bot ID</th><th>平台</th><th>代理</th><th>国家</th><th>状态</th><th>权重</th><th>点击数</th><th>转化</th><th>最近活跃</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="a in " :key="a.id">
+            <td>{{a.id}}</td><td class="mono">{{a.bot_id}}</td><td>{{a.}}</td>
+            <td class="mono" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">{{a.proxy_server}}</td>
+            <td>{{a.bound_country}}</td>
+            <td><span :class="'badge '+a.status">{{a.status}}</span></td>
+            <td>{{a.weight}}</td><td>{{a.total_clicks}}</td><td>{{a.total_conversions}}</td>
+            <td class="mono">{{fmtTs(a.last_used_at)}}</td>
+          </tr>
+        </tbody></table>
+        </div>
+      </div>
+    </template>
+
+    <!-- ========== 账号管理 ========== -->
+    <template v-if="page==='managed'">
+      <h1>🔐 账号管理</h1>
+      <p class="sub">管理已注册账号的完整凭据 · 验证有效性 · 导入/导出</p>
+
+      <!-- Stats -->
+      <div class="stats">
+        <div class=""><div class="label">托管总数</div><div class="value blue">{{mStats.total||0}}</div></div>
+        <div class=""><div class="label">有效账号</div><div class="value green">{{mStats.valid||0}}</div></div>
+        <div class=""><div class="label">无效账号</div><div class="value red">{{mStats.invalid||0}}</div></div>
+        <div class=""><div class="label">未验证</div><div class="value orange">{{mStats.unchecked||0}}</div></div>
+        <div class="" v-for="p in (mStats.byPlatform||[])" :key="p.">
+          <div class="label">{{p.}}</div><div class="value blue">{{p.cnt}}</div>
+        </div>
+      </div>
+
+      <!-- Import + Verify All -->
+      <div class="table-wrap" style="margin-bottom:1rem">
+        <div style="padding:1rem;display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center">
+          <button class="" @click="importAccounts" :disabled="mImport.loading">
+            {{mImport.loading?'导入中...':'📥 从 D 盘导入'}}
+          </button>
+          <button class="btn-green" @click="verifyAllAccounts" :disabled="mVerify.running">
+            {{mVerify.running?'验证中...':'🔍 验证全部未验证账号'}}
+          </button>
+          <span style="font-size:0.78rem;color:#6e7681';margin-left:auto">
+            每页显示
+            <select v-model="mLimit" @change="loadManagedAccounts" style="width:70px;padding:0.2rem 0.3rem">
+              <option :value="20">20</option><option :value="50">50</option><option :value="100">100</option>
+            </select>
+            条
+          </span>
+        </div>
+        <div v-if="mImport.resp" :class="'resp '+(mImport.ok?'success':'error')" style="margin:0 1rem 0.75rem">{{mImport.resp}}</div>
+        <div v-if="mVerify.msg" class="resp success" style="margin:0 1rem 0.75rem">{{mVerify.msg}}</div>
+      </div>
+
+      <!-- Search/Filter -->
+      <div class="table-wrap" style="margin-bottom:1rem">
+        <div style="padding:0.75rem 1rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+          <input v-model="mSearch" placeholder="🔍 搜索用户名/邮箱/BotID..." style="width:280px" @keyup.enter="loadManagedAccounts">
+          <select v-model="mFilterPlatform" @change="loadManagedAccounts">
+            <option value="">全部平台</option>
+            <option value="Reddit">Reddit</option>
+            <option value="X">X</option>
+            <option value="Discord">Discord</option>
+            <option value="Tumblr">Tumblr</option>
+          </select>
+          <select v-model="mFilterValid" @change="loadManagedAccounts">
+            <option value="">全部状态</option>
+            <option value="1">✅ 有效</option>
+            <option value="0">❌ 无效</option>
+            <option value="null">⏳ 未验证</option>
+          </select>
+          <button class="btn-sm " @click="loadManagedAccounts">🔍 搜索</button>
+          <span style="font-size:0.78rem;color:#6e7681'">共 {{mTotal}} 个账号</span>
+          <span v-if="mPage>1" @click="mPage--;loadManagedAccounts()" style="font-size:0.78rem;color:#58a6ff';cursor:pointer;margin-left:0.5rem">← 上一页</span>
+          <span v-if="managedAccounts.length>=mLimit" @click="mPage++;loadManagedAccounts()" style="font-size:0.78rem;color:#58a6ff';cursor:pointer;margin-left:0.5rem">下一页 →</span>
+        </div>
+      </div>
+
+      <!-- Account Table -->
+      <div class="table-wrap">
+        <div class="t-header">
+          <h3>账号列表</h3>
+          <span class="refresh-btn" @click="loadManagedAccounts">🔄 刷新</span>
+        </div>
+        <div style="overflow-x:auto">
+        <table><thead><tr>
+          <th>ID</th><th>Bot ID</th><th>平台</th><th>用户名</th><th>密码</th><th>邮箱</th><th>注册IP</th><th>有效</th><th>验证时间</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="a in managedAccounts" :key="a.id" :style="{opacity:a.===0?'0.6':'1'}">
+            <td>{{a.id}}</td>
+            <td class="mono" style="max-width:120px;overflow:hidden;text-overflow:ellipsis" :title="a.bot_id">{{a.bot_id?.slice(0,18)}}</td>
+            <td><span :class="'badge '+(a.==='Reddit'?'active':a.==='X'?'converted':a.==='Tumblr'?'warming':'warming')">{{a.}}</span></td>
+            <td class="mono">{{a.}}</td>
+            <td class="mono" style="cursor:pointer" @click="togglePwd(a)" :title="a._showPwd?'点击隐藏':'点击显示'">
+              {{a._showPwd ? a. : '••••••••'}}
+            </td>
+            <td class="mono" style="max-width:160px;overflow:hidden;text-overflow:ellipsis" :title="a.email">{{a.email}}</td>
+            <td class="mono">{{a.||'-'}}</td>
+            <td>
+              <span v-if="a.===1" class="badge converted">✅ 有效</span>
+              <span v-else-if="a.===0" class="badge shadowbanned" :title="a.">❌ 无效</span>
+              <span v-else class="badge pending">⏳ 未验证</span>
+            </td>
+            <td class="mono" style="font-size:0.72rem">{{a.last_checked_at ? fmtTs(a.last_checked_at) : '-'}}</td>
+            <td>
+              <div style="display:flex;gap:0.3rem">
+                <button class="btn-sm btn-green" @click="verifyAccount(a.id)" :disabled="a._verifying" :title="'验证账号有效性'">
+                  {{a._verifying ? '⏳' : '🔍'}}
+                </button>
+                <button class="btn-sm btn-red" @click="deleteManaged(a.id)" title="删除">
+                  🗑️
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody></table>
+        </div>
+        <div v-if="managedAccounts.length===0" style="padding:2rem;text-align:center;color:#6e7681'">暂无数据，请注册新账号或从 D 盘导入</div>
+      </div>
+
+      <!-- Detail Modal -->
+      <div v-if="mDetail" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:100" @click.self="mDetail=null">
+        <div style="background:#1a1d27;border:1px solid #2e3344';border-radius:12px;padding:1.5rem;max-width:500px;width:90%;max-height:80vh;overflow-y:auto">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+            <h3 style="font-size:1rem">{{mDetail.}} — {{mDetail.}}</h3>
+            <span @click="mDetail=null" style="cursor:pointer;font-size:1.2rem;color:#6e7681'">✕</span>
+          </div>
+          <table style="">
+            <tr v-for="[k,v] in Object.entries({bot_id:mDetail.bot_id,:mDetail.,:mDetail.,:mDetail.,email:mDetail.email,phone:mDetail.phone,:mDetail.,:mDetail.,:mDetail.===1?'有效':mDetail.===0?'无效':'未验证',:mDetail.,:fmtTs(mDetail.)})" :key="k">
+              <td style="padding:0.3rem 0.5rem;font-size:0.78rem;color:#6e7681';font-weight:600;width:30%">{{k}}</td>
+              <td class="mono" style="padding:0.3rem 0.5rem;font-size:0.8rem;word-break:break-all">{{v||'-'}}</td>
+            </tr>
+          </table>
+          <div v-if="mDetail." style="margin-top:0.75rem;font-size:0.78rem;color:#6e7681'">个人资料: {{JSON.stringify(mDetail.)}}</div>
+          <div v-if="mDetail.notes" style="margin-top:0.5rem;font-size:0.78rem;color:#d29922'">备注: {{mDetail.notes}}</div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ========== 全自动注册 ========== -->
+    <template v-if="page===''">
+      <h1>🏭 全自动注册</h1>
+      <p class="sub">一键全自动注册 · 免费邮箱 · CAPTCHA自动求解 · D盘存储 · 📱 移动设备模拟</p>
+
+      <!-- 📱 移动设备模拟状态 -->
+      <div class="table-wrap" style="margin-bottom:1rem;border-color:rgba(163,113,247,0.3)">
+        <div class="t-header" style="background:rgba(163,113,247,0.05)">
+          <h3>📱 移动设备模拟</h3>
+          <span style="font-size:0.75rem;color:#a371f7">{{mobileStats.total||0}} 设备就绪</span>
+        </div>
+        <div style="padding:0.75rem 1rem;display:flex;gap:1rem;flex-wrap:wrap;align-items:center;font-size:0.82rem">
+          <span>🍎 iPhone: <strong>{{mobileStats.ios||0}}</strong></span>
+          <span>🤖 Android: <strong>{{mobileStats.android||0}}</strong></span>
+          <span style="color:#6e7681'">|</span>
+          <span>当前: <strong style="color:#58a6ff'">{{mobileSample?.name||'随机选取'}}</strong></span>
+          <span class="badge converted" v-if="mobileSample">{{mobileSample.brand}} {{mobileSample.os}}</span>
+          <span style="margin-left:auto;font-size:0.72rem;color:#6e7681'">每次注册自动随机换设备</span>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>🚀 启动全自动注册</h3></div>
+        <div style="padding:1rem">
+          <div class="">
+            <select v-model="reg." style="width:160px">
+              <option value="Reddit">Reddit</option>
+              <option value="X">X (Twitter)</option>
+              <option value="Discord">Discord</option>
+              <option value="Tumblr">Tumblr</option>
+            </select>
+            <input v-model.number="reg.count" type="number" min="1" max="5" placeholder="数量" style="width:80px">
+            <input v-model="reg.proxy" placeholder="代理地址 (可选，留空直连)" style="width:260px">
+            <button class="" @click="runAutoRegister" :disabled="reg.running" style="font-size:0.9rem;padding:0.5rem 1.2rem">
+              {{reg.running?'⏳ 执行中...':'🚀 一键全自动注册'}}
+            </button>
+          </div>
+          <div v-if="reg.resp" :class="'resp '+(reg.ok?'success':'error')" style="margin-top:0.5rem">{{reg.resp}}</div>
+        </div>
+      </div>
+
+      <!-- ═══ 实时进度面板 ═══ -->
+      <div v-if="reg.taskId" class="table-wrap" style="border-color:#58a6ff'">
+        <div class="t-header" style="background:rgba(88,166,255,0.05)">
+          <h3>📊 实时进度 — {{reg.}} × {{reg.count}}</h3>
+          <div style="display:flex;align-items:center;gap:1rem">
+            <span v-if="reg.eta" style="font-size:0.8rem;color:#6e7681">⏱ 预计剩余: {{reg.eta}}</span>
+            <span :style="{fontSize:'0.8rem',color:reg.status==='done'?'#3fb950':reg.status==='failed'?'#f85149':'#58a6ff'}">
+              {{reg.status==='done'?'✅ 完成':reg.status==='failed'?'❌ 失败':reg.pollCount?'🔄 轮询 #'+reg.pollCount:'⏳ 启动中'}}
+            </span>
+          </div>
+        </div>
+        <div style="padding:1.25rem">
+          <!-- 总进度条 -->
+          <div style="background:#242836;border-radius:10px;height:8px;margin-bottom:1.25rem;overflow:hidden">
+            <div :style="{width:reg.pct+'%',background:reg.status==='done'?'#3fb950':'#58a6ff',height:'100%',borderRadius:'10px',transition:'width 0.5s ease'}" :class="reg.status==='running'?'pulse-bar':''"></div>
+          </div>
+
+          <!-- 节点状态 -->
+          <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.75rem">
+            <template v-for="n in reg.nodes" :key="n.name">
+              <div :style="{display:'flex',alignItems:'center',gap:'0.35rem',background:'#242836',border:'1px solid '+(n.status==='done'?'#3fb950':n.status==='running'?'#58a6ff':n.status==='skipped'?'#d29922':'#2e3344'),borderRadius:'20px',padding:'0.4rem 0.85rem',transition:'all 0.3s'}">
+                <span v-if="n.status==='done'" style="color:#3fb950';font-size:0.9rem">✅</span>
+                <span v-else-if="n.status==='running'" style="color:#58a6ff';font-size:0.9rem" class="spin">⚙️</span>
+                <span v-else-if="n.status==='skipped'" style="color:#d29922';font-size:0.9rem">⏭️</span>
+                <span v-else style="color:#6e7681;font-size:0.9rem">⏳</span>
+                <span :style="{fontSize:'0.85rem',fontWeight:n.status==='running'?'600':'400',color:n.status==='done'?'#3fb950':n.status==='running'?'#58a6ff':n.status==='skipped'?'#d29922':'#6e7681'}">{{n.name}}</span>
+              </div>
+            </template>
+          </div>
+
+          <!-- 详细信息 -->
+          <div v-if="reg.detail" style="font-size:0.78rem;color:#6e7681';;background:#242836';border-radius:6px;padding:0.5rem 0.75rem;max-height:80px;overflow-y:auto;white-space:pre-wrap;line-height:1.4">{{reg.detail}}</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>已注册账号</h3><span class="refresh-btn" @click="loadLocalAccounts">🔄 刷新</span></div>
+        <table><thead><tr><th>Bot ID</th><th>平台</th><th>用户名</th><th>邮箱</th><th>创建时间</th></tr></thead>
+        <tbody>
+          <tr v-for="a in localAccounts" :key="a.botId">
+            <td class="mono">{{a.botId?.slice(0,20)}}</td><td>{{a.}}</td>
+            <td>{{a.}}</td><td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">{{a.email}}</td>
+            <td class="mono">{{a.createdAt?.slice(0,19)}}</td>
+          </tr>
+        </tbody></table>
+      </div>
+    </template>
+
+    <!-- ========== CONVERSIONS ========== -->
+    <template v-if="page==='conversions'">
+      <h1>转化记录</h1>
+      <p class="sub">管理 traffic_conversions · 创建点击 → 模拟转化</p>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>新建测试点击</h3></div>
+        <div style="padding:1rem">
+          <div class="">
+            <input v-model="newConv.click_id" placeholder="Click ID" style="width:180px">
+            <input v-model="newConv.bot_id" placeholder="Bot ID" style="width:130px">
+            <input v-model="newConv.post_id" placeholder="Post ID" type="number" style="width:100px">
+            <select v-model="newConv.">
+              <option value="">平台</option><option>X</option><option>Reddit</option><option>Instagram</option><option>TikTok</option><option>Tumblr</option>
+            </select>
+            <button class="" @click="createConversion">+ 创建点击</button>
+          </div>
+          <div v-if="newConv.resp" :class="'resp '+(newConv.ok?'success':'error')">{{newConv.resp}}</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>全部转化 ({{conversions.length}})</h3><span class="refresh-btn" @click="loadConversions">🔄</span></div>
+        <div style="overflow-x:auto">
+        <table><thead><tr>
+          <th>ID</th><th>Click ID</th><th>Bot</th><th>Post</th><th>平台</th><th>IP</th><th>转化?</th><th>佣金</th><th>点击时间</th><th>转化时间</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="c in conversions" :key="c.id">
+            <td>{{c.id}}</td><td class="mono">{{c.click_id?.slice(0,16)}}...</td>
+            <td class="mono">{{c.bot_id}}</td><td>{{c.post_id}}</td><td>{{c.}}</td>
+            <td class="mono">{{c.user_ip}}</td>
+            <td><span :class="'badge '+(c.is_converted?'converted':'pending')">{{c.is_converted?'已转化':'待转化'}}</span></td>
+            <td>${{Number(c.payout||0).toFixed(2)}}</td>
+            <td class="mono">{{fmtTs(c.clicked_at)}}</td>
+            <td class="mono">{{fmtTs(c.converted_at)}}</td>
+          </tr>
+        </tbody></table>
+        </div>
+      </div>
+    </template>
+
+    <!-- ========== GATEWAY TESTER ========== -->
+    <template v-if="page==='gateway'">
+      <h1>网关测试器</h1>
+      <p class="sub">模拟不同  访问 /gateway 和 /route，验证 Cloaking 逻辑</p>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>测试参数</h3></div>
+        <div style="padding:1rem">
+          <div class="ua-presets">
+            <span class="ua-preset" :class="{selected:gw.ua==='bot'}" @click="gw.ua='bot'">🤖 爬虫 (TwitterBot)</span>
+            <span class="ua-preset" :class="{selected:gw.ua==='google'}" @click="gw.ua='google'">🔍 GoogleBot</span>
+            <span class="ua-preset" :class="{selected:gw.ua==='tiktok'}" @click="gw.ua='tiktok'">🎵 TikTokBot</span>
+            <span class="ua-preset" :class="{selected:gw.ua==='instagram'}" @click="gw.ua='instagram'">📷 Instagram</span>
+            <span class="ua-preset" :class="{selected:gw.ua==='human'}" @click="gw.ua='human'">👤 真人 Chrome</span>
+          </div>
+          <div class="">
+            <select v-model="gw.route" style="width:150px">
+              <option value="/gateway">/gateway</option>
+              <option value="/route">/route (DD.txt)</option>
+            </select>
+            <input v-model="gw.uid" placeholder="UID (bot_id)" style="width:150px">
+            <input v-model="gw.pid" placeholder="PID (post_id)" style="width:150px">
+            <button class="" @click="testGateway" :disabled="gw.loading">
+              {{gw.loading?'测试中...':'发送请求'}}
+            </button>
+          </div>
+          <div v-if="gw.result" :class="'resp '+(gw.result.includes('302')||gw.result.includes('200')?'success':'error')">{{gw.result}}</div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ========== POSTBACK TESTER ========== -->
+    <template v-if="page==='postback'">
+      <h1>Postback 模拟器</h1>
+      <p class="sub">测试 GET/POST 转化回传，验证账号权重自愈逻辑</p>
+
+      <div class="tabs">
+        <span class="tab" :class="{active:pb.method==='GET'}" @click="pb.method='GET'">GET (DD.txt)</span>
+        <span class="tab" :class="{active:pb.method==='POST'}" @click="pb.method='POST'">POST (JSON)</span>
+      </div>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>{{pb.method}} 回传参数</h3></div>
+        <div style="padding:1rem">
+          <div class="" v-if="pb.method==='GET'">
+            <input v-model="pb.bot_id" placeholder="sub1 (bot_id)" style="width:160px">
+            <input v-model="pb.click_id" placeholder="sub2 (click_id)" style="width:200px">
+            <input v-model="pb.payout" placeholder="payout" type="number" step="0.01" style="width:120px">
+            <button class="btn-green" @click="testPostback" :disabled="pb.loading">
+              {{pb.loading?'发送中...':'发送 GET'}}
+            </button>
+          </div>
+          <div class="" v-if="pb.method==='POST'">
+            < v-model="pb.jsonBody" rows="4" style="width:400px;;font-size:0.8rem" placeholder='{"click_id":"...","bot_id":"...","payout":10.00}'></>
+            <button class="btn-green" @click="testPostback" :disabled="pb.loading" style="align-self:flex-start">
+              {{pb.loading?'发送中...':'发送 POST'}}
+            </button>
+          </div>
+          <div v-if="pb.result" :class="'resp '+(pb.ok?'success':'error')">{{pb.result}}</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>一键联动测试</h3></div>
+        <div style="padding:1rem">
+          <p style="font-size:0.85rem;color:#6e7681';margin-bottom:0.75rem">
+            自动完成：创建账号 (warming) → 创建点击 → Postback 转化 → 验证 warming→active + weight+30
+          </p>
+          <button class="" @click="e2eTest" :disabled="e2e.running">
+            {{e2e.running?'执行中...':'🚀 一键联动测试'}}
+          </button>
+          <div v-if="e2e.log" class="resp" style="margin-top:0.75rem">{{e2e.log}}</div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ========== PROXY POOL ========== -->
+    <template v-if="page==='proxy'">
+      <h1>🌐 代理池管理</h1>
+      <p class="sub">管理住宅代理 · 自动检测类型 · 优先分配住宅IP</p>
+
+      <!-- Stats -->
+      <div class="stats">
+        <div class=""><div class="label">代理总数</div><div class="value blue">{{pxData.total||0}}</div></div>
+        <div class=""><div class="label">可用代理</div><div class="value green">{{pxData.working||0}}</div></div>
+        <div class=""><div class="label">🏠 住宅代理</div><div class="value green">{{pxData.residential||0}}</div></div>
+        <div class=""><div class="label">🏢 数据中心</div><div class="value orange">{{pxData.datacenter||0}}</div></div>
+        <div class=""><div class="label">平均延迟</div><div class="value blue">{{pxData.avgLatency||0}}ms</div></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="table-wrap" style="margin-bottom:1rem">
+        <div style="padding:1rem;display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center">
+          <button class="" @click="pxRefreshFree" :disabled="pxLoading.refresh">
+            {{pxLoading.refresh?'获取中...':'🔄 从免费源获取代理'}}
+          </button>
+          <button class="btn-green" @click="pxTestAll" :disabled="pxLoading.test">
+            {{pxLoading.test?'测试中...':'🧪 测试全部代理'}}
+          </button>
+          <button class="" @click="pxCreateUSNode" :disabled="pxLoading.creating" style="#;border-color:#a371f7">
+            {{pxLoading.creating?'创建中...':'🇺🇸 创建美国节点'}}
+          </button>
+          <button class="btn-red" @click="pxClearAll" style="margin-left:auto">🧹 清空代理池</button>
+        </div>
+        <div v-if="pxMsg" :class="'resp '+(pxOk?'success':'error')" style="margin:0 1rem 0.75rem">{{pxMsg}}</div>
+      </div>
+
+      <!-- Add Proxy Form -->
+      <div class="table-wrap" style="margin-bottom:1rem">
+        <div class="t-header"><h3>➕ 添加代理</h3></div>
+        <div style="padding:1rem">
+          <!-- Tab: manual / provider -->
+          <div class="tabs" style="margin-bottom:0.75rem">
+            <span class="tab" :class="{active:pxTab==='manual'}" @click="pxTab='manual'">✍️ 手动输入</span>
+            <span class="tab" :class="{active:pxTab==='provider'}" @click="pxTab='provider'">🏢 服务商模板</span>
+            <span class="tab" :class="{active:pxTab==='batch'}" @click="pxTab='batch'">📋 批量导入</span>
+          </div>
+
+          <!-- Manual -->
+          <div v-if="pxTab==='manual'">
+            <div class="">
+              <input v-model="pxAdd.url" placeholder="http://user:pass@host:port 或 host:port" style="width:420px">
+              <button class="" @click="pxAddOne">添加</button>
+            </div>
+          </div>
+
+          <!-- Provider -->
+          <div v-if="pxTab==='provider'">
+            <div class="">
+              <select v-model="pxAdd.provider" style="width:220px">
+                <option value="">选择服务商...</option>
+                <option v-for="p in pxProviders" :key="p.id" :value="p.id">{{p.label}}</option>
+              </select>
+              <input v-if="pxAdd.provider==='self_hosted'" v-model="pxAdd.creds.protocol" placeholder="协议 (http/socks5)" style="width:100px">
+              <input v-if="pxAdd.provider==='self_hosted'" v-model="pxAdd.creds.host" placeholder="主机" style="width:150px">
+              <input v-if="pxAdd.provider==='self_hosted'" v-model="pxAdd.creds.port" placeholder="端口" style="width:80px">
+              <input v-if="pxAdd.provider" v-model="pxAdd.creds.user" placeholder="用户名" style="width:150px">
+              <input v-if="pxAdd.provider" v-model="pxAdd.creds.pass" placeholder="密码" style="width:150px">
+              <button v-if="pxAdd.provider" class="" @click="pxAddProvider">生成并添加</button>
+            </div>
+          </div>
+
+          <!-- Batch -->
+          <div v-if="pxTab==='batch'">
+            <div class="">
+              < v-model="pxAdd.batch" placeholder="每行一个代理:&#10;http://user:pass@host:port&#10;host:port&#10;socks5://host:port" rows="5" style="width:400px;font-size:0.8rem"></>
+            </div>
+            <button class="" @click="pxAddBatch">批量导入</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Proxy List -->
+      <div class="table-wrap">
+        <div class="t-header"><h3>代理列表</h3><span class="refresh-btn" @click="loadProxyPool">🔄 刷新</span></div>
+        <div style="overflow-x:auto">
+        <table><thead><tr>
+          <th>#</th><th>代理地址</th><th>状态</th><th>类型</th><th>国家</th><th>延迟</th><th>评分</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="(p,i) in pxList" :key="i" :style="{opacity:(p.ok===false)?'0.5':'1'}">
+            <td>{{p.index}}</td>
+            <td class="mono" style="max-width:320px;overflow:hidden;text-overflow:ellipsis" :title="p.raw">{{p.proxy}}</td>
+            <td>
+              <span v-if="p.ok===true" class="badge converted">✅ 可用</span>
+              <span v-else-if="p.ok===false" class="badge shadowbanned">❌ 不可用</span>
+              <span v-else class="badge pending">⏳ 未测试</span>
+            </td>
+            <td>
+              <span v-if="p.type==='residential'" class="badge converted" title="住宅代理 — 低CAPTCHA风险">🏠 住宅</span>
+              <span v-else-if="p.type==='cloudflare_us'" class="badge converted" title="Cloudflare 美国节点 — US出口IP">🇺🇸 CF美节点</span>
+              <span v-else-if="p.type==='datacenter'" class="badge warming" title="数据中心代理 — CAPTCHA风险较高">🏢 机房</span>
+              <span v-else class="badge pending">❓</span>
+            </td>
+            <td>{{p.country||'-'}}</td>
+            <td>{{p.latencyMs||'-'}}ms</td>
+            <td>
+              <span :style="{color:p.score>=70?'#3fb950':p.score>=40?'#d29922':'#6e7681',fontWeight:'600'}">{{p.score||'?'}}</span>
+            </td>
+            <td>
+              <button class="btn-sm btn-red" @click="pxDelete(p.index)">🗑️</button>
+            </td>
+          </tr>
+        </tbody></table>
+        </div>
+        <div v-if="pxList.length===0" style="padding:2rem;text-align:center;color:#6e7681'">
+          代理池为空 — 请通过上方按钮添加代理或从免费源获取
+        </div>
+      </div>
+
+      <!-- Free Sources List -->
+      <div class="table-wrap" style="margin-top:1rem">
+        <div class="t-header"><h3>🌍 免费代理源</h3></div>
+        <table><thead><tr><th>名称</th><th>描述</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr v-for="s in pxSources" :key="s.name">
+            <td class="mono">{{s.name}}</td><td>{{s.label}}</td>
+            <td><button class="btn-sm " @click="pxRefreshOne(s.name)">获取</button></td>
+          </tr>
+        </tbody></table>
+      </div>
+
+      <!-- 住宅代理服务商列表 -->
+      <div class="table-wrap" style="margin-top:1rem">
+        <div class="t-header"><h3>🏢 住宅代理服务商 (一键配置)</h3></div>
+        <table><thead><tr><th>服务商</th><th>代理模板</th><th>需要参数</th></tr></thead>
+        <tbody>
+          <tr v-for="(p,id) in pxProviders" :key="id">
+            <td><strong>{{p.label}}</strong></td>
+            <td class="mono" style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{{p.template}}</td>
+            <td>
+              <span v-for="f in p.fields" :key="f" class="badge warming" style="margin-right:0.25rem">{{f}}</span>
+            </td>
+          </tr>
+        </tbody></table>
+      </div>
+    </template>
+
+    <!-- ========== HEALTH ========== -->
+    <template v-if="page==='health'">
+      <h1>健康检查</h1>
+      <p class="sub">MySQL / Express / Nginx 连通性实时监控</p>
+
+      <div class="stats">
+        <div class="">
+          <div class="label">Express 网关</div>
+          <div class="value" :class="health.server==='ok'?'green':'red'">{{health.server==='ok'?'🟢 正常':'🔴 异常'}}</div>
+        </div>
+        <div class="">
+          <div class="label">MySQL 数据库</div>
+          <div class="value" :class="health.db==='connected'?'green':'red'">{{health.db==='connected'?'🟢 已连接':'🔴 断开'}}</div>
+        </div>
+        <div class="">
+          <div class="label">服务端口</div>
+          <div class="value blue">{{API_BASE}}</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="t-header"><h3>API 连通性测试</h3></div>
+        <table><thead><tr><th>端点</th><th>方法</th><th>状态</th><th>延迟</th><th>响应</th></tr></thead>
+        <tbody>
+          <tr v-for="ep in health.endpoints" :key="ep.url">
+            <td class="mono">{{ep.url}}</td><td>{{ep.method}}</td>
+            <td><span :class="'badge '+(ep.ok?'converted':'shadowbanned')">{{ep.ok?'OK':'FAIL'}}</span></td>
+            <td>{{ep.ms}}ms</td>
+            <td class="mono" style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{{ep.body}}</td>
+          </tr>
+        </tbody></table>
+      </div>
+    </template>
+
+  </main>
+</div>
+
+<script>
+const { createApp, ref, reactive, onMounted, watch } = Vue;
+const API_BASE = 'http://localhost:3000';
+
+createApp({
+  setup() {
+    const page = ref('dashboard');
+    const  = ref([]);
+    const conversions = ref([]);
+    const stats = ref({:{},conversions:{}});
+
+    // Health
+    const health = reactive({server:'-',db:'-',endpoints:[]});
+
+    // New account form
+    const newAcct = reactive({bot_id:'',:'',proxy_server:'http://proxy:8080',bound_country:'US',resp:'',ok:false});
+
+    // New conversion form
+    const newConv = reactive({click_id:'',bot_id:'',post_id:'',:'',resp:'',ok:false});
+
+    // Gateway tester
+    const gw = reactive({ua:'bot',route:'/gateway',uid:'bot_01',pid:'42',loading:false,result:''});
+
+    // Postback tester
+    const pb = reactive({method:'GET',bot_id:'',click_id:'',payout:'10.00',jsonBody:'{"click_id":"","bot_id":"","payout":10.00}',loading:false,result:'',ok:false});
+
+    // E2E test
+    const e2e = reactive({running:false,log:''});
+
+    // Registration
+    const reg = reactive({:'Reddit',count:1,proxy:'',running:false,taskId:'',resp:'',ok:false,nodes:[],status:'',progress:'',pct:0,eta:'',detail:'',pollCount:0});
+    const localAccounts = ref([]);
+
+    // Managed 
+    const managedAccounts = ref([]);
+    const mStats = ref({total:0,valid:0,invalid:0,unchecked:0,byPlatform:[]});
+    const mSearch = ref('');
+    const mFilterPlatform = ref('');
+    const mFilterValid = ref('');
+    const mLimit = ref(20);
+    const mPage = ref(1);
+    const mTotal = ref(0);
+    const mDetail = ref(null);
+    const mImport = reactive({loading:false,resp:'',ok:false});
+    const mVerify = reactive({running:false,msg:''});
+
+    // Proxy pool
+    const pxData = ref({total:0,working:0,residential:0,datacenter:0,avgLatency:0,top5:[]});
+    const pxList = ref([]);
+    const pxProviders = ref([]);
+    const pxSources = ref([]);
+    const pxLoading = reactive({refresh:false,test:false,creating:false});
+    const pxMsg = ref('');
+    const pxOk = ref(false);
+    const pxTab = ref('manual');
+    const pxAdd = reactive({url:'',provider:'',creds:{user:'',pass:'',protocol:'http',host:'',port:''},batch:''});
+
+    // Mobile emulator
+    const mobileStats = ref({total:0,ios:0,android:0});
+    const mobileSample = ref(null);
+
+     fmtTs(ts) {return ts?new Date(ts).toISOString().slice(0,19).replace('T',' '):'-'}
+
+    async  api(path, opts={}) {
+      const url = API_BASE+path;
+      const res = await fetch(url,{headers:{'':'application/json'},...opts});
+      const text = await res.text();
+      try {return JSON.parse(text)} catch {return text}
+    }
+
+    async  loadStats() {
+      const data = await api('/api/v1/stats');
+      if(data.) stats.value = data;
+    }
+
+    async  loadAccounts() {
+      const data = await api('/api/v1/');
+      if(Array.isArray(data)) .value = data;
+    }
+
+    async  loadConversions() {
+      const data = await api('/api/v1/conversions');
+      if(Array.isArray(data)) conversions.value = data;
+    }
+
+    async  loadData() {await Promise.all([loadStats(),loadAccounts(),loadConversions()])}
+
+    // Create account
+    async  createAccount() {
+      newAcct.resp=''; newAcct.ok=false;
+      if(!newAcct.bot_id||!newAcct.||!newAcct.proxy_server){newAcct.resp='请填写 Bot ID、平台和代理';return}
+      const r = await api('/api/v1/',{method:'POST',body:JSON.stringify({bot_id:newAcct.bot_id,:newAcct.,proxy_server:newAcct.proxy_server,bound_country:newAcct.bound_country})});
+      newAcct.resp = JSON.stringify(r,null,2); newAcct.ok = r.success;
+      await loadAccounts(); await loadStats();
+    }
+
+    // Create conversion
+    async  createConversion() {
+      newConv.resp=''; newConv.ok=false;
+      if(!newConv.click_id||!newConv.bot_id||!newConv.post_id||!newConv.){newConv.resp='请填写所有字段';return}
+      const r = await api('/api/v1/conversions',{method:'POST',body:JSON.stringify({click_id:newConv.click_id,bot_id:newConv.bot_id,post_id:parseInt(newConv.post_id),:newConv.,user_ip:'192.168.1.'+Math.floor(Math.random()*255),user_agent:'Mozilla/5.0 Test'})});
+      newConv.resp = JSON.stringify(r,null,2); newConv.ok = r.success;
+      await loadConversions(); await loadStats();
+    }
+
+    // Gateway test
+    async  testGateway() {
+      gw.loading=true; gw.result='';
+      const uaMap = {
+        bot:'TwitterBot/1.0',google:'Googlebot/2.1',tiktok:'TikTokBot/1.0',instagram:'Instagram 300.0',human:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36'
+      };
+      const ua = uaMap[gw.ua]||uaMap.human;
+      const url = API_BASE+gw.route+'?uid='+encodeURIComponent(gw.uid)+'&pid='+encodeURIComponent(gw.pid);
+      try {
+        const res = await fetch(url,{headers:{'':ua},redirect:'manual'});
+        const status = res.status;
+        const loc = res.headers.get('location')||'';
+        const body = (await res.text()).slice(0,500);
+        if(status===302){gw.result=`✅ 302 Redirect → ${loc}`}
+        else if(status===200){gw.result=`✅ 200 OK — 白页 (${body.length} bytes)`;if(body.includes('Horizon')) gw.result+=' [Horizon Living 白页]'}
+        else{gw.result=`⚠ HTTP ${status}`}
+      }catch(e){gw.result=`❌ ${e.message}`}
+      gw.loading=false; await loadAccounts();
+    }
+
+    // Postback test
+    async  testPostback() {
+      pb.loading=true; pb.result=''; pb.ok=false;
+      try {
+        let url=API_BASE+'/api/v1/postback', opts={};
+        if(pb.method==='GET'){
+          url+='?sub1='+encodeURIComponent(pb.bot_id)+'&sub2='+encodeURIComponent(pb.click_id)+'&payout='+encodeURIComponent(pb.payout);
+        }else{
+          opts={method:'POST',body:pb.jsonBody'':'application/json'}};
+        }
+        const res = await fetch(url,opts);
+        const text = await res.text();
+        pb.result = `HTTP ${res.status}: ${text}`; pb.ok = res.ok || text.includes('success');
+      }catch(e){pb.result='❌ '+e.message}
+      pb.loading=false; await loadData();
+    }
+
+    // E2E test
+    async  e2eTest() {
+      e2e.running=true; e2e.log='';
+      const L = (msg)=>{e2e.log+=msg+'\n'};
+      const ts = Date.now();
+      const bid='e2e_'+ts, cid='click_'+ts, pid=99;
+
+      L('🚀 一键联动测试开始...');
+      L(`   bot_id: ${bid}  click_id: ${cid}`);
+
+      // 1) Create account
+      L('\n📝 Step 1: 创建 warming 账号...');
+      const a = await api('/api/v1/',{method:'POST',body:JSON.stringify({bot_id:bid,:'X',proxy_server:'http://proxy:8080',bound_country:'US'})});
+      L('   '+JSON.stringify(a));
+
+      // 2) Create click
+      L('\n📝 Step 2: 创建点击记录...');
+      const c = await api('/api/v1/conversions',{method:'POST',body:JSON.stringify({click_id:cid,bot_id:bid,post_id:pid,:'X',user_ip:'10.0.0.1',user_agent:'E2E Test'})});
+      L('   '+JSON.stringify(c));
+
+      // 3) Postback
+      L('\n📝 Step 3: 发送 Postback (GET)...');
+      const p = await fetch(API_BASE+'/api/v1/postback?sub1='+bid+'&sub2='+cid+'&payout=25.50');
+      const pt = await p.text();
+      L(`   HTTP ${p.status}: ${pt}`);
+
+      // 4) Verify
+      L('\n📝 Step 4: 验证数据库状态...');
+      const all = await api('/api/v1/');
+      const found = Array.isArray(all)?all.find(x=>x.bot_id===bid):null;
+      if(found){
+        L(`   状态: ${found.status} | 权重: ${found.weight} | 转化: ${found.total_conversions}`);
+        if(found.status==='active'&&found.weight===130&&found.total_conversions===1){
+          L('\n✅ 全部验证通过！ warming→active, weight 100→130, total_conversions=1');
+        }else{
+          L('\n⚠ 部分验证未通过，请检查数据库');
+        }
+      }
+
+      await loadData();
+      e2e.running=false;
+    }
+
+    // 全自动注册 - 实时可视化进度
+    async  runAutoRegister() {
+      reg.running = true; reg.resp = ''; reg.ok = false; reg.taskId = ''; reg.nodes = []; reg.status = ''; reg.pct = 0; reg.eta = ''; reg.detail = ''; reg.pollCount = 0;
+
+      let proxy = reg.proxy || '';
+      if (!proxy) { try { const p = await api('/api/v1/proxy/next'); proxy = p.proxy || ''; } catch {} }
+
+      try {
+        const r = await api('/api/v1/auto-', { method: 'POST', body: JSON.stringify({ : reg., count: reg.count, proxy }) });
+        reg.taskId = r.taskId; reg.nodes = r.nodes || []; reg.status = r.status; reg.ok = true;
+        reg.resp = '已启动！代理: ' + (proxy || '直连');
+
+        const startTime = Date.now();
+        const poller = setInterval(async () => {
+          reg.pollCount++;
+          try {
+            const t = await api('/api/v1/auto-/' + reg.taskId);
+            if (t.nodes) { reg.nodes = t.nodes;
+              // 计算进度百分比
+              const done = t.nodes.filter(n => n.status === 'done' || n.status === 'skipped';
+              reg.pct = Math.round((done / t.nodes.length) * 100);
+              // 显示详情
+              const doneNames = t.nodes.filter(n => n.status === 'done').map(n => n.name).join(' → ');
+              reg.detail = `${doneNames || '初始化中...'}`;
+            }
+            reg.status = t.status;
+            if (t.result) {
+              if (Array.isArray(t.result)) {
+                reg.detail = t.result.map(a => `${a.botId?.slice(0,20)}: ${a.success?'✅':'❌'} ${a.||''} ${a.email||''}`).join('\n');
+              } else if (t.result.botId) {
+                reg.detail = `${t.result.botId}: ${t.result.success?'✅':'❌'} ${t.result.||''} ${t.result.email||''}`;
+              }
+            }
+            // ETA 计算
+            const elapsed = (Date.now() - startTime) / 1000;
+            if (reg.pct > 0 && reg.pct < 100) {
+              const etaSec = Math.round((elapsed / reg.pct) * (100 - reg.pct));
+              reg.eta = etaSec > 60 ? Math.round(etaSec/60) + '分' + (etaSec%60) + '秒' : etaSec + '秒';
+            }
+            if (t.status === 'done' || t.status === 'failed' || reg.pollCount > 60) {
+              clearInterval(poller);
+              reg.pct = t.status === 'done' ? 100 : reg.pct;
+              reg.eta = '';
+              reg.running = false;
+              await loadAccounts(); await loadLocalAccounts(); await loadData();
+            }
+          } catch { clearInterval(poller); reg.running = false; }
+        }, 2000);
+      } catch(e) { reg.resp = '❌ 启动失败: ' + e.message + ' (确认服务器已启动)'; reg.ok = false; reg.running = false; }
+    }
+
+    async  pollProgress() {
+      if (!reg.taskId) return;
+      const t = await api('/api/v1/auto-/' + reg.taskId);
+      if (t.nodes) reg.nodes = t.nodes;
+      reg.status = t.status;
+    }
+
+    async  loadLocalAccounts() {
+      try {
+        const data = await api('/api/v1/local-');
+        if (Array.isArray(data)) localAccounts.value = data;
+      } catch {}
+    }
+
+    async  loadMobileDevices() {
+      try {
+        const d = await api('/api/v1/mobile-devices');
+        if (d.stats) mobileStats.value = d.stats;
+        if (d.sample) mobileSample.value = d.sample;
+      } catch {}
+    }
+
+    // ═══ Managed Accounts ═══
+    async  loadManagedAccounts() {
+      try {
+        const params = new URLSearchParams({
+          limit: mLimit.value, offset: (mPage.value - 1) * mLimit.value,
+        });
+        if (mSearch.value) params.set('search', mSearch.value);
+        if (mFilterPlatform.value) params.set('', mFilterPlatform.value);
+        if (mFilterValid.value) params.set('valid', mFilterValid.value);
+
+        const data = await api('/api/v1/managed-?' + params.toString());
+        if (data.) {
+          managedAccounts.value = data..map(a => ({ ...a, _showPwd: false, _verifying: false }));
+          mTotal.value = data.total;
+        }
+      } catch (e) {
+        console.error('loadManagedAccounts:', e);
+      }
+    }
+
+    async  loadManagedStats() {
+      try {
+        const data = await api('/api/v1/managed-/stats');
+        if (data.total !== undefined) mStats.value = data;
+      } catch {}
+    }
+
+     togglePwd(acct) {
+      acct._showPwd = !acct._showPwd;
+    }
+
+    async  importAccounts() {
+      mImport.loading = true; mImport.resp = ''; mImport.ok = false;
+      try {
+        const r = await api('/api/v1/managed-/import', { method: 'POST' });
+        mImport.resp = `导入完成: ${r.imported} 个新账号, 跳过 ${r.skipped} 个 (共 ${r.total} 个文件)`;
+        mImport.ok = r.imported > 0;
+        await loadManagedAccounts();
+        await loadManagedStats();
+      } catch (e) {
+        mImport.resp = '导入失败: ' + e.message;
+      }
+      mImport.loading = false;
+    }
+
+    async  verifyAccount(id) {
+      const acct = managedAccounts.value.find(a => a.id === id);
+      if (!acct) return;
+      acct._verifying = true;
+      try {
+        await api('/api/v1/managed-/' + id + '/verify', { method: 'POST' });
+        // 等待验证完成再刷新
+        setTimeout(async () => {
+          await loadManagedAccounts();
+          await loadManagedStats();
+        }, 5000);
+      } catch (e) {
+        console.error('verify failed:', e);
+        acct._verifying = false;
+      }
+    }
+
+    async  verifyAllAccounts() {
+      mVerify.running = true; mVerify.msg = '正在批量验证...';
+      try {
+        const r = await api('/api/v1/managed-/verify-all', { method: 'POST' });
+        mVerify.msg = `已触发 ${r.verifying} 个账号的验证，请稍后刷新查看结果`;
+      } catch (e) {
+        mVerify.msg = '验证失败: ' + e.message;
+      }
+      // 延迟刷新
+      setTimeout(async () => {
+        await loadManagedAccounts();
+        await loadManagedStats();
+        mVerify.running = false;
+      }, 15000);
+    }
+
+    async  deleteManaged(id) {
+      if (!confirm('确定删除此账号？此操作不可撤销！')) return;
+      try {
+        await api('/api/v1/managed-/' + id, { method: 'DELETE' });
+        await loadManagedAccounts();
+        await loadManagedStats();
+      } catch (e) {
+        alert('删除失败: ' + e.message);
+      }
+    }
+
+    // ═══ Proxy Pool ═══
+    async  loadProxyPool() {
+      try {
+        const d = await api('/api/v1/proxy-pool');
+        pxData.value = { total: d.total||0, working: d.working||0, residential: d.residential||0, datacenter: d.datacenter||0, avgLatency: d.avgLatency||0, top5: d.top5||[] };
+        pxList.value = d.proxies || [];
+      } catch {}
+    }
+
+    async  loadProxyProviders() {
+      try {
+        const d = await api('/api/v1/proxy-pool/providers');
+        if (d.providers) pxProviders.value = d.providers;
+        if (d.freeSources) pxSources.value = d.freeSources;
+      } catch {}
+    }
+
+    async  pxAddOne() {
+      if (!pxAdd.url) { pxMsg.value = '请输入代理地址'; pxOk.value = false; return; }
+      try {
+        const r = await api('/api/v1/proxy-pool/add', { method: 'POST', body: JSON.stringify({ proxy: pxAdd.url }) });
+        pxMsg.value = '已添加: ' + r.added; pxOk.value = true; pxAdd.url = '';
+        await loadProxyPool();
+      } catch(e) { pxMsg.value = e.message; pxOk.value = false; }
+    }
+
+    async  pxAddProvider() {
+      try {
+        const r = await api('/api/v1/proxy-pool/add', { method: 'POST', body: JSON.stringify({ provider: pxAdd.provider, credentials: pxAdd.creds }) });
+        pxMsg.value = '已添加: ' + (r.added || 'success'); pxOk.value = true;
+        await loadProxyPool();
+      } catch(e) { pxMsg.value = e.message; pxOk.value = false; }
+    }
+
+    async  pxAddBatch() {
+      if (!pxAdd.batch.trim()) { pxMsg.value = '请输入代理列表'; pxOk.value = false; return; }
+      const lines = pxAdd.batch.trim().split('\n').map(l => l.trim()).filter(l => l);
+      let added = 0;
+      for (const line of lines) {
+        try {
+          await api('/api/v1/proxy-pool/add', { method: 'POST', body: JSON.stringify({ proxy: line }) });
+          added++;
+        } catch {}
+      }
+      pxMsg.value = `批量导入完成: ${added}/${lines.length}`; pxOk.value = added > 0; pxAdd.batch = '';
+      await loadProxyPool();
+    }
+
+    async  pxRefreshFree() {
+      pxLoading.refresh = true; pxMsg.value = '正在从免费源获取代理...';
+      try {
+        const r = await api('/api/v1/proxy-pool/refresh', { method: 'POST' });
+        pxMsg.value = r.message || `获取完成: ${r.total} 个代理`;
+        pxOk.value = true;
+        await loadProxyPool();
+      } catch(e) { pxMsg.value = e.message; pxOk.value = false; }
+      pxLoading.refresh = false;
+    }
+
+    async  pxRefreshOne(sourceName) {
+      pxLoading.refresh = true;
+      try {
+        const r = await api('/api/v1/proxy-pool/refresh', { method: 'POST', body: JSON.stringify({ sources: [sourceName] }) });
+        pxMsg.value = r.message || `获取完成: ${r.total} 个代理`;
+        pxOk.value = true;
+        await loadProxyPool();
+      } catch(e) { pxMsg.value = e.message; pxOk.value = false; }
+      pxLoading.refresh = false;
+    }
+
+    async  pxTestAll() {
+      pxLoading.test = true; pxMsg.value = '正在测试所有代理...';
+      try {
+        await api('/api/v1/proxy-pool/test-all', { method: 'POST' });
+        pxMsg.value = '测试已启动，请稍后刷新查看结果';
+        pxOk.value = true;
+        setTimeout(async () => { await loadProxyPool(); pxLoading.test = false; }, 5000);
+      } catch(e) { pxMsg.value = e.message; pxOk.value = false; pxLoading.test = false; }
+    }
+
+    async  pxDelete(index) {
+      try {
+        await api('/api/v1/proxy-pool/' + index, { method: 'DELETE' });
+        await loadProxyPool();
+      } catch(e) { alert('删除失败: ' + e.message); }
+    }
+
+    async  pxClearAll() {
+      if (!confirm('确定清空所有代理？')) return;
+      try {
+        await api('/api/v1/proxy-pool/clear', { method: 'POST' });
+        pxData.value = {total:0,working:0,residential:0,datacenter:0,avgLatency:0};
+        pxList.value = [];
+      } catch(e) { alert('清空失败: ' + e.message); }
+    }
+
+    async  pxCreateUSNode() {
+      pxLoading.creating = true; pxMsg.value = '正在创建美国原生代理节点...'; pxOk.value = false;
+      try {
+        await api('/api/v1/proxy-pool/create-us-node', {
+          method: 'POST',
+          body: JSON.stringify({ mode: 'auto', port: 1080 })
+        });
+        pxMsg.value = '美国节点创建成功！socks5://:1080 — 已添加到代理池';
+        pxOk.value = true;
+        setTimeout(async () => {
+          await loadProxyPool();
+          pxLoading.creating = false;
+        }, 3000);
+      } catch(e) {
+        pxMsg.value = '创建失败: ' + e.message;
+        pxOk.value = false;
+        pxLoading.creating = false;
+      }
+    }
+
+    // Health check
+    async  checkHealth() {
+      const eps = [
+        {url:'/health',method:'GET'},
+        {url:'/api/v1/stats',method:'GET'},
+        {url:'/gateway',method:'GET'},
+        {url:'/api/v1/postback',method:'GET'},
+      ];
+      const results = [];
+      for(const ep of eps){
+        const t0=Date.now();
+        try{
+          const r = await fetch(API_BASE+ep.url);
+          const body = (await r.text()).slice(0,80);
+          results.push({url:ep.url,method:ep.method,ok:r.ok,ms:Date.now()-t0,body});
+        }catch(e){
+          results.push({url:ep.url,method:ep.method,ok:false,ms:Date.now()-t0,body:e.message.slice(0,60)});
+        }
+      }
+      health.endpoints = results;
+      try{
+        const h = await api('/health');
+        health.server = h.status||'?';
+        health.db = h.db||'?';
+      }catch{health.server='down';health.db='down'}
+    }
+
+    onMounted(async ()=>{
+      await loadData();
+      await checkHealth();
+    });
+
+    watch(page, async (p)=>{
+      if(p==='dashboard') await loadData();
+      if(p==='') await loadAccounts();
+      if(p==='managed') { await loadManagedAccounts(); await loadManagedStats(); }
+      if(p==='') { await loadLocalAccounts(); await loadMobileDevices(); }
+      if(p==='proxy') { await loadProxyPool(); await loadProxyProviders(); }
+      if(p==='conversions') await loadConversions();
+      if(p==='health') await checkHealth();
+    });
+
+    return {
+      page,API_BASE,,conversions,stats,health,
+      newAcct,newConv,gw,pb,e2e,reg,localAccounts,
+      managedAccounts,mStats,mSearch,mFilterPlatform,mFilterValid,mLimit,mPage,mTotal,mDetail,mImport,mVerify,
+      pxData,pxList,pxProviders,pxSources,pxLoading,pxMsg,pxOk,pxTab,pxAdd,
+      mobileStats,mobileSample,
+      fmtTs,loadData,loadAccounts,loadConversions,
+      createAccount,createConversion,testGateway,testPostback,e2eTest,
+      runAutoRegister,loadLocalAccounts,loadMobileDevices,
+      loadManagedAccounts,loadManagedStats,togglePwd,importAccounts,verifyAccount,verifyAllAccounts,deleteManaged,
+      loadProxyPool,loadProxyProviders,pxAddOne,pxAddProvider,pxAddBatch,pxRefreshFree,pxRefreshOne,pxTestAll,pxDelete,pxClearAll,pxCreateUSNode
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

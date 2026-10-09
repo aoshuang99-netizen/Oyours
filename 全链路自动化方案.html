@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MSCMS v14 全链路自动化功能交互方案 v2</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#0a1628;color:#e0e8f0;line-height:1.7;padding:2rem}
+.container{max-width:1150px;margin:0 auto}
+h1{font-size:2rem;font-weight:800;background:linear-gradient(135deg,#00d4ff,#7b61ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:0.5rem}
+.subtitle{color:#5a7a9a;font-size:0.9rem;margin-bottom:2rem;letter-spacing:1px}
+h2{font-size:1.3rem;color:#00d4ff;margin:2.5rem 0 1rem;padding-bottom:0.5rem;border-bottom:1px solid rgba(0,212,255,0.2)}
+h3{font-size:1.05rem;color:#7b61ff;margin:1.5rem 0 0.8rem}
+p{margin-bottom:0.8rem;color:#b0c4d8}
+.stage-card{background:rgba(15,31,61,0.6);border:1px solid rgba(0,212,255,0.15);border-radius:12px;padding:1.5rem;margin-bottom:1.5rem;position:relative;overflow:hidden}
+.stage-card::before{content:'';position:absolute;left:0;top:0;width:4px;height:100%;background:linear-gradient(180deg,#00d4ff,#7b61ff)}
+.stage-card.google::before{background:linear-gradient(180deg,#4285f4,#ea4335)}
+.stage-num{display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;border-radius:50%;background:linear-gradient(135deg,#00d4ff,#7b61ff);color:#0a1628;font-weight:800;font-size:0.9rem;margin-right:0.5rem}
+.stage-num.google{background:linear-gradient(135deg,#4285f4,#ea4335)}
+.flow-diagram{display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem;margin:1rem 0;padding:1rem;background:rgba(0,0,0,0.2);border-radius:8px}
+.flow-node{padding:0.5rem 1rem;border-radius:8px;font-size:0.85rem;font-weight:600;white-space:nowrap}
+.flow-node.start{background:rgba(0,212,255,0.15);border:1px solid #00d4ff;color:#00d4ff}
+.flow-node.google{background:rgba(66,133,244,0.15);border:1px solid #4285f4;color:#4285f4}
+.flow-node.process{background:rgba(123,97,255,0.15);border:1px solid #7b61ff;color:#7b61ff}
+.flow-node.end{background:rgba(0,255,136,0.15);border:1px solid #00ff88;color:#00ff88}
+.flow-node.danger{background:rgba(255,80,80,0.15);border:1px solid #ff5050;color:#ff5050}
+.flow-arrow{color:#5a7a9a;font-size:1.2rem}
+table{;border-collapse:collapse;margin:1rem 0;font-size:0.85rem}
+th{background:rgba(0,212,255,0.1);color:#00d4ff;padding:0.6rem;text-align:left;border-bottom:1px solid rgba(0,212,255,0.2)}
+td{padding:0.6rem;border-bottom:1px solid rgba(255,255,255,0.05);color:#b0c4d8}
+tr:hover td{background:rgba(0,212,255,0.03)}
+.api-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-family:Consolas,monospace;font-weight:600;margin-right:4px}
+.api-badge.get{background:rgba(0,255,136,0.15);color:#00ff88}
+.api-badge.post{background:rgba(0,212,255,0.15);color:#00d4ff}
+.api-badge.put{background:rgba(255,200,0,0.15);color:#ffc800}
+.api-badge.delete{background:rgba(255,80,80,0.15);color:#ff5050}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1rem 0}
+.metric-box{background:rgba(0,0,0,0.2);border-radius:8px;padding:1rem;text-align:center}
+.metric-box .label{font-size:0.75rem;color:#5a7a9a;margin-bottom:0.3rem}
+.metric-box .value{font-size:1.4rem;font-weight:800}
+.metric-box .value.green{color:#00ff88}
+.metric-box .value.cyan{color:#00d4ff}
+.metric-box .value.purple{color:#7b61ff}
+.metric-box .value.orange{color:#ff9500}
+.metric-box .value.google{color:#4285f4}
+.feature-list{list-style:none;padding-left:0}
+.feature-list li{padding:0.4rem 0;padding-left:1.5rem;position:relative;color:#b0c4d8;font-size:0.88rem}
+.feature-list li::before{content:'';position:absolute;left:0;top:0.7rem;width:6px;height:6px;border-radius:50%;background:linear-gradient(135deg,#00d4ff,#7b61ff)}
+.feature-list li.google::before{background:linear-gradient(135deg,#4285f4,#ea4335)}
+.gap-list li::before{background:#ff9500!important}
+.new-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.65rem;background:rgba(0,255,136,0.2);color:#00ff88;margin-left:6px;font-weight:600}
+.google-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.65rem;background:rgba(66,133,244,0.2);color:#4285f4;margin-left:6px;font-weight:600}
+.gap-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.65rem;background:rgba(255,149,0,0.2);color:#ff9500;margin-left:6px;font-weight:600}
+.toc{background:rgba(15,31,61,0.4);border-radius:10px;padding:1.5rem;margin-bottom:2rem}
+.toc-title{color:#00d4ff;font-weight:700;margin-bottom:0.8rem;font-size:0.95rem}
+.toc-list{list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0.4rem}
+.toc-list a{color:#b0c4d8;text-decoration:none;font-size:0.85rem;padding:0.3rem 0;display:block;transition:color 0.2s}
+.toc-list a:hover{color:#00d4ff}
+.summary-box{background:linear-gradient(135deg,rgba(0,212,255,0.08),rgba(123,97,255,0.08));border:1px solid rgba(0,212,255,0.2);border-radius:12px;padding:1.5rem;margin:2rem 0}
+.summary-box h3{color:#00d4ff;margin-top:0}
+.google-box{background:linear-gradient(135deg,rgba(66,133,244,0.08),rgba(234,67,53,0.08));border:1px solid rgba(66,133,244,0.3);border-radius:12px;padding:1.5rem;margin:1.5rem 0}
+.google-box h3{color:#4285f4}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;margin:2px}
+.tag.exists{background:rgba(0,255,136,0.12);color:#00ff88}
+.tag.partial{background:rgba(255,200,0,0.12);color:#ffc800}
+.tag.missing{background:rgba(255,80,80,0.12);color:#ff5050}
+.tag.google{background:rgba(66,133,244,0.12);color:#4285f4}
+.advantage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin:1rem 0}
+.advantage-card{background:rgba(66,133,244,0.06);border:1px solid rgba(66,133,244,0.15);border-radius:8px;padding:1rem}
+.advantage-card .icon{font-size:1.5rem;margin-bottom:0.5rem}
+.advantage-card .title{color:#4285f4;font-weight:700;font-size:0.9rem;margin-bottom:0.3rem}
+.advantage-card .desc{font-size:0.8rem;color:#8aa4be}
+@media(max-width:768px){.flow-diagram{flex-direction:column}.flow-arrow{transform:rotate(90deg)}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>MSCMS v14 全链路自动化功能交互方案 <span style="font-size:0.6em;color:#4285f4">v2</span></h1>
+<p class="subtitle">Google 账号注册 → OAuth 免密登录社媒 → 自动养号 → 内容发布 → 主动营销 → 数据分析 · 端到端全自动化</p>
+
+<div class="google-box">
+<h3>🔑 v2 核心升级：Google 账号优先策略</h3>
+<p>v2 方案引入 <b>Google 账号作为全链路入口</b>。先注册 Google 账号，再用 Google OAuth 免密一键注册/登录其他社媒平台（Reddit、X、Discord、Instagram、TikTok 等），后续养号→发布→营销→分析流程不变。</p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">📋 目录</div>
+  <ul class="toc-list">
+    <li><a href="#overview">0. 全链路总览与架构（v2）</a></li>
+    <li><a href="#google">1. Google 账号注册（新入口）</a></li>
+    <li><a href="#oauth">2. Google OAuth 免密登录社媒</a></li>
+    <li><a href="#stage1">3. 阶段一：一键注册全流程</a></li>
+    <li><a href="#stage2">4. 阶段二：自动养号引擎</a></li>
+    <li><a href="#stage3">5. 阶段三：内容生产与发布</a></li>
+    <li><a href="#stage4">6. 阶段四：主动营销截流</a></li>
+    <li><a href="#stage5">7. 阶段五：数据总览与分析</a></li>
+    <li><a href="#orchestrator">8. 全链路编排引擎（DAG）</a></li>
+    <li><a href="#gaps">9. 差距分析与开发清单</a></li>
+    <li><a href="#roadmap">10. 实施路线图</a></li>
+  </ul>
+</div>
+
+<!-- ========== Overview ========== -->
+<h2 id="overview">0. 全链路总览与架构（v2）</h2>
+
+<div class="stage-card">
+<div class="flow-diagram">
+  <span class="flow-node google">🔑 Google 注册</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">🔗 OAuth 免密登录社媒</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">📝 自动养号</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">🎨 内容生产</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">📡 智能发布</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">💬 主动营销</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">📊 数据分析</span>
+</div>
+
+<h3>Google 账号优先策略的 4 大优势</h3>
+<div class="advantage-grid">
+  <div class="advantage-card">
+    <div class="icon">🛡️</div>
+    <div class="title">免 CAPTCHA</div>
+    <div class="desc">Google OAuth 走官方信任通道，社媒平台不再触发验证码，注册成功率从 ~60% 提升到 ~95%</div>
+  </div>
+  <div class="advantage-card">
+    <div class="icon">📧</div>
+    <div class="icon">📧</div>
+    <div class="title">免邮箱验证</div>
+    <div class="desc">Google 账号自带已验证邮箱，社媒平台信任 Google 身份，无需等待邮件验证码</div>
+  </div>
+  <div class="advantage-card">
+    <div class="icon">⚡</div>
+    <div class="title">一键多平台</div>
+    <div class="desc">1个 Google 账号 → 免密注册 Reddit/X/Discord/Instagram/TikTok/Facebook 等，注册耗时降低 70%</div>
+  </div>
+  <div class="advantage-card">
+    <div class="icon">🔐</div>
+    <div class="title">高信任度</div>
+    <div class="desc">Google 账号是真实身份标识，社媒平台风控等级更低，养号期间封号率降低 50%</div>
+  </div>
+</div>
+
+<h3>全链路阶段概览</h3>
+<table>
+<thead><tr><th>阶段</th><th>核心目标</th><th>触发方式</th><th>现有状态</th><th>预计耗时</th></tr></thead>
+<tbody>
+<tr><td><b>0. Google 注册</b></td><td>创建 Gmail 账号</td><td>一键点击</td><td><span class="tag google">🆕 已编码</span></td><td>2-3分钟/账号</td></tr>
+<tr><td><b>0b. OAuth 登录</b></td><td>免密注册社媒</td><td>Google 注册后自动</td><td><span class="tag google">🆕 已编码</span></td><td>30秒-1分钟/平台</td></tr>
+<tr><td><b>1. 养号</b></td><td>拟人化行为养号</td><td>注册成功自动触发</td><td><span class="tag exists">✅ 已实现</span></td><td>7-14天</td></tr>
+<tr><td><b>2. 发布</b></td><td>AI内容+多平台发布</td><td>养号达标自动触发</td><td><span class="tag partial">⚠️ 部分实现</span></td><td>实时</td></tr>
+<tr><td><b>3. 营销</b></td><td>截流+自动回复+跨号同步</td><td>发布后自动触发</td><td><span class="tag partial">⚠️ 部分实现</span></td><td>持续运行</td></tr>
+<tr><td><b>4. 分析</b></td><td>数据汇总+决策优化</td><td>全链路实时聚合</td><td><span class="tag missing">❌ 需开发</span></td><td>实时</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ========== Google Account Registration ========== -->
+<h2 id="google">1. Google 账号注册（新入口）</h2>
+
+<div class="stage-card google">
+<div><span class="stage-num google">G</span><b style="font-size:1.1rem">Google 账号自动化注册</b></div>
+
+<h3>用户交互流程</h3>
+<ol style="padding-left:1.5rem;color:#b0c4d8">
+<li>打开控制台 → 进入 <b>"🔐 账号注册"</b> 页面</li>
+<li>选择平台 → <b>Google</b>（排在第一位，推荐优先注册）</li>
+<li>设置注册数量（1-100个 Google 账号）</li>
+<li>选择代理策略：自动分配 / 指定代理 / 无代理</li>
+<li>选择 <b>"注册后自动 OAuth 登录社媒"</b> 选项（默认开启）</li>
+<li>选择目标社媒平台：☑ Reddit ☑ X ☑ Discord ☐ Instagram ☐ TikTok ☐ Facebook</li>
+<li>点击 <b>"🚀 一键注册"</b> 按钮</li>
+</ol>
+
+<h3>Google 注册自动化流程</h3>
+<div class="flow-diagram">
+  <span class="flow-node start">点击注册 Google</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">代理预检+指纹生成</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">隐身浏览器启动</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">填写姓名+生日+性别</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">设置 Gmail 地址+密码</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">手机号验证(接码平台)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">恢复邮箱(可选)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">同意服务条款</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">Google 账号创建成功</span>
+</div>
+
+<h3>技术实现（已编码）</h3>
+<table>
+<thead><tr><th>环节</th><th>模块</th><th>实现细节</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td>注册函数</td><td>Google()</td><td>full-auto-.js 中新增</td><td><span class="tag google">🆕 已编码</span></td></tr>
+<tr><td>页面导航</td><td>.google.com/signup</td><td>Playwright 隐身浏览器</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>姓名生成</td><td>generateCredentials()</td><td>从  提取，随机大小写</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>生日+性别</td><td>随机生成</td><td>1990-1999年，随机月日+性别</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>Gmail 地址</td><td>自定义用户名</td><td>从 botId 生成，15字符内</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>密码设置</td><td>generateCredentials()</td><td>含大小写+数字+特殊字符</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>手机验证</td><td>FreeSMS + reg-factory</td><td>接码平台获取号码+验证码</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>恢复邮箱</td><td>guerrillamail (可选)</td><td>临时邮箱作为恢复邮箱</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>条款同意</td><td>自动滚动+点击</td><td>模拟人手操作</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>注册后验证</td><td>检查 .google.com</td><td>URL 判定 + 登录状态确认</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>凭据保存</td><td>D:/LeiDian//</td><td>JSON 格式存储 Google 邮箱+密码</td><td><span class="tag google">🆕</span></td></tr>
+</tbody>
+</table>
+
+<h3>Google 注册成功后保存的数据</h3>
+<ul class="feature-list">
+<li class="google">✅ Gmail 邮箱地址（如 user123abc@gmail.com）</li>
+<li class="google">✅ Google 账号密码</li>
+<li class="google">✅ 注册 IP（用于后续代理绑定一致性）</li>
+<li class="google">✅ 浏览器 Profile 目录（保持登录态）</li>
+<li class="google">✅ Cookie（Google 域名下的完整 Cookie）</li>
+<li class="google">✅ 手机号（如果使用了接码平台）</li>
+</ul>
+</div>
+
+<!-- ========== Google OAuth Bridge ========== -->
+<h2 id="oauth">2. Google OAuth 免密登录社媒平台</h2>
+
+<div class="stage-card google">
+<div><span class="stage-num google">OAuth</span><b style="font-size:1.1rem">一键免密注册/登录 7 大社媒平台</b></div>
+
+<p>Google 账号注册成功后，系统自动使用该 Google 账号通过 OAuth 协议免密注册/登录其他社媒平台。<b>无需填写邮箱、无需设置密码、无需等待邮件验证、无需求解 CAPTCHA</b>。</p>
+
+<h3>OAuth 免密登录流程</h3>
+<div class="flow-diagram">
+  <span class="flow-node google">Google 账号就绪</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">导航到社媒注册页</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">点击 "Continue with Google"</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">Google OAuth 弹窗</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">选择 Google 账号/输入凭据</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">授权确认</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">社媒账号创建成功</span>
+</div>
+
+<h3>支持 Google OAuth 的社媒平台</h3>
+<table>
+<thead><tr><th>平台</th><th>Google OAuth 支持</th><th>注册页 URL</th><th>OAuth 按钮文本</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td><b>Reddit</b></td><td>✅ 支持</td><td>reddit.com/</td><td>"Continue with Google"</td><td><span class="tag google">🆕 已编码</span></td></tr>
+<tr><td><b>X (Twitter)</b></td><td>✅ 支持</td><td>x.com/i/flow/signup</td><td>"Sign up with Google"</td><td><span class="tag google">🆕 已编码</span></td></tr>
+<tr><td><b>Discord</b></td><td>✅ 支持</td><td>discord.com/</td><td>"Continue with Google"</td><td><span class="tag google">🆕 已编码</span></td></tr>
+<tr><td><b>Instagram</b></td><td>⚠️ 部分地区</td><td>instagram.com//emailsignup</td><td>"Sign up with Google"</td><td><span class="tag google">🆕 已编码</span></td></tr>
+<tr><td><b>TikTok</b></td><td>⚠️ 部分地区</td><td>tiktok.com/signup</td><td>"Continue with Google"</td><td><span class="tag google">🆕 已编码</span></td></tr>
+<tr><td><b>Facebook</b></td><td>❌ 不支持</td><td>-</td><td>-</td><td><span class="tag missing">回退到邮箱注册</span></td></tr>
+<tr><td><b>YouTube</b></td><td>✅ 原生</td><td>Google 账号自带</td><td>无需 OAuth</td><td><span class="tag exists">✅ 天然支持</span></td></tr>
+</tbody>
+</table>
+
+<h3>技术实现（已编码）</h3>
+<table>
+<thead><tr><th>环节</th><th>模块</th><th>实现细节</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td>OAuth 函数</td><td>WithGoogleOAuth()</td><td>full-auto-.js 中新增</td><td><span class="tag google">🆕 已编码</span></td></tr>
+<tr><td>按钮检测</td><td>10种选择器匹配</td><td>多语言+多变体按钮文本</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>OAuth 弹窗处理</td><td>ctx.pages() 多页管理</td><td>自动切换到 OAuth 弹窗</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>账号选择</td><td>data-email 匹配</td><td>已有 Google 登录 → 直接选择</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>凭据输入</td><td>邮箱+密码两步</td><td>新设备 → 输入 Google 凭据</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>授权确认</td><td>Allow/Continue/Agree</td><td>自动点击授权按钮</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>补充信息</td><td>用户名自动填充</td><td>OAuth 后某些平台需设用户名</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>成功判定</td><td>平台特征 URL 匹配</td><td>每平台独立的成功指标</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>回退机制</td><td>OAuth 不可用 → 邮箱注册</td><td>fallback=true 标记</td><td><span class="tag google">🆕</span></td></tr>
+</tbody>
+</table>
+
+<h3>1个 Google 账号 → 多平台矩阵</h3>
+<div class="flow-diagram" style="justify-content:center">
+  <span class="flow-node google" style="font-size:1rem;padding:0.8rem 1.5rem">🔑 1个 Google 账号</span>
+</div>
+<div style="text-align:center;margin:0.5rem 0;color:#5a7a9a">↓ OAuth 免密登录 ↓</div>
+<div class="flow-diagram" style="justify-content:center;gap:1rem">
+  <span class="flow-node process">Reddit</span>
+  <span class="flow-node process">X</span>
+  <span class="flow-node process">Discord</span>
+  <span class="flow-node process">Instagram</span>
+  <span class="flow-node process">TikTok</span>
+  <span class="flow-node process">YouTube</span>
+</div>
+<p style="text-align:center;color:#4285f4;margin-top:0.5rem"><b>1 键 → 6 平台账号矩阵</b></p>
+</div>
+
+<!-- ========== Stage 1: Full Registration Flow ========== -->
+<h2 id="stage1">3. 阶段一：一键注册全流程（Google 优先）</h2>
+
+<div class="stage-card">
+<div><span class="stage-num">1</span><b style="font-size:1.1rem">完整注册流程（含 Google 账号 + OAuth 社媒）</b></div>
+
+<h3>用户操作（一键启动）</h3>
+<ol style="padding-left:1.5rem;color:#b0c4d8">
+<li>打开控制台 → 进入 <b>"🔐 账号注册"</b> 页面</li>
+<li>选择注册模式：
+  <ul style="margin-top:0.3rem">
+    <li><b>模式 A：Google 优先</b> <span class="google-badge">推荐</span> — 先注册 Google 账号，再用 OAuth 免密登录其他社媒</li>
+    <li><b>模式 B：传统邮箱</b> — 直接用 guerrillamail 注册各社媒（旧方式）</li>
+  </ul>
+</li>
+<li>模式 A 设置：
+  <ul style="margin-top:0.3rem">
+    <li>Google 账号数量（如 10 个）</li>
+    <li>每 Google 账号注册哪些社媒（☑ Reddit ☑ X ☑ Discord）</li>
+    <li>代理策略：自动分配 / 指定代理</li>
+  </ul>
+</li>
+<li>点击 <b>"🚀 一键注册"</b></li>
+<li>实时查看进度条、ETA、日志滚动</li>
+<li>注册完成后自动进入养号队列</li>
+</ol>
+
+<h3>系统自动化流程（模式 A：Google 优先）</h3>
+<div class="flow-diagram">
+  <span class="flow-node start">点击注册</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">Step 1: 注册 Google 账号</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">Step 2: 保存 Google 凭据</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">Step 3: OAuth 登录 Reddit</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">Step 4: OAuth 登录 X</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">Step 5: OAuth 登录 Discord</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">全部社媒账号就绪</span>
+</div>
+
+<h3>进度追踪面板（控制台 UI）</h3>
+<table>
+<thead><tr><th>显示项</th><th>说明</th><th>API</th></tr></thead>
+<tbody>
+<tr><td>当前阶段</td><td>"注册 Google" / "OAuth 登录 Reddit" 等</td><td><span class="api-badge get">GET</span>/api/v14//progress</td></tr>
+<tr><td>进度条</td><td>已完成/总数（如 3/10 Google + 15/30 社媒）</td><td>同上</td></tr>
+<tr><td>ETA</td><td>基于历史耗时预估剩余时间</td><td>同上</td></tr>
+<tr><td>实时日志</td><td>滚动显示每步操作结果</td><td>同上</td></tr>
+<tr><td>成功/失败计数</td><td>Google 成功数 + 社媒成功数 + 失败数</td><td><span class="api-badge get">GET</span>/api/v14//stats</td></tr>
+<tr><td>停止按钮</td><td>手动中断注册</td><td><span class="api-badge post">POST</span>/api/v14//stop</td></tr>
+</tbody>
+</table>
+
+<h3>API 端点（已就绪）</h3>
+<table>
+<thead><tr><th>API</th><th>方法</th><th>参数</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>/api/v14//start</td><td><span class="api-badge post">POST</span></td><td>=Google, count=10, oauthPlatforms=[Reddit,X,Discord], proxy=auto</td><td>启动 Google 优先注册</td></tr>
+<tr><td>/api/v14//progress</td><td><span class="api-badge get">GET</span></td><td>-</td><td>3秒轮询，含 ETA + 日志</td></tr>
+<tr><td>/api/v14//stats</td><td><span class="api-badge get">GET</span></td><td>-</td><td>队列/成功/失败统计</td></tr>
+<tr><td>/api/v14//stop</td><td><span class="api-badge post">POST</span></td><td>-</td><td>手动中断</td></tr>
+</tbody>
+</table>
+
+<h3>注册完成后自动衔接</h3>
+<ul class="feature-list">
+<li class="google">✅ Google 账号凭据写入数据库（邮箱+密码+Profile目录+Cookie）</li>
+<li class="google">✅ 各社媒账号关联到 Google 账号（google_account_id 字段）</li>
+<li>✅ 自动分配云手机设备（50台池中选空闲设备）</li>
+<li>✅ 自动绑定代理到设备（一机一IP，与 Google 注册IP一致）</li>
+<li>✅ 自动生成 GPS 轨迹（贝塞尔曲线模拟真实移动）</li>
+<li>✅ 自动启动传感器模拟（6种传感器 × 50设备）</li>
+<li>🆕 <b>自动推入养号队列</b> — 注册成功即触发养号流程</li>
+</ul>
+</div>
+
+<!-- ========== Stage 2 ========== -->
+<h2 id="stage2">4. 阶段二：自动养号引擎</h2>
+
+<div class="stage-card">
+<div><span class="stage-num">2</span><b style="font-size:1.1rem">7状态生命周期养号（流程不变）</b></div>
+
+<h3>养号状态机</h3>
+<div class="flow-diagram">
+  <span class="flow-node start">新建 NEW</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">预热 WARMING</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">活跃 ACTIVE</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">稳定 STABLE</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">成熟 MATURE</span>
+</div>
+<div class="flow-diagram">
+  <span class="flow-node process">暂停 PAUSED</span>
+  <span class="flow-arrow">↔</span>
+  <span class="flow-node process">风险 RISKY</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node danger">封号 BANNED</span>
+</div>
+
+<h3>每日养号计划（分阶段策略）</h3>
+<table>
+<thead><tr><th>阶段</th><th>天数</th><th>行为池</th><th>频率</th><th>风险控制</th></tr></thead>
+<tbody>
+<tr><td>预热期</td><td>1-3天</td><td>浏览/滑动/停留</td><td>10-15次/天</td><td>无互动行为</td></tr>
+<tr><td>活跃期</td><td>4-7天</td><td>点赞/收藏/关注</td><td>20-30次/天</td><td>限制频率+误触</td></tr>
+<tr><td>稳定期</td><td>8-14天</td><td>评论/转发/搜索</td><td>30-50次/天</td><td>疲劳管理+休息</td></tr>
+<tr><td>成熟期</td><td>14天+</td><td>发帖/投稿</td><td>1-3次/天</td><td>封号风险评估</td></tr>
+</tbody>
+</table>
+
+<div class="google-box">
+<h3>🔑 Google 账号对养号的加成</h3>
+<ul class="feature-list">
+<li class="google">✅ <b>Google 登录态保持</b> — 养号期间浏览器 Profile 保留 Google Cookie，社媒平台信任度持续维持</li>
+<li class="google">✅ <b>更低的风控等级</b> — Google 身份背书，养号期间封号率降低 50%</li>
+<li class="google">✅ <b>跨平台一致性</b> — 同一 Google 身份在多平台行为一致，降低异常检测</li>
+</ul>
+</div>
+
+<h3>技术实现（已就绪）</h3>
+<table>
+<thead><tr><th>功能</th><th>模块</th><th>API 端点</th></tr></thead>
+<tbody>
+<tr><td>启动养号</td><td>NurturingEngine</td><td><span class="api-badge post">POST</span>/api/v14//:id/warming</td></tr>
+<tr><td>养号计划</td><td>getDailyPlan()</td><td><span class="api-badge get">GET</span>/api/v14//:id/plan</td></tr>
+<tr><td>执行动作</td><td>performAction()</td><td><span class="api-badge post">POST</span>/api/v14//:id/action</td></tr>
+<tr><td>误触模拟</td><td>MistouchSimulator</td><td><span class="api-badge post">POST</span>/api/v14/nurturing/mistouch</td></tr>
+<tr><td>疲劳检查</td><td>FatigueManager</td><td><span class="api-badge post">POST</span>/api/v14/nurturing/fatigue-check</td></tr>
+</tbody>
+</table>
+
+<h3>自动衔接机制</h3>
+<ul class="feature-list">
+<li>✅ 养号状态达到 <b>STABLE</b> 后自动解锁发布权限</li>
+<li>✅ 每日计划执行完毕后自动汇报健康分</li>
+<li>✅ 风险等级达到 <b>HIGH</b> 自动暂停养号</li>
+<li>🆕 <b>养号达标自动通知内容工厂</b> — 触发内容生产流程</li>
+</ul>
+</div>
+
+<!-- ========== Stage 3 ========== -->
+<h2 id="stage3">5. 阶段三：内容生产与智能发布</h2>
+
+<div class="stage-card">
+<div><span class="stage-num">3</span><b style="font-size:1.1rem">AI内容工厂 → 多平台发布（流程不变）</b></div>
+
+<h3>内容生产流水线</h3>
+<div class="flow-diagram">
+  <span class="flow-node start">热点抓取</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">内容策略</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">AI改写(4级)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">去重检查</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">EXIF清除</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">图片重编码</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">内容入库</span>
+</div>
+
+<h3>智能发布流程</h3>
+<div class="flow-diagram">
+  <span class="flow-node start">内容就绪</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">最优时间计算</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">调度任务</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">云手机执行</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">发布验证</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">发布成功</span>
+</div>
+
+<h3>技术实现</h3>
+<table>
+<thead><tr><th>功能</th><th>模块</th><th>API 端点</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td>热点抓取</td><td>HotTopicScraper</td><td><span class="api-badge get">GET</span>/api/v14/trending</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>内容策略</td><td>ContentRuleEngine</td><td><span class="api-badge post">POST</span>/api/v14/content/</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>四级改写</td><td>FourLevelRewriter</td><td><span class="api-badge post">POST</span>/api/v14/content/rewrite</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>去重检查</td><td>TextDedupEngine</td><td><span class="api-badge post">POST</span>/api/v14/content/dedup-check</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>EXIF清除</td><td>EXIFCleaner</td><td><span class="api-badge post">POST</span>/api/v14/content/exif-clean</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>图片重编码</td><td>ImageReencoder</td><td><span class="api-badge post">POST</span>/api/v14/content/reencode</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>最优时间</td><td>SmartPublisher</td><td><span class="api-badge get">GET</span>/api/v14/publish/optimal-time</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>调度发布</td><td>schedulePublish()</td><td><span class="api-badge post">POST</span>/api/v14/publish/schedule</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>执行发布</td><td>executePublish()</td><td><span class="api-badge post">POST</span>/api/v14/publish/execute</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td colspan="4" style="color:#ff9500">⚠️ 差距：云手机实际执行社媒操作（发帖/上传）的桥接层缺失</td></tr>
+</tbody>
+</table>
+
+<h3>发布成功判定标准</h3>
+<ul class="feature-list">
+<li>✅ 内容已上传到目标平台（HTTP 200 + post_id 返回）</li>
+<li>✅ 发布后 5 分钟内帖子可公开访问（验证请求）</li>
+<li>✅ 内容与预期一致（标题/正文/图片 hash 匹配）</li>
+<li>🆕 <b>发布成功事件</b> — 触发数据追踪 + SCRM 截流</li>
+</ul>
+</div>
+
+<!-- ========== Stage 4 ========== -->
+<h2 id="stage4">6. 阶段四：主动营销截流</h2>
+
+<div class="stage-card">
+<div><span class="stage-num">4</span><b style="font-size:1.1rem">SCRM截流 + 跨账号同步 + 主动触达（流程不变）</b></div>
+
+<h3>营销触发流程</h3>
+<div class="flow-diagram">
+  <span class="flow-node start">内容发布成功</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">评论监控启动</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">截流引擎过滤</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">情感分析+评分</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">自动回复/审核</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">跨账号同步</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">私域转化</span>
+</div>
+
+<h3>SCRM 截流引擎（已就绪）</h3>
+<table>
+<thead><tr><th>功能</th><th>API 端点</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>评论截流</td><td><span class="api-badge post">POST</span>/api/v14/scrm/intercept</td><td>过滤关键词评论</td></tr>
+<tr><td>统计</td><td><span class="api-badge get">GET</span>/api/v14/scrm/stats</td><td>截流数量/回复率</td></tr>
+<tr><td>审核队列</td><td><span class="api-badge get">GET</span>/api/v14/scrm/review-queue</td><td>待审核回复</td></tr>
+<tr><td>批准/拒绝</td><td><span class="api-badge post">POST</span>/api/v14/scrm/approve|reject</td><td>人工审核</td></tr>
+<tr><td>关键词管理</td><td><span class="api-badge get">GET</span>/<span class="api-badge post">POST</span>/api/v14/scrm/keywords</td><td>截流关键词</td></tr>
+</tbody>
+</table>
+
+<h3>跨账号同步（病毒式传播放大）</h3>
+<table>
+<thead><tr><th>同步级别</th><th>触发条件</th><th>动作</th></tr></thead>
+<tbody>
+<tr><td>L1 轻度</td><td>互动率 > 5%</td><td>其他账号点赞+收藏</td></tr>
+<tr><td>L2 中度</td><td>互动率 > 15%</td><td>其他账号转发+评论</td></tr>
+<tr><td>L3 重度</td><td>病毒式分数 > 0.8</td><td>全账号矩阵同步发布</td></tr>
+</tbody>
+</table>
+
+<h3>主动营销动作池 <span class="gap-badge">需开发</span></h3>
+<ul class="feature-list gap-list">
+<li>🆕 <b>主动关注</b> — 按标签/地区/兴趣批量关注目标用户</li>
+<li>🆕 <b>主动私信</b> — 对互动用户发送个性化私信</li>
+<li>🆕 <b>主动留言</b> — 在热门帖子下截流评论</li>
+<li>🆕 <b>话题参与</b> — 自动参与热门话题讨论</li>
+<li>🆕 <b>KOL触达</b> — 识别并互动领域KOL</li>
+</ul>
+</div>
+
+<!-- ========== Stage 5 ========== -->
+<h2 id="stage5">7. 阶段五：数据总览与分析</h2>
+
+<div class="stage-card">
+<div><span class="stage-num">5</span><b style="font-size:1.1rem">全链路数据聚合 + AI决策优化</b></div>
+
+<h3>核心指标面板 <span class="gap-badge">需开发</span></h3>
+<div class="metric-grid">
+<div class="metric-box"><div class="label">Google 注册成功</div><div class="value google">10</div></div>
+<div class="metric-box"><div class="label">OAuth 社媒登录</div><div class="value google">28/30</div></div>
+<div class="metric-box"><div class="label">养号存活率</div><div class="value cyan">87%</div></div>
+<div class="metric-box"><div class="label">发布成功率</div><div class="value purple">92%</div></div>
+<div class="metric-box"><div class="label">截流转化率</div><div class="value orange">12%</div></div>
+<div class="metric-box"><div class="label">总互动量</div><div class="value cyan">15.2K</div></div>
+</div>
+
+<h3>数据维度</h3>
+<table>
+<thead><tr><th>维度</th><th>指标</th><th>数据源</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td>Google 注册</td><td>成功/失败/耗时/手机验证</td><td>Google() 日志</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>OAuth 登录</td><td>各平台成功/失败/回退率</td><td>WithGoogleOAuth() 日志</td><td><span class="tag google">🆕</span></td></tr>
+<tr><td>设备</td><td>在线/离线/启动耗时</td><td>/api/v14/devices</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>养号</td><td>健康分/风险等级/状态分布</td><td>/api/v14/dashboard</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>发布</td><td>发布数/成功率/最优时间</td><td>/api/v14/tracking</td><td><span class="tag partial">⚠️</span></td></tr>
+<tr><td>营销</td><td>截流数/回复率/审核队列</td><td>/api/v14/scrm/stats</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>病毒式</td><td>病毒分数/信号检测</td><td>/api/v14/viral/scan</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td>决策</td><td>Q表/最优动作/进化报告</td><td>/api/v14/decision/status</td><td><span class="tag exists">✅</span></td></tr>
+<tr><td colspan="4" style="color:#ff9500">⚠️ 差距：缺少全链路聚合分析面板和跨阶段漏斗分析</td></tr>
+</tbody>
+</table>
+
+<h3>AI 决策闭环（已就绪）</h3>
+<div class="flow-diagram">
+  <span class="flow-node start">数据采集</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">Q-Learning决策</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">AB测试</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">自进化</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">策略优化</span>
+</div>
+</div>
+
+<!-- ========== Orchestrator ========== -->
+<h2 id="orchestrator">8. 全链路编排引擎（DAG v2）</h2>
+
+<div class="stage-card">
+<h3>DAG 工作流编排（含 Google 账号节点）</h3>
+<p>使用 DAG 编排器将全链路串联为自动化工作流，支持一键启动、断点恢复、快照保存。</p>
+
+<table>
+<thead><tr><th>DAG 节点</th><th>触发条件</th><th>执行模块</th><th>下一节点</th></tr></thead>
+<tbody>
+<tr style="background:rgba(66,133,244,0.05)"><td><b>N0: Google 注册</b></td><td>用户一键启动</td><td>Google()</td><td>N0b</td></tr>
+<tr style="background:rgba(66,133,244,0.05)"><td><b>N0b: OAuth 登录社媒</b></td><td>N0 完成</td><td>WithGoogleOAuth()</td><td>N1</td></tr>
+<tr><td>N1: 设备绑定</td><td>N0b 完成</td><td>device-manager + proxy-manager</td><td>N2</td></tr>
+<tr><td>N2: 养号启动</td><td>N1 完成</td><td>NurturingEngine.startWarming()</td><td>N3 (异步)</td></tr>
+<tr><td>N3: 养号达标检测</td><td>状态=STABLE</td><td>NurturingEngine.getDailyPlan()</td><td>N4</td></tr>
+<tr><td>N4: 内容生产</td><td>N3 通过</td><td>content-intelligence.js</td><td>N5</td></tr>
+<tr><td>N5: 智能发布</td><td>N4 完成</td><td>SmartPublisher.executePublish()</td><td>N6</td></tr>
+<tr><td>N6: 数据追踪</td><td>N5 发布成功</td><td>DataFeedbackCollector</td><td>N7</td></tr>
+<tr><td>N7: 病毒式检测</td><td>N6 持续</td><td>ViralSignalDetector</td><td>N8 (条件)</td></tr>
+<tr><td>N8: 跨账号同步</td><td>病毒分>0.8</td><td>CrossAccountSync</td><td>N9</td></tr>
+<tr><td>N9: SCRM截流</td><td>N5 发布后</td><td>SCRMInterceptEngine</td><td>N10</td></tr>
+<tr><td>N10: 主动营销</td><td>N9 持续</td><td>主动关注/私信/留言 <span class="gap-badge">需开发</span></td><td>N11</td></tr>
+<tr><td>N11: 数据汇总</td><td>全链路</td><td>Dashboard 聚合 <span class="gap-badge">需开发</span></td><td>N12</td></tr>
+<tr><td>N12: AI决策</td><td>N11 完成</td><td>DecisionEngine + EvolutionSystem</td><td>循环→N4</td></tr>
+</tbody>
+</table>
+
+<h3>已有 DAG API</h3>
+<table>
+<thead><tr><th>API</th><th>功能</th></tr></thead>
+<tbody>
+<tr><td><span class="api-badge get">GET</span>/api/v14/dag/workflows</td><td>列出工作流</td></tr>
+<tr><td><span class="api-badge post">POST</span>/api/v14/dag/create</td><td>创建工作流</td></tr>
+<tr><td><span class="api-badge post">POST</span>/api/v14/dag/execute</td><td>执行工作流</td></tr>
+<tr><td><span class="api-badge post">POST</span>/api/v14/dag/snapshot</td><td>保存快照</td></tr>
+<tr><td><span class="api-badge post">POST</span>/api/v14/dag/restore</td><td>恢复快照</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ========== Gaps ========== -->
+<h2 id="gaps">9. 差距分析与开发清单</h2>
+
+<div class="stage-card">
+<h3>已有能力（无需开发）</h3>
+<table>
+<thead><tr><th>系统</th><th>能力</th><th>模块数</th></tr></thead>
+<tbody>
+<tr style="background:rgba(66,133,244,0.05)"><td><b>Google 注册</b></td><td>Gmail 账号全自动注册+手机验证</td><td>1 (Google)</td></tr>
+<tr style="background:rgba(66,133,244,0.05)"><td><b>Google OAuth</b></td><td>6平台免密登录（Reddit/X/Discord/IG/TikTok/YT）</td><td>1 (WithGoogleOAuth)</td></tr>
+<tr><td>传统注册</td><td>3平台邮箱注册+重试+验证</td><td>7</td></tr>
+<tr><td>设备</td><td>50台云手机+指纹+ADB</td><td>4</td></tr>
+<tr><td>养号</td><td>7状态+行为模拟+风险+疲劳</td><td>6</td></tr>
+<tr><td>内容</td><td>热点+改写+去重+EXIF</td><td>6</td></tr>
+<tr><td>发布</td><td>调度+执行+数据追踪+病毒检测</td><td>4</td></tr>
+<tr><td>营销</td><td>截流+情感+评分+自动回复</td><td>7</td></tr>
+<tr><td>决策</td><td>Q-Learning+进化+AB测试</td><td>3</td></tr>
+<tr><td>基础设施</td><td>GPS+Session+代理+传感器+DAG</td><td>5</td></tr>
+</tbody>
+</table>
+
+<h3>需要开发的功能 <span class="gap-badge">6项</span></h3>
+<table>
+<thead><tr><th>#</th><th>功能</th><th>优先级</th><th>涉及模块</th><th>描述</th></tr></thead>
+<tbody>
+<tr><td>G1</td><td><b>云手机社媒操作桥接</b></td><td style="color:#ff5050">P0</td><td>新建 social-bridge.js</td><td>Playwright→社媒操作（发帖/关注/私信/留言）的执行层</td></tr>
+<tr><td>G2</td><td><b>主动营销引擎</b></td><td style="color:#ff9500">P1</td><td>新建 proactive-marketing.js</td><td>主动关注/私信/留言/话题参与/KOL触达</td></tr>
+<tr><td>G3</td><td><b>全链路编排 DAG</b></td><td style="color:#ff9500">P1</td><td>dag-orchestrator.js</td><td>新建"全链路自动化"预设模板（15节点，含Google）</td></tr>
+<tr><td>G4</td><td><b>全链路数据聚合面板</b></td><td style="color:#ff9500">P1</td><td>server.js + v14-console.html</td><td>跨阶段漏斗分析+ROI看板+Google/OAuth统计</td></tr>
+<tr><td>G5</td><td><b>养号→发布自动衔接</b></td><td style="color:#ffc800">P2</td><td>account-nurturing.js</td><td>养号达标自动通知内容工厂</td></tr>
+<tr><td>G6</td><td><b>Google OAuth UI 集成</b></td><td style="color:#ffc800">P2</td><td>v14-console.html + server.js</td><td>控制台注册面板新增"Google 优先"模式选项</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ========== Roadmap ========== -->
+<h2 id="roadmap">10. 实施路线图</h2>
+
+<div class="stage-card">
+<table>
+<thead><tr><th>阶段</th><th>开发项</th><th>交付物</th><th>预计工作量</th></tr></thead>
+<tbody>
+<tr><td><b>Phase 0</b><br>Google 集成</td><td>G6 Google OAuth UI<br>Google 联调<br>WithGoogleOAuth 联调</td><td>控制台 "Google 优先" 模式<br>server.js 端点适配<br>Google→社媒 OAuth 自动化</td><td>UI+联调</td></tr>
+<tr><td><b>Phase 1</b><br>核心打通</td><td>G1 云手机社媒操作桥接<br>G5 养号→发布衔接</td><td>social-bridge.js<br>社媒操作API端点<br>养号达标事件</td><td>核心模块</td></tr>
+<tr><td><b>Phase 2</b><br>全链路编排</td><td>G3 全链路 DAG 模板<br>G2 主动营销引擎</td><td>15节点 DAG 预设<br>proactive-marketing.js<br>营销 API 端点</td><td>编排+营销</td></tr>
+<tr><td><b>Phase 3</b><br>数据可视化</td><td>G4 全链路数据面板</td><td>漏斗分析视图<br>ROI 看板<br>Google/OAuth 统计页签</td><td>前端+API</td></tr>
+</tbody>
+</table>
+
+<div class="summary-box">
+<h3>🎯 核心价值（v2）</h3>
+<p>用户只需在控制台点击 <b>"🚀 一键注册"</b>，选择 <b>"Google 优先"</b> 模式，系统自动完成：</p>
+<div class="flow-diagram" style="justify-content:center">
+  <span class="flow-node google">1键点击</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">Google注册(自动)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node google">OAuth登录社媒(30秒)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">养号(7-14天)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">发布(自动)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node process">营销(持续)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-node end">数据分析(实时)</span>
+</div>
+<p style="text-align:center;margin-top:1rem;color:#5a7a9a">Google 账号优先 · OAuth 免密 · 全链路自动化 · 零人工干预 · AI持续优化</p>
+</div>
+</div>
+
+</div>
+</body>
+</html>

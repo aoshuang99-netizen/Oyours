@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tumblr 真实养号进度</title>
+<style>
+  :root{ --bg:#0d1117; --bg2:#161b22; --bg3:#21262d; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --green:#3fb950; --red:#f85149; --orange:#d29922; --purple:#bc8cff; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);font-size:0.82rem;padding:1rem 1.2rem}
+  h1{font-size:1.1rem;margin:0 0 .2rem}
+  .sub{color:var(--muted);font-size:.74rem;margin:0 0 1rem}
+  .bar{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}
+  button{cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text);padding:.4rem .8rem;border-radius:6px;font-size:.76rem;font-weight:600}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:rgba(63,185,80,.15);border-color:var(--green);color:var(--green)}
+  button.danger{background:rgba(248,81,73,.12);border-color:var(--red);color:var(--red)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .stats{display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;min-width:120px}
+  .card .label{color:var(--muted);font-size:.66rem;text-transform:uppercase;letter-spacing:.03em}
+  .card .value{font-size:1.3rem;font-weight:700;margin-top:.2rem}
+  .blue{color:var(--accent)} .green{color:var(--green)} .red{color:var(--red)} .orange{color:var(--orange)} .purple{color:var(--purple)}
+  .pill{display:inline-block;padding:.1rem .45rem;border-radius:20px;font-size:.64rem;font-weight:700;border:1px solid var(--border)}
+  .pill.run{background:rgba(63,185,80,.15);color:var(--green);border-color:var(--green)}
+  .pill.idle{background:var(--bg3);color:var(--muted)}
+  .phases{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+  .phase{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:.45rem .7rem;text-align:center;min-width:74px}
+  .phase b{display:block;font-size:1.1rem}
+  .phase span{font-size:.62rem;color:var(--muted)}
+  .rate{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem;margin-bottom:1rem;font-size:.72rem}
+  .rate .r{display:flex;justify-content:space-between;margin:.15rem 0}
+  .rate .r span:last-child{font-weight:700}
+  table{;border-collapse:collapse;font-size:.72rem}
+  th,td{padding:.4rem .5rem;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+  th{color:var(--muted);font-size:.64rem;text-transform:uppercase;position:sticky;top:0;background:var(--bg)}
+  tr:hover td{background:rgba(88,166,255,.05)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.66rem}
+  .err{color:var(--red);font-size:.66rem}
+  .ok{color:var(--green);font-size:.66rem}
+  .badge{display:inline-block;padding:.05rem .35rem;border-radius:6px;font-size:.62rem;font-weight:700}
+  .badge.P0{background:rgba(139,148,158,.2);color:var(--muted)}
+  .badge.P1{background:rgba(88,166,255,.18);color:var(--accent)}
+  .badge.P2{background:rgba(188,140,255,.18);color:var(--purple)}
+  .badge.P3{background:rgba(210,153,34,.18);color:var(--orange)}
+  .badge.P4{background:rgba(63,185,80,.18);color:var(--green)}
+  .controls{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}
+  select,input{padding:.35rem .6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.74rem}
+  .note{color:var(--muted);font-size:.68rem;margin-top:.5rem;line-height:1.5}
+  .loading{color:var(--muted);padding:2rem;text-align:center}
+</style>
+</head>
+<body>
+<h1>📈 Tumblr 真实养号进度</h1>
+<p class="sub">第二阶段 · 生活&amp;交友赛道 · 关注 dating/relationship 博主 · 英文情感内容 · 全部真实 Tumblr API 调用（零假数据）</p>
+
+<div class="bar">
+  <span id="runPill" class="pill idle">● 未运行</span>
+  <span class="card" style="min-width:auto;padding:.3rem .6rem"><span class="label">账号</span> <b id="totalAcc">–</b></span>
+  <span class="card" style="min-width:auto;padding:.3rem .6rem"><span class="label">Tick</span> <b id="tickMs">–</b></span>
+  <span class="card" style="min-width:auto;padding:.3rem .6rem"><span class="label">移动端</span> <b id="devInfo">–</b></span>
+</div>
+
+<div class="controls">
+  <button id="btnStart" class="primary" onclick="startNurture()">▶ 启动养号</button>
+  <button id="btnStop" class="danger" onclick="stopNurture()">■ 停止</button>
+  <span style="width:1rem"></span>
+  <select id="selAcc"><option value="">选择账号…</option></select>
+  <select id="selPhase"><option value="P0">P0 资料</option><option value="P1">P1 观察</option><option value="P2">P2 轻度互动</option><option value="P3">P3 内容沉淀</option><option value="P4">P4 成熟期</option></select>
+  <button onclick="runOne()">⚡ 手动跑一次</button>
+</div>
+
+<div id="phaseBox" class="phases"></div>
+
+<div class="rate" id="rateBox">全局速率治理：加载中…</div>
+
+<div id="cooldownBox" class="rate" style="display:none;border-color:var(--orange);background:rgba(210,153,34,.12)"></div>
+
+<div id="tblWrap"><div class="loading">加载中…</div></div>
+
+<p class="note">
+  阶段：<b>P0</b> 资料完善 → <b>P1</b> 观察期(纯消费) → <b>P2</b> 轻度互动 → <b>P3</b> 内容沉淀 → <b>P4</b> 成熟期(稳定日更)。<br>
+  保守上限（远低于 Tumblr 硬限制）：关注 12/天 · 点赞 50/天 · reblog 6/天 · 原创 2/天。全局共享 1 consumer key：1000/时、5000/天。<br>
+  <b>移动端养号</b>：启用后每个账号拥有独立的真实 chromium 移动上下文（唯一 UA/视口/时区/代理），每 40–60 分钟执行一次真实移动网页消费（滚 explore、浏览 dating 标签、读帖、看自己博客），与 OAuth API 共用同一移动指纹。设备池完全隔离线上 50 云手机。<br>
+  头像上传受本 OAuth App scope 限制（已如实记录，未伪造成功）。被 Tumblr 终止的账号自动跳过。
+</p>
+
+<script>
+const API = '';
+let timer = null;
+
+async  api(path, method='GET', body){
+  const opt = { method, headers:{'':'application/json'} };
+  if(body) opt.body = JSON.stringify(body);
+  const r = await fetch(API + path, opt);
+  return await r.json();
+}
+
+ phaseBadge(p){ return `<span class="badge ${p}">${p}</span>`; }
+
+ fmtTime(t){ if(!t) return '—'; try{ return new Date(t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch{ return t; } }
+
+ render(data){
+  const s = data.snapshot;
+  document.getElementById('runPill').className = 'pill ' + (data.running ? 'run' : 'idle');
+  document.getElementById('runPill').textContent = data.running ? '● 运行中' : '● 未运行';
+  document.getElementById('totalAcc').textContent = data.totalAccounts;
+  document.getElementById('tickMs').textContent = (data.tickMs/1000)+'s';
+
+  // 移动端设备池状态
+  const dv = data.device || {};
+  const devEl = document.getElementById('devInfo');
+  if (dv.enabled) { devEl.textContent = dv.contextCount + ' 上下文'; devEl.style.color = 'var(--green)'; }
+  else if (dv.disabled) { devEl.textContent = '启动失败'; devEl.style.color = 'var(--red)'; }
+  else { devEl.textContent = '关闭'; devEl.style.color = 'var(--muted)'; }
+
+  // phases
+  const c = s.counts || {};
+  const phaseOrder = ['P0','P1','P2','P3','P4'];
+  const phaseName = {P0:'资料',P1:'观察',P2:'轻度',P3:'沉淀',P4:'成熟'};
+  document.getElementById('phaseBox').innerHTML = phaseOrder.map(p=>`<div class="phase">${phaseBadge(p)}<b>${c[p]||0}</b><span>${phaseName[p]}</span></div>`).join('');
+
+  // global rate + device pool
+  const g = s.global || {};
+  let rateHtml = `<b>全局速率治理</b>（共享 consumer key）<div class="r"><span>本小时</span><span class="${g.hr>=g.hrLimit?'red':'green'}">${g.hr||0} / ${g.hrLimit}</span></div><div class="r"><span>本日</span><span class="${g.day>=g.dayLimit?'red':'green'}">${g.day||0} / ${g.dayLimit}</span></div>`;
+  rateHtml += `<div class="r"><span>移动端设备池</span><span class="${dv.enabled?'green':'muted'}">${dv.enabled?(dv.contextCount+' 上下文 · 浏览器'+(dv.browserUp?'在线':'离线')):(dv.disabled?'启动失败':'未启用')}</span></div>`;
+  if (dv.proxy) rateHtml += `<div class="r"><span>设备代理</span><span>${dv.proxy}</span></div>`;
+  if (dv.disableReason) rateHtml += `<div class="r"><span>设备池说明</span><span class="red">${String(dv.disableReason).slice(0,60)}</span></div>`;
+  document.getElementById('rateBox').innerHTML = rateHtml;
+
+  // 429 冷却提示：Tumblr 限流期间暂停 API 互动（移动消费会话照常），静待窗口恢复
+  const cd = document.getElementById('cooldownBox');
+  if (data.apiCooldownUntil && Date.now() < data.apiCooldownUntil) {
+    const mins = Math.ceil((data.apiCooldownUntil - Date.now()) / 60000);
+    cd.style.display = 'block';
+    cd.innerHTML = `<b style="color:var(--orange)">⏳ Tumblr 限流冷却中（429）</b> · API 互动暂停，移动端消费会话照常进行 · 约 ${mins} 分钟后恢复`;
+  } else {
+    cd.style.display = 'none';
+  }
+
+  //  table
+  const  = s. || [];
+  let html = `<table><thead><tr><th>账号</th><th>博客</th><th>授权</th><th>阶段</th><th>天</th><th>设备型号</th><th>移动会话</th><th>总动作</th><th>今日(赞/关注/reblog/帖)</th><th>上次动作</th><th>上次API</th><th>嗓音/时段</th><th>错误</th></tr></thead><tbody>`;
+  for(const a of ){
+    const tc = a.todayCounts || {};
+    const lastApi = a.lastApi ? (a.lastApi.ok ? `<span class="ok">✓ ${a.lastApi.type}</span>` : `<span class="err">✗ ${a.lastApi.type}</span>`) : '—';
+    const auth = a.authorized ? '<span class="ok">✓</span>' : '<span class="err">✗</span>';
+    const dev = a.device || {};
+    const devModel = dev.model || '—';
+    const devSess = dev.sessions ? (dev.sessions + ' 次' + (dev.lastSessionAt ? ' · ' + fmtTime(dev.lastSessionAt) : '')) : '—';
+    html += `<tr>
+      <td class="mono">${a.id.slice(-10)}</td>
+      <td class="mono">${a.blog||'—'}</td>
+      <td>${auth}</td>
+      <td>${phaseBadge(a.phase)}</td>
+      <td>${a.day||0}</td>
+      <td class="mono">${devModel}</td>
+      <td>${devSess}</td>
+      <td>${a.totalActions||0}</td>
+      <td>${tc.like||0}/${tc.follow||0}/${tc.reblog||0}/${tc.post||0}</td>
+      <td>${fmtTime(a.lastActionAt)}</td>
+      <td>${lastApi}</td>
+      <td class="mono">${a.voice||'—'}<br>${a.activeWindow||'—'}</td>
+      <td class="err">${a.lastError?a.lastError.slice(0,40):''}</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  document.getElementById('tblWrap').innerHTML = html;
+
+  // populate select
+  const sel = document.getElementById('selAcc');
+  if(sel.options.length<=1){
+    for(const a of ){ const o=document.createElement('option'); o.value=a.id; o.textContent=a.id.slice(-10)+(a.blog?' @'+a.blog:''); sel.appendChild(o); }
+  }
+}
+
+async  refresh(){
+  try{
+    const d = await api('/api/status');
+    render(d);
+  }catch(e){
+    document.getElementById('tblWrap').innerHTML = `<div class="err">加载失败: ${e.message}</div>`;
+  }
+}
+
+async  startNurture(){ await api('/api/start','POST'); refresh(); }
+async  stopNurture(){ await api('/api/stop','POST'); refresh(); }
+async  runOne(){
+  const acc = document.getElementById('selAcc').value;
+  const ph = document.getElementById('selPhase').value;
+  if(!acc){ alert('请先选择账号'); return; }
+  const btn = event.target; btn.disabled=true; const old=btn.textContent; btn.textContent='执行中…';
+  try{ const r = await api('/api/run-one','POST',{accountId:acc,phase:ph}); console.log(r); }
+  catch(e){ alert('失败: '+e.message); }
+  btn.disabled=false; btn.textContent=old; refresh();
+}
+
+refresh();
+timer = setInterval(refresh, 15000);
+</script>
+</body>
+</html>

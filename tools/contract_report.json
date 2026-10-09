@@ -1,0 +1,1167 @@
+{
+  "generatedAt": "2026-09-02T06:08:09.286Z",
+  "convention": {
+    "total": 423,
+    "unversionedCount": 24,
+    "legacyV1Count": 33,
+    "namingViolations": [
+      "大写: GET /api/v14/attribution/path/:visitorId",
+      "大写: GET /api/v1/auto-/:taskId",
+      "大写: PUT /api/v14/channel/config/:channelId",
+      "大写: GET /api/v14/channel/health/:channelId",
+      "大写: GET /api/v14/cloud-publish/status/:taskId",
+      "大写: GET /api/v14/dag/workflow/:dagId",
+      "大写: GET /api/v14/fingerprint/versions/:deviceId",
+      "大写: GET /api/v14/gps/position/:deviceId",
+      "大写: GET /api/v14/lok-dialogue/history/:accountId/:",
+      "大写: GET /api/v14/postback/pixel/:campaignId",
+      "大写: GET /preview/:contentId",
+      "大写: GET /api/v14/proxy/health/:proxyId",
+      "大写: GET /api/v14/sensor/history/:deviceId/:sensorId",
+      "大写: GET /api/v14/sensor/readings/:deviceId",
+      "大写: GET /api/v14/tasks/:taskId",
+      "大写: POST /api/v14/tasks/:taskId/cancel",
+      "大写: GET /api/v14/tracking/:variantId",
+      "大写: GET /api/v14/traffic/link/:linkId",
+      "大写: GET /api/v14/tumblr//:accountId/audit",
+      "大写: GET /api/v14/tumblr//:accountId/drafts",
+      "大写: POST /api/v14/tumblr//:accountId/drafts",
+      "大写: POST /api/v14/tumblr//:accountId/drafts/:draftId/approve",
+      "大写: POST /api/v14/tumblr//:accountId/drafts/:draftId/open-web",
+      "大写: GET /api/v14/tumblr//:accountId/inbox",
+      "大写: POST /api/v14/tumblr//:accountId/login-intent",
+      "大写: GET /api/v14/tumblr//:accountId/notes/:postId",
+      "大写: POST /api/v14/tumblr/login-intents/:intentId/launch",
+      "大写: GET /api/v14/visitor-behavior/:contentId"
+    ],
+    "duplicates": []
+  },
+  "unversionedRoutes": [
+    "GET /api/account/:id/causal",
+    "GET /api/account/:id/decisions",
+    "GET /api/account/:id/timeline",
+    "GET /api/account/stats",
+    "GET /api/",
+    "GET /api//:id",
+    "POST /api//:id/assign-device",
+    "POST /api//:id/login",
+    "GET /api//:id/publish-device",
+    "POST /api//:id/release-device",
+    "POST /api//:id/set-publish-device",
+    "POST /api//:id/status",
+    "GET /api/cloud-phones",
+    "GET /api/cloud-phones/:id",
+    "POST /api/cloud-phones/sync",
+    "POST /api/decision/simulate",
+    "GET /api/decisions/summary",
+    "GET /api/message-inbox/:id",
+    "POST /api/message-inbox/:id/command",
+    "POST /api/message-inbox/:id/mark-all-read",
+    "POST /api/message-inbox/:id/mark-read",
+    "POST /api/message-inbox/:id/sync",
+    "GET /api/message-inbox/:id/unread",
+    "GET /api/message-inbox/summary"
+  ],
+  "legacyV1Routes": [
+    "GET /api/v1/",
+    "POST /api/v1/",
+    "POST /api/v1/auto-",
+    "GET /api/v1/auto-/:taskId",
+    "GET /api/v1/conversions",
+    "POST /api/v1/conversions",
+    "GET /api/v1/local-",
+    "GET /api/v1/managed-",
+    "POST /api/v1/managed-",
+    "PUT /api/v1/managed-/:id",
+    "DELETE /api/v1/managed-/:id",
+    "POST /api/v1/managed-/:id/tags",
+    "POST /api/v1/managed-/:id/verify",
+    "POST /api/v1/managed-/import",
+    "GET /api/v1/managed-/stats",
+    "POST /api/v1/managed-/update-valid",
+    "POST /api/v1/managed-/verify-all",
+    "GET /api/v1/mobile-devices",
+    "POST /api/v1/postback",
+    "GET /api/v1/postback",
+    "GET /api/v1/proxy/next",
+    "GET /api/v1/proxy-pool",
+    "DELETE /api/v1/proxy-pool/:index",
+    "POST /api/v1/proxy-pool/add",
+    "GET /api/v1/proxy-pool/cf-status",
+    "POST /api/v1/proxy-pool/clear",
+    "POST /api/v1/proxy-pool/create-us-node",
+    "GET /api/v1/proxy-pool/providers",
+    "POST /api/v1/proxy-pool/refresh",
+    "POST /api/v1/proxy-pool/test-all",
+    "POST /api/v1/",
+    "GET /api/v1//status",
+    "GET /api/v1/stats"
+  ],
+  "smoke": {
+    "total": 211,
+    "byClass": {
+      "skip": 60,
+      "ok": 123,
+      "client_err": 4,
+      "server_error": 8,
+      "timeout": 16
+    },
+    "results": [
+      {
+        "route": "GET /api/account/:id/causal",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/account/:id/decisions",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/account/:id/timeline",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/account/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/account/login-verify",
+        "status": 400,
+        "cls": "client_err"
+      },
+      {
+        "route": "GET /api/v14/account-loop/-summary",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api//:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api//:id/publish-device",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v1/",
+        "status": 500,
+        "cls": "server_error"
+      },
+      {
+        "route": "GET /api/v14/",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14//:id/login-link",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14//:id/plan",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/agnes/health",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/agnes/list",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/agnes/options",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/agnes/status/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/agnes/video/status/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /agnes-file",
+        "status": 400,
+        "cls": "client_err"
+      },
+      {
+        "route": "GET /api/v14/aigc/calendar",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/aigc/history",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/aigc/queue",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/aigc/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/alerts",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/alerts/rules",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/alerts/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/analytics/dashboard",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/analytics/dau",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/analytics/funnel",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/analytics/realtime",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/analytics/sdk",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/analytics/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/analytics/trend",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/attribution/models",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/attribution/overview",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/attribution/path/:visitorId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/attribution/roi",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/attribution/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v1/auto-/:taskId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/causal-chain/push",
+        "status": 400,
+        "cls": "client_err"
+      },
+      {
+        "route": "GET /api/v14/causal-chain/status",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/channel/budget",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/channel/global",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/channel/health",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/channel/health/:channelId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/channel/ranking",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/cloaking/preview/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/cloaking/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/cloaking/templates",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/cloaking/templates/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/cloaking/test",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/cloud-phones",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/cloud-phones/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/cloud-publish/config/:",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/cloud-publish/report",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/cloud-publish/status/:taskId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /console",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/content/:id/render",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/content/mix",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /content/:/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/content-pipeline/report",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/content-rules/:",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/conversion/attribution",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/conversion/events",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/conversion/export",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/conversion/funnel",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/conversion/overview",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/conversion/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v1/conversions",
+        "status": 500,
+        "cls": "server_error"
+      },
+      {
+        "route": "GET /api/v14/dag/workflow/:dagId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/dag/workflows",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/dashboard",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/data/:module",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/data/:module/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/data/:module/:id/history",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/data/:module/export",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/data/overview",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/data/trace/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/datastore/modules",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/dau/log",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/dau/qtable",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/dau/status",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/decision/status",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/decisions/summary",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/devices",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/devices/:id/screenshot",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/devices/health",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/devices/keep-alive",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/eventbus/events",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/eventbus/log",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/eventbus/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/evolution/report",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/evolution/strategies",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/experiments",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/experiments/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/feed/rss",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/fingerprint/versions/:deviceId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /gateway",
+        "status": 302,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/gps/paths",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/gps/position/:deviceId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/gps/status",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/heal/log",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/heal/patterns",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/heal/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /health",
+        "status": 503,
+        "cls": "server_error"
+      },
+      {
+        "route": "GET /api/v1/local-",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/lok-dialogue/history/:accountId/:",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/lok-dialogue/models",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/lok-dialogue/personas",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v1/managed-",
+        "status": 500,
+        "cls": "server_error"
+      },
+      {
+        "route": "GET /api/v1/managed-/stats",
+        "status": 500,
+        "cls": "server_error"
+      },
+      {
+        "route": "GET /api/v14/managed-",
+        "status": 500,
+        "cls": "server_error"
+      },
+      {
+        "route": "GET /api/v14/managed-/:id/plan",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/marketing/campaigns",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/marketing/campaigns/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/marketing/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/media/video/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/message-inbox/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/message-inbox/:id/unread",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/message-inbox/summary",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/hashtag-groups",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/posts",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/posts/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/mixpost/provider/bluesky/config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/provider/devto/config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/provider/discord/config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/provider/github/config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/provider//config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/provider//config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/provider/nostr/config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/provider//config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/providers",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/mixpost/webhook/config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v1/mobile-devices",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/module/:name/detail",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/modules/summary",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/notifications",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/nurturing-rules/:",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v1/postback",
+        "status": 400,
+        "cls": "client_err"
+      },
+      {
+        "route": "GET /api/v14/postback/event",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/postback/pixel/:campaignId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /preview/:contentId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v1/proxy/next",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14/proxy/health/:proxyId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/proxy/list",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14/proxy/stats",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v1/proxy-pool",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v1/proxy-pool/cf-status",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v1/proxy-pool/providers",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14/publish/history",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14/publish/optimal-time",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /r/:code",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/real-",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v1//status",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14//progress",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14//stats",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /route",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14/scrm/keywords",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14/scrm/review-queue",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14/scrm/stats",
+        "status": "TIMEOUT",
+        "cls": "timeout"
+      },
+      {
+        "route": "GET /api/v14/sensor/all",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/sensor/dashboard",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/sensor/history/:deviceId/:sensorId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/sensor/readings/:deviceId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/session/active",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/session/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/social/history",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/social/queue",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/social/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v1/stats",
+        "status": 500,
+        "cls": "server_error"
+      },
+      {
+        "route": "GET /api/v14/",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14//allocation",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14//debug",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/system/status",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/tasks",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/tasks/:taskId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/tracking/:variantId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/traffic/config",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/traffic/conversions",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/traffic/link-summary",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/traffic/link/:linkId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/traffic/links",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/traffic/links/:code",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/traffic/links/:code/analytics",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/traffic/links/:code/clicks",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/traffic/monitor-timeseries",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/traffic/stats",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/traffic/top-creator-links",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/trending",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/trending/intel",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/trending/intel/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/tumblr/",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/tumblr//:accountId/audit",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/tumblr//:accountId/drafts",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/tumblr//:accountId/inbox",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/tumblr//:accountId/notes/:postId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/tumblr/apps",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/tumblr/batch-publish",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/tumblr/batch-publish/:id",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/tumblr/batch-publish/:id/excel",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/tumblr/batch-publish/:id/zip",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      },
+      {
+        "route": "GET /api/v14/tumblr/engagement/positive",
+        "status": 500,
+        "cls": "server_error"
+      },
+      {
+        "route": "GET /api/v14/tumblr/status",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/tumblr-nurture/",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/tumblr-nurture/status",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /tumblr-nurture/console",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /tumblr-nurture/logs",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /v14",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/video-render/list",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/viral/scan",
+        "status": 200,
+        "cls": "ok"
+      },
+      {
+        "route": "GET /api/v14/visitor-behavior/:contentId",
+        "status": "SKIP_PARAM",
+        "cls": "skip"
+      }
+    ]
+  }
+}

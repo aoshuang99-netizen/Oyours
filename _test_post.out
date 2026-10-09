@@ -1,0 +1,10 @@
+[http-client] 已启用代理中转: http://:10808
+[DataStore] Loaded 40 module data files from ./data
+(node:49284) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(Use `node --trace-warnings ...` to show where the warning was created)
+/blog/mscms030hx4m/posts => FAIL Tumblr /blog/mscms030hx4m/posts 400: {"meta":{"status":400,"msg":"Bad Request"},"errors":[{"title":"Bad Request","code":8001,"detail":"Posting failed. Please tr
+/blog/mscms030hx4m/post => OK [DataStore] Pruned 312 old records from 'conversion_logs' (kept 500)
+[DataStore] Pruned 107 old records from 'social_logs' (kept 200)
+ay_text":"Posted to mscms0
+exit=127
+exit=127

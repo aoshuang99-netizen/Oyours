@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MSCMS v14 — 消息 / 指令中心</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161c2c; --panel2:#1d2638; --line:#2a3550;
+    --txt:#e6edf7; --muted:#8a98b5; --accent:#4f8cff; --green:#37d67a;
+    --red:#ff5c6c; --amber:#ffb454; --purple:#b78cff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--txt);font-size:14px}
+  header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#172033,#0f1420)}
+  header h1{font-size:17px;margin:0}
+  header .sub{color:var(--muted);font-size:12px}
+  .wrap{display:flex;height:calc(100vh - 58px)}
+  .left{width:300px;border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
+  .right{flex:1;display:flex;flex-direction:column;min-width:0}
+  .{list-style:none;margin:0;padding:8px}
+  .acct{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;cursor:pointer;margin-bottom:5px;border:1px solid transparent}
+  .acct:hover{background:var(--panel2)}
+  .acct.active{background:var(--panel2);border-color:var(--accent)}
+  .acct .nm{font-weight:600}
+  .acct .meta{color:var(--muted);font-size:11px}
+  .badge{margin-left:auto;background:var(--red);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700}
+  .badge.zero{background:#33405e;color:var(--muted)}
+  .topbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;
+    padding:7px 12px;cursor:pointer;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn.green{background:var(--green);color:#06231a;border-color:transparent;font-weight:600}
+  .btn.blue{background:var(--accent);color:#fff;border-color:transparent;font-weight:600}
+  .btn.amber{background:var(--amber);color:#3a2600;border-color:transparent;font-weight:600}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .list{flex:1;overflow:auto;padding:14px 16px}
+  .msg{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .msg.unread{border-left:3px solid var(--accent);background:var(--panel2)}
+  .msg .row1{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+  .msg .type{font-size:11px;padding:1px 7px;border-radius:6px;background:#2a3550;color:var(--muted)}
+  .msg .type.notification{background:#1f3b2e;color:var(--green)}
+  .msg .type.command{background:#3a2a4e;color:var(--purple)}
+  .msg .type.post_activity{background:#1d2c3e;color:var(--accent)}
+  .msg .title{font-weight:600}
+  .msg .from{color:var(--muted);font-size:12px}
+  .msg .body{white-space:pre-wrap;word-break:break-word;color:#d4ddec;font-size:13px;margin-top:4px}
+  .msg .at{color:var(--muted);font-size:11px;margin-top:5px}
+  .msg .acts{margin-top:7px}
+  .empty{color:var(--muted);text-align:center;padding:40px}
+  .composer{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:12px 16px;display:none}
+  .composer.show{display:block}
+  .composer ,.composer input,.composer select{;background:var(--bg);color:var(--txt);
+    border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:6px;font-family:inherit}
+  .composer .grid{display:flex;gap:8px}
+  .composer .grid>div{flex:1}
+  .note{font-size:12px;color:var(--amber);background:#2a2310;border:1px solid #4a3a13;border-radius:8px;padding:8px 10px;margin-top:8px}
+  .ok{color:var(--green)} .err{color:var(--red)}
+  .loginbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:none}
+  .loginbox.show{display:block}
+  .loginbox a{color:var(--accent);word-break:break-all}
+  a.back{color:var(--muted);text-decoration:none;font-size:12px}
+  .pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:6px;background:#243049;color:var(--muted);margin-left:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>💬 消息 / 指令中心</h1>
+  <span class="sub">统一收件箱 · 一键登录魔链(HMAC) · 指令下发(零伪造·人工网页确认) · Phase 5</span>
+  <a class="back" href="v14-console.html" style="margin-left:auto">← 返回控制台</a>
+</header>
+
+<div class="wrap">
+  <div class="left">
+    <ul class="" id=""></ul>
+  </div>
+  <div class="right">
+    <div class="topbar">
+      <strong id="curName">未选择账号</strong>
+      <span class="pill" id="curMeta"></span>
+      <span style="flex:1"></span>
+      <button class="btn blue" id="btnSync" disabled>🔄 真实同步</button>
+      <button class="btn" id="btnAllRead" disabled>✅ 全部已读</button>
+      <button class="btn amber" id="btnLogin" disabled>🔑 一键登录</button>
+      <button class="btn green" id="btnCmd" disabled>✉️ 发指令</button>
+    </div>
+
+    <div class="loginbox" id="loginBox"></div>
+
+    <div class="list" id="list">
+      <div class="empty">请选择左侧账号查看消息 / 指令</div>
+    </div>
+
+    <div class="composer" id="composer">
+      <div class="grid">
+        <div><label style="font-size:12px;color:var(--muted)">类型</label>
+          <select id="cmdKind">
+            <option value="comment_reply">评论回复</option>
+            <option value="direct_message">私信</option>
+          </select>
+        </div>
+        <div><label style="font-size:12px;color:var(--muted)">接收者/博客</label>
+          <input id="cmdRecipient" placeholder="对方博客名(可选)"></div>
+      </div>
+      <label style="font-size:12px;color:var(--muted)">指令正文</label>
+      < id="cmdBody" rows="3" placeholder="指令内容（真实发送须回 Tumblr 网页手动确认）"></>
+      <div class="note">⚠️ 零伪造原则：提交后仅生成「人工待审草稿」，系统绝不自动发送。真实发送必须回到绑定的云手机 App / Tumblr 网页由人手点击确认。</div>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn green" id="cmdSend">提交指令</button>
+        <button class="btn" id="cmdCancel">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let current = null;        // 当前账号 id
+let  = [];
+let pollTimer = null;
+
+ el(id){ return document.getElementById(id); }
+async  api(path, method='GET', body){
+  const opt = { method, headers:{} };
+  if (body){ opt.headers['']='application/json'; opt.body = JSON.stringify(body); }
+  const r = await fetch(API + path, opt);
+  let j = null; try { j = await r.json(); } catch(_){}
+  return { status:r.status, body:j, raw:r };
+}
+ fmtTs(s){ if(!s) return ''; const d = new Date(s); return d.toLocaleString('zh-CN',{hour12:false}); }
+
+async  loadAccounts(){
+  const r = await api('/api/?limit=200');
+   = (r.body && r.body.) || [];
+  const ul = el(''); ul.innerHTML='';
+  for (const a of ){
+    if (a. !== 'tumblr') continue; // 消息/指令当前聚焦 Tumblr 真实账号
+    const li = document.createElement('li');
+    li.className = 'acct' + (a.id===current ? ' active':'');
+    li.dataset.id = a.id;
+    li.innerHTML = `<div><div class="nm">${a.||a.id}</div>
+      <div class="meta">${a.} · 设备#${a.!=null?a.:'—'} · ${a.active_status||a.status||''}</div></div>
+      <span class="badge zero" data-badge="${a.id}">0</span>`;
+    li.onclick = () => selectAccount(a.id);
+    ul.appendChild(li);
+  }
+  if (!current && .length) selectAccount(.find(a=>a.==='tumblr').id);
+  refreshBadges();
+}
+
+async  refreshBadges(){
+  // 仅拉取全局汇总，避免逐个请求
+  const r = await api('/api/message-inbox/summary');
+  const byAcc = (r.body && r.body.byAccount) || {};
+  '[data-badge]').forEach(span=>{
+    const id = span.dataset.badge;
+    const u = byAcc[id] ? byAcc[id].unread : 0;
+    span.textContent = u;
+    span.className = 'badge' + (u>0 ? '' : ' zero');
+  });
+  const t = (r.body && r.body.unreadTotal) || 0;
+  document.title = (t>0 ? `(${t}) ` : '') + '消息 / 指令中心';
+}
+
+async  selectAccount(id){
+  current = id;
+  '.acct').forEach(x=>x.classList.toggle('active', x.dataset.id===id));
+  const a = .find(x=>x.id===id);
+  el('curName').textContent = (a && a.) || id;
+  el('curMeta').textContent = a ? `${a.} · 设备#${a.!=null?a.:'—'}` : '';
+  ['btnSync','btnAllRead','btnLogin','btnCmd'].forEach(b=>el(b).disabled=false);
+  el('composer').classList.remove('show');
+  el('loginBox').classList.remove('show');
+  await loadInbox();
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(loadInbox, 12000);
+}
+
+async  loadInbox(){
+  if (!current) return;
+  const r = await api('/api/message-inbox/'+encodeURIComponent(current));
+  const list = el('list');
+  if (!r.body || !r.body.items || !r.body.items.length){
+    list.innerHTML = '<div class="empty">暂无消息 / 指令。可点击「🔄 真实同步」拉取 Tumblr 官方通知。</div>';
+    return;
+  }
+  list.innerHTML = '';
+  for (const m of r.body.items){
+    const div = document.createElement('div');
+    div.className = 'msg' + (m.read ? '' : ' unread');
+    const at = m.receivedAt || m.createdAt || '';
+    div.innerHTML = `<div class="row1">
+        <span class="type ${m.type}">${m.type}</span>
+        <span class="title"></span>
+        <span class="from">${m.from?('· '+m.from):''}</span>
+        ${m.read?'':'<span class="badge">未读</span>'}
+      </div>
+      <div class="body"></div>
+      <div class="at">${fmtTs(at)}</div>
+      ${m.read?'':`<div class="acts"><button class="btn" data-mark="${m.id}">标记已读</button></div>`}
+      ${m.url?`<div class="acts"><a class="btn" href="${m.url}" target="_blank" rel="noopener">打开来源 ↗</a></div>`:''}`;
+    div.querySelector('.title').textContent = m.title || '(无标题)';
+    div.querySelector('.body').textContent = m.body || '';
+    const mk = div.querySelector('[data-mark]');
+    if (mk) mk.onclick = async ()=>{ await api('/api/message-inbox/'+encodeURIComponent(current)+'/mark-read', 'POST', {ids:[m.id]}); await loadInbox(); await refreshBadges(); };
+    list.appendChild(div);
+  }
+}
+
+el('btnSync').onclick = async ()=>{
+  el('btnSync').disabled = true;
+  const r = await api('/api/message-inbox/'+encodeURIComponent(current)+'/sync?limit=15','POST');
+  el('btnSync').disabled = false;
+  if (r.status===200 && r.body){
+    const s = `已同步 ${r.body.synced} 条（新增未读 ${r.body.newUnread}，当前未读 ${r.body.unread}）`;
+    el('loginBox').classList.remove('show');
+    toast(s, !r.body.notificationError && !r.body.postError);
+    await loadInbox(); await refreshBadges();
+  } else {
+    toast('同步失败：' + (r.body && r.body.error || r.status), false);
+  }
+};
+
+el('btnAllRead').onclick = async ()=>{
+  await api('/api/message-inbox/'+encodeURIComponent(current)+'/mark-all-read','POST');
+  await loadInbox(); await refreshBadges();
+};
+
+el('btnLogin').onclick = async ()=>{
+  const r = await api('/api//'+encodeURIComponent(current)+'/login','POST',{ttlMin:15});
+  const box = el('loginBox');
+  if (r.status===200 && r.body && r.body.token){
+    const link = r.body.loginLink;
+    const m = /[?&]t=([^&]+)/.exec(link); const t = m?decodeURIComponent(m[1]):r.body.token;
+    const acct = (link.match(/[?&]account=([^&]+)/)||[])[1] || current;
+    const v = await api('/api/v14/account/login-verify?account='+encodeURIComponent(acct)+'&t='+encodeURIComponent(t));
+    const ok = v.status===200 && v.body && v.body.valid;
+    box.innerHTML = `<div><strong>🔑 一键登录魔链已签发</strong>
+      <span class="pill">HMAC 时效令牌 · 设备#${r.body.deviceId}</span></div>
+      <div style="margin-top:6px;word-break:break-all"><a href="${link}" target="_blank" rel="noopener">${link}</a></div>
+      <div style="margin-top:6px" class="${ok?'ok':'err'}">${ok?('✓ 令牌有效 · 一机一号('+v.body.boundDeviceId+') · 请在绑定云手机 App 内打开完成登录'):'令牌校验失败'}</div>
+      <div class="note">魔链仅可在本机控制台签发（requireLocalControl），且只能在绑定的云手机 App 内使用，禁止跨设备。</div>`;
+    box.classList.add('show');
+  } else {
+    box.innerHTML = `<div class="err">签发失败：${r.body && r.body.error || r.status}（需先绑定云手机设备）</div>`;
+    box.classList.add('show');
+  }
+};
+
+el('btnCmd').onclick = ()=> el('composer').classList.toggle('show');
+el('cmdCancel').onclick = ()=> el('composer').classList.remove('show');
+el('cmdSend').onclick = async ()=>{
+  const kind = el('cmdKind').value;
+  const recipient = el('cmdRecipient').value.trim();
+  const body = el('cmdBody').value.trim();
+  if (!body){ toast('指令正文不能为空', false); return; }
+  const r = await api('/api/message-inbox/'+encodeURIComponent(current)+'/command','POST',{kind, recipient, body});
+  if (r.status===200 && r.body && r.body.ok){
+    el('composer').classList.remove('show');
+    el('cmdBody').value=''; el('cmdRecipient').value='';
+    toast('指令已生成人工待审草稿 · 需回网页手动确认发送', true);
+    await loadInbox(); await refreshBadges();
+  } else {
+    toast('指令失败：' + (r.body && r.body.error || r.status), false);
+  }
+};
+
+let toastTimer=null;
+ toast(msg, ok){
+  let t = document.getElementById('toast');
+  if (!t){ t = document.createElement('div'); t.id='toast';
+    t.style.cssText='position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:10px;background:#1d2638;border:1px solid var(--line);z-index:99';
+    document.body.appendChild(t); }
+  t.textContent = msg; t.style.borderColor = ok? 'var(--green)':'var(--red)';
+  t.style.display='block';
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.style.display='none'; }, 3500);
+}
+
+loadAccounts();
+</script>
+</body>
+</html>

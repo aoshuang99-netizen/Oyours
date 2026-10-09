@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MSCMS v14 · Tumblr 第二阶段养号 · 完整闭环计划</title>
+<style>
+  :root{ --bg:#0d1117; --bg2:#161b22; --bg3:#21262d; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --green:#3fb950; --red:#f85149; --orange:#d29922; --purple:#bc8cff; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;line-height:1.6;padding:2rem 2.4rem;max-width:1080px;margin:0 auto}
+  h1{font-size:1.6rem;margin:0 0 .3rem}
+  h2{font-size:1.18rem;margin:2rem 0 .6rem;padding-bottom:.35rem;border-bottom:2px solid var(--accent);color:var(--accent)}
+  h3{font-size:.98rem;margin:1.1rem 0 .4rem;color:var(--purple)}
+  .sub{color:var(--muted);font-size:.82rem;margin:0 0 1.4rem}
+  p{font-size:.86rem;margin:.4rem 0}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem 1.2rem;margin:.8rem 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.7rem}
+  .mini{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;font-size:.8rem}
+  .mini b{display:block;font-size:1.05rem;color:var(--accent)}
+  code{background:var(--bg3);padding:.1rem .4rem;border-radius:4px;font-size:.78rem;color:var(--orange)}
+  .tag{display:inline-block;padding:.1rem .5rem;border-radius:6px;font-size:.7rem;font-weight:700;margin:.1rem .2rem}
+  .tag.new{background:rgba(63,185,80,.18);color:var(--green)}
+  .tag.rule{background:rgba(248,81,73,.14);color:var(--red)}
+  .tag.key{background:rgba(88,166,255,.16);color:var(--accent)}
+  table{;border-collapse:collapse;font-size:.78rem;margin:.6rem 0}
+  th,td{padding:.45rem .6rem;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+  th{color:var(--muted);text-transform:uppercase;font-size:.66rem}
+  ul{font-size:.84rem;margin:.4rem 0;padding-left:1.2rem}
+  li{margin:.25rem 0}
+  .flow{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;font-size:.78rem;margin:.6rem 0}
+  .flow .step{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:.3rem .6rem}
+  .flow .arrow{color:var(--muted)}
+  .ok{color:var(--green)} .warn{color:var(--orange)} .bad{color:var(--red)}
+  .note{color:var(--muted);font-size:.74rem;margin-top:.4rem}
+  .callout{background:rgba(210,153,34,.1);border-left:3px solid var(--orange);padding:.7rem 1rem;margin:1rem 0;font-size:.82rem;border-radius:0 8px 8px 0}
+  .callout.green{background:rgba(63,185,80,.1);border-left-color:var(--green)}
+</style>
+</head>
+<body>
+
+<h1>📈 MSCMS v14 · Tumblr 第二阶段养号 — 完整闭环计划</h1>
+<p class="sub">生活 &amp; 交友赛道 · 欧美 dating 圈 · 16 真实账号 · 全部真实 Tumblr API + 真实移动端网页消费（零假数据）· 含末梢细节与自愈机制</p>
+
+<div class="card">
+<b>本计划状态：</b>已落地并端到端验证（截至 2026-08-18）。核心模块：<code>tumblr-nurture.js</code>（引擎）、<code>tumblr-nurture-device.js</code>（移动端设备池）、<code>tumblr-nurture-server.js</code>（3003 服务）、<code>tumblr-publisher.js</code>（真实 API）、<code>data-store.js</code>（持久化）、<code>tumblr-nurture-dashboard.html</code>（看板）。本版新增：<span class="tag new">移动端设备池</span> <span class="tag new">429 自愈回退</span> <span class="tag new">停滞看门狗</span> <span class="tag new">代际守卫</span>。
+</div>
+
+<!-- 0. 目标与铁律 -->
+<h2>0 · 目标与铁律</h2>
+<div class="grid">
+  <div class="mini"><b>目标</b>把 16 真实账号养成高质量、稳定活跃、彼此反关联的 Tumblr 欧美 dating 圈账号</div>
+  <div class="mini"><b>质量信号</b>稳定人格、时区节律、真实移动消费、零星互动、保守节奏</div>
+  <div class="mini"><b>反关联</b>每账号独立移动指纹 + 独立人格 + 错峰，禁用共享 IP/UA</div>
+  <div class="mini"><b>零假数据</b>任何失败如实记录，绝不伪造 token/链接/进度/计数</div>
+</div>
+<p><b>铁律清单：</b></p>
+<ul>
+  <li><span class="tag rule">铁律</span> 任何健康检查/恢复逻辑必须对 <code>mode==='cloud'</code> 短路（保护线上 50 云手机因果链不被打死）。</li>
+  <li><span class="tag rule">铁律</span> DataStore 新增高频写入模块必须登记 <code>_pruneConfig.maxKeep</code>，否则 <code>this._cache</code> Map 无限涨导致 OOM/HTTP 挂起。</li>
+  <li><span class="tag rule">铁律</span> Node <code>fetch</code>(undici) 忽略系统 <code>HTTP_PROXY</code> → 必须 <code>ProxyAgent</code> 路由到 <code>:10808</code>。</li>
+  <li><span class="tag rule">铁律</span> 未配置平台一律返回失败，绝不伪造；头像/标题编辑受 OAuth scope 限制时如实记录 <code>unavailable</code>。</li>
+  <li><span class="tag rule">铁律</span> 移动端设备池只做公开移动网页消费，不伪造登录态、不触达线上 50 云手机。</li>
+</ul>
+
+<!-- 1. 闭环全景 -->
+<h2>1 · 闭环全景（端到端）</h2>
+<div class="flow">
+  <span class="step">① 注册</span><span class="arrow">→</span>
+  <span class="step">② 邮箱验证</span><span class="arrow">→</span>
+  <span class="step">③ OAuth1.0a 授权</span><span class="arrow">→</span>
+  <span class="step">④ token 持久化入库</span><span class="arrow">→</span>
+  <span class="step">⑤ 加载(人格+状态)</span><span class="arrow">→</span>
+  <span class="step">⑥ 移动端设备池分配指纹+UA</span><span class="arrow">→</span>
+  <span class="step">⑦ 五阶段调度循环</span><span class="arrow">→</span>
+  <span class="step">⑧ 真实动作(API+移动消费)</span><span class="arrow">→</span>
+  <span class="step">⑨ 持久化+指标</span><span class="arrow">→</span>
+  <span class="step">⑩ 看板监控</span><span class="arrow">→</span>
+  <span class="step">⑪ 反馈(推进/重授权/跳过/自愈)</span><span class="arrow">↺ 回到 ⑦</span>
+</div>
+<p class="note">闭环关键点：每一步都有真实输出（真实 token / 真实 post_url / 真实移动会话），失败即停并如实记录；阶段推进由 <code>dayOfLife</code> 阈值自动驱动；停滞由看门狗自愈；Tumblr 限流由 429 回退吸收。</p>
+
+<!-- 2. 账号准入与凭证 -->
+<h2>2 · 账号准入与凭证管理（末梢细节）</h2>
+<ul>
+  <li><b>16 真实账号</b>：13 个持有真实 <code>email + </code>（可登录 Tumblr 移动网页，支撑移动消费会话），3 个仅 <code>token-only</code>（无密码，走 API 保底，不做 UI 会话）。</li>
+  <li><b>重授权流程</b>：<code>request_token → authorize →  → token 持久化</code>；OAuth App 需用户先在 Tumblr 注册拿 <code>consumer_key/secret</code> 才能真实发布。</li>
+  <li><b>凭证失效检测</b>：API 返回 401/403 → 触发重授权事件，状态置为需重授权，看板标红，不伪造成功。</li>
+  <li><b>终止账号</b>：<code>status==='terminated'</code> 在 <code>engine.load()</code> 直接过滤，绝不纳入养号循环（历史上已剔除 y7jxcqge 等）。</li>
+  <li><b>数据隔离</b>：3003 服务只读 <code> /  / </code>，只写 <code>tumblr_nurture / tumblr_persona / tumblr_device</code>，与主服务(3002)零写竞争。</li>
+</ul>
+
+<!-- 3. 人格层 -->
+<h2>3 · 人格层 Persona（反关联核心）</h2>
+<ul>
+  <li><b>确定性随机</b>：<code>mulberry32(hashStr(accountId))</code> 播种，重启一致 —— 同一账号每次加载得到相同人格。</li>
+  <li><b>字段</b>：<code>realName</code>、<code>voice</code>(warm/witty/reflective/bold/gentle 5 种)、<code>title</code>、<code>bio</code>、<code>activeStartHour/EndHour</code>、<code>tzOffset(-5..+3)</code>、<code>appetite</code>、<code>interests</code>。</li>
+  <li><b>时区活跃窗口</b>：模拟真人作息，<code>_inActiveWindow()</code> 按 UTC+tzOffset 判断是否在线，错峰避免所有号同时动作被关联。</li>
+  <li><b>持久化</b>：<code>tumblr_persona</code> 集合（<code>maxKeep:60</code> prune 保护）。</li>
+</ul>
+
+<!-- 4. 移动端设备池 -->
+<h2>4 · 移动端设备池（本次核心 — 系统"移动端"上操作）<span class="tag new">NEW</span></h2>
+<p>养号不再只是服务端 API 调用。新增独立 <b>15 台真实 chromium 移动上下文</b>，完全隔离线上 50 云手机：</p>
+<ul>
+  <li><b>每账号唯一指纹</b>：UA / 视口 / <code>deviceScaleFactor</code> / <code>hasTouch</code> / 时区 / locale，来自 <code>mobile-emulator.js</code> 思路。</li>
+  <li><b>真实移动网页消费会话</b>：开 tumblr.com 移动端 → 滚 explore 信息流 → 浏览 dating/relationship 标签 → 读真实帖（<code>tumblr.com/{blog}/{数字id}</code>，已修正选择器）→ 看自己公开博客。</li>
+  <li><b>节流</b>：每账号每 40–60 分钟一次移动会话（模拟真人零星刷手机），<b>硬超时 120s</b> 防卡死。</li>
+  <li><b>指纹对齐</b>：<code>tumblr-publisher.js</code> 新增 <code>setAccountUA</code> + 移动 UA 池，<code>_oauthRequest</code> 注入 UA，使 OAuth API 与移动网页共用同一移动指纹（反关联）。</li>
+  <li><b>降级</b>：浏览器启动失败 → 标记 <code>disabled</code> 不抛错，养号引擎仍可纯 API 运行。</li>
+  <li><b>进程退出</b>：服务优雅退出时 <code>devicePool.closeAll()</code> 关浏览器，避免孤儿 chromium。</li>
+  <li><b>隔离</b>：设备池只做公开消费、不伪造登录态，与线上 50 云手机因果链完全隔离。</li>
+</ul>
+<div class="callout green"><b>验证</b>：启动 3003(DEVICE=1) → 真实 headless chromium 启动、15 移动上下文分配、15/15 账号显示各自真实设备型号（Samsung Galaxy S24 Ultra / OnePlus 12 / iPad Pro 11" / iPhone 16 Pro Max …）、真实移动会话执行成功（explore+标签+读 3 帖，~20–40s/次）。</div>
+
+<!-- 5. 五阶段 -->
+<h2>5 · 五阶段模型（消费 → 生产）</h2>
+<table>
+  <tr><th>阶段</th><th>触发(dayOfLife)</th><th>动作</th><th>日上限</th></tr>
+  <tr><td><b>P0</b> 资料</td><td>Day 0</td><td>确认博客存在(真实调用)+尝试上传头像(scope 受限如实记录)</td><td>不计入生产</td></tr>
+  <tr><td><b>P1</b> 观察</td><td>D1–3</td><td>纯消费：给小博主点赞(notes&lt;5000)</td><td>赞 ≤8</td></tr>
+  <tr><td><b>P2</b> 轻度互动</td><td>D4–7</td><td>关注 3–5 + 赞 15–25 + reblog 1–2 + 首帖 1</td><td>见 §8</td></tr>
+  <tr><td><b>P3</b> 内容沉淀</td><td>D8–14</td><td>原创 1 + reblog 3–5 + 关注 3–5 + 赞 20–30</td><td>见 §8</td></tr>
+  <tr><td><b>P4</b> 成熟期</td><td>D15+</td><td>稳定日更：原创 1–2 + reblog 3–5 + 关注 ≤8 + 赞 ≤50</td><td>见 §8</td></tr>
+</table>
+<p>每 tick（90s）每账号只做 <b>1 个动作</b>（零星使用），动作顺序随机打散；发帖前「思考时长」高斯 8s；阶段推进后 <code>nextActionAt</code> 高斯抖动错峰。</p>
+
+<!-- 6. 动作细节 -->
+<h2>6 · 动作执行细节（末梢）</h2>
+<ul>
+  <li><b>观察点赞</b>：从 dashboard 找小博主(notes&lt;5000)、跳过自己/大 V；<code>likePost(id_string, reblog_key)</code>。注意 Tumblr id 为 18 位数字，必须用 <code>id_string</code> 字符串（JSON.parse 会损坏）。</li>
+  <li><b>关注</b>：从 <code>taggedPosts</code> 发现 dating 博主，<code>blogInfo</code> 查 followers，跳过 &gt;50000 的大 V（像真人），<code>followBlog</code>。</li>
+  <li><b>原创帖</b>：<code>composePost(persona)</code> 按 voice 注入开场白/收尾语，正文来自真实英文情感种子池（零假数据）；<code>postText</code> 回真实 <code>post_url</code>。</li>
+  <li><b>reblog</b>：带 commentary（so real / reblogging for the girlies … Tumblr 文化），<code>reblogPost</code>。</li>
+  <li><b>全部</b>走 <code>tumblr-publisher.js</code> 真实 API + <code>http-client</code> 代理 + 429 退避。</li>
+</ul>
+
+<!-- 7. 速率治理 -->
+<h2>7 · 全局速率治理 + 日上限</h2>
+<div class="grid">
+  <div class="mini"><b>共享 consumer key</b>1000 次/时 · 5000 次/天（滚动窗口）</div>
+  <div class="mini"><b>关注</b>12/天</div>
+  <div class="mini"><b>点赞</b>50/天</div>
+  <div class="mini"><b>reblog</b>6/天</div>
+  <div class="mini"><b>原创</b>2/天</div>
+  <div class="mini"><b>评论</b>3/天</div>
+</div>
+<p><code>_act</code> 执行顺序：全局速率(governor.canProceed) → 日上限(_dayCount) → consume → <code>fn()</code> → <code>_incDay</code> → persist。远低于 Tumblr 硬限（关注200/赞1000/帖250）。任何失败如实记录（<code>lastApi.ok=false</code>），绝不伪造。</p>
+
+<!-- 8. 429 自愈 -->
+<h2>8 · 429 限流自愈回退 <span class="tag new">NEW</span></h2>
+<div class="callout">
+<b>关键发现（2026-08-18）</b>：Tumblr 对共享 app-key/IP（10808 代理）返回 <b>429 "Limit Exceeded"</b>，原引擎在限流下仍持续 hammering，加重封锁且让 <code>lastApi</code> 冻结。修复为 <b>429 感知回退</b>：
+<ul style="margin:.4rem 0">
+  <li>命中 429（读端点 <code>/user/dashboard</code>、<code>/tagged</code> 或写端点）→ 进入<b>全局 API 冷却 20 分钟</b>（<code>_apiCooldownUntil</code>）。</li>
+  <li>冷却期内<b>暂停所有 API 互动动作</b>（含读调用，避免重复触发），但<b>移动端消费会话照常进行</b>（浏览器行为，维系真人足迹）。</li>
+  <li>读端点加 <b>5 分钟短缓存</b>（<code>_cacheGet/_cacheSet</code>），跨账号/跨 tick 复用，降低限流概率。</li>
+  <li>看板实时显示冷却倒计时（橙色横幅）。</li>
+</ul>
+</div>
+
+<!-- 9. 调度时序 -->
+<h2>9 · 调度与时序（末梢细节）</h2>
+<ul>
+  <li><b>Tick</b>：90s 调度循环（<code>_tickMs=90000</code>），真实用户是零星使用而非批量刷。</li>
+  <li><b>nextActionAt</b>：每动作后高斯抖动错峰（P2 ~25min±13、P4 ~15min±8）。</li>
+  <li><b>移动会话先于 API 互动</b>：<code>tickAccount</code> 先 <code>_runDeviceSession</code> 再执行阶段动作。</li>
+  <li><b>错峰活跃窗口</b>：<code>_inActiveWindow</code> 按 persona 时区，非活跃时段不动作（真人作息）。</li>
+  <li><b>偶发跳过 + 动作顺序随机</b>：模拟真人；动作间延迟高斯（like 1.5s / follow 4s / reblog 3s / 思考 8s）。</li>
+  <li><b>日界</b>：<code>_todayKey()=UTC日期</code>，每日上限自然重置。</li>
+</ul>
+
+<!-- 10. 持久化 -->
+<h2>10 · 持久化与恢复</h2>
+<ul>
+  <li><code>DataStore</code> 三集合全部登记 prune：<code>tumblr_nurture{maxKeep:60}</code>、<code>tumblr_persona{maxKeep:60}</code>、<code>tumblr_device{maxKeep:60}</code>。</li>
+  <li>状态 reload 后 <code>syncDeviceUA()</code> 同步每账号移动 UA 到 publisher，使 API 足迹与移动网页指纹一致。</li>
+  <li>重启不丢失进度（phase / day / totalActions / 设备型号），看板首会话前即显示设备型号。</li>
+</ul>
+
+<!-- 11. 自愈看门狗 -->
+<h2>11 · 自愈看门狗 + 代际守卫 <span class="tag new">NEW</span></h2>
+<ul>
+  <li><b>停滞看门狗</b>：监听每次完整 <code>nurture:tick</code> 时间戳；若 &gt;15 分钟无推进（如 chromium 15 上下文长时间运行卡死、事件循环被拖死 → 循环"静默死亡"但进程看似存活），自动 <code>engine.stop()</code> + <code>devicePool.closeAll()</code> + 重建浏览器池 + 重启，并 <code>console.error</code> 记录。</li>
+  <li><b>代际守卫</b>：<code>start()</code> 自增 <code>_gen</code>，<code>loop()</code> 捕获 <code>myGen</code>，被新一次 start/看门狗取代时立即退出，防止陈旧挂起循环重复动作。</li>
+  <li>验证：重启后循环存活、设备池在线、429 回退生效、循环不崩溃。</li>
+</ul>
+
+<!-- 12. 监控看板 -->
+<h2>12 · 监控与看板</h2>
+<ul>
+  <li><b>3003 看板</b>：阶段分布、全局速率、账号明细（设备型号/会话数/voice/时段/今日计数/上次API/错误）、<b>429 冷却横幅</b>、移动端设备池状态（enabled/上下文数/浏览器在线/代理）。</li>
+  <li><b>API</b>：<code>/api/status</code>（含 <code>device</code> + <code>apiCooldownUntil</code>）、<code>/api/</code>、<code>/api/start|stop</code>、<code>/api/run-one</code>（手动触发单账号）。</li>
+  <li><b>指标</b>：<code>phaseCounts</code>、今日聚合、错误账号数、设备会话累积、全局速率消耗。</li>
+</ul>
+
+<!-- 13. 闭环反馈 -->
+<h2>13 · 闭环反馈机制</h2>
+<ul>
+  <li><b>阶段推进</b>：<code>dayOfLife</code> 阈值自动推进 P1→P2(≥3)→P3(≥7)→P4(≥14)。</li>
+  <li><b>错误→重授权</b>：401/403 触发；终止→跳过；429→冷却回退。</li>
+  <li><b>移动消费→质量</b>：真实移动足迹提升账号"真人度"，反关联。</li>
+  <li><b>看板→人工巡检</b>：异常账号（持续错误/零动作）人工介入。</li>
+  <li><b>停滞→自愈</b>：看门狗自动重启恢复。</li>
+</ul>
+
+<!-- 14. 进程部署 -->
+<h2>14 · 进程管理与部署</h2>
+<ul>
+  <li><b>3003 服务</b>：<code>TUMBLR_NURTURE_DEVICE=1 NODE_PATH=... node tumblr-nurture-server.js</code>，<code>nohup</code> 持久化（独立端口，不与 3002 主服务/3000 hlua 冲突）。</li>
+  <li><b>启动</b>：<code>autoStart=false</code>，经 <code>/api/start</code> 显式开启（或 <code>TUMBLR_NURTURE_AUTO=1</code>）。</li>
+  <li><b>优雅退出</b>：SIGINT/SIGTERM → 关浏览器池 → 关服务。</li>
+  <li><b>待办</b>：进程守护/开机自启（当前手动后台启动，长周期养号建议加守护）。</li>
+</ul>
+
+<!-- 15. 当前状态 -->
+<h2>15 · 当前状态与验证结果（2026-08-18）</h2>
+<div class="grid">
+  <div class="mini"><b>15 账号</b>全部 P2 · day=3</div>
+  <div class="mini"><b>移动设备</b>15/15 在线·每号 20–27 真实会话</div>
+  <div class="mini"><b>循环</b>运行中 · 浏览器在线</div>
+  <div class="mini"><b>429 回退</b>已验证生效</div>
+</div>
+<ul>
+  <li>✅ 移动端设备池真实运行：15 上下文、独立移动指纹、真实消费会话。</li>
+  <li>✅ 五阶段自动推进：P1→P2 已于 ~08-17 自动发生（dayOfLife≥3）。</li>
+  <li>✅ 429 自愈：命中限流自动冷却 20 分钟，停止 hammering，移动会话照常。</li>
+  <li>✅ 停滞看门狗 + 代际守卫：防止"静默死亡"后重复动作（本版新增）。</li>
+  <li>⚠️ <b>当前瓶颈</b>：Tumblr 对共享 app-key/IP 持续 429，API 互动动作近期大多被冷却吸收；移动消费会话不受影响，持续积累真人足迹。</li>
+</ul>
+
+<!-- 16. 风险与下一步 -->
+<h2>16 · 已知风险与下一步</h2>
+<div class="callout">
+<b>根因待解</b>：429 源于<b>共享 OAuth app-key + 单一代理出口 IP(10808→BandwagonHost VPS)</b> 被 Tumblr 聚合限流。代码层面已用冷却+缓存缓解，但要从根本解除需：
+<ul style="margin:.4rem 0">
+  <li><b>更多出口 IP</b>：每账号/每小组独立代理（当前 <code>proxy-pool.json</code> 仅含单个 relay，需扩展）。</li>
+  <li><b>多个 OAuth App</b>：分散 consumer key 降低单 key 限流概率（需用户注册多个 Tumblr App）。</li>
+  <li><b>降频</b>：当前已保守（每号每 tick 1 动作），可进一步拉长 nextActionAt。</li>
+</ul>
+</div>
+<ul>
+  <li><b>阶段推进</b>：P3（day≥7 ≈ 08-21）、P4（day≥14 ≈ 08-28）将自动触发。</li>
+  <li><b>3 个 token-only 账号</b>：仅 API 保底，无移动 UI 会话（凭证所限，如实标注）。</li>
+  <li><b>进程守护</b>：建议给 3003 加守护/开机自启，配合看门狗实现无人值守。</li>
+  <li><b>长期质量指标</b>：关注 followers/notes 真实增长、互动回粉率，作为养号质量反馈。</li>
+</ul>
+
+<p class="note">本计划覆盖从账号准入到成熟运营的全链路末梢细节；所有执行遵循零假数据、保守上限、反关联、隔离线上 50 云手机四大原则。代码已落地并端到端验证，服务运行于 http://localhost:3003 。</p>
+
+</body>
+</html>

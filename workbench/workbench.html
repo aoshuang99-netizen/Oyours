@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MSCMS v14 工作台</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232c; --line:#2a313c;
+    --tx:#e6edf3; --mut:#9aa7b4; --acc:#3fb950; --acc2:#58a6ff; --warn:#d29922; --bad:#f85149;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 -apple-system,"Segoe UI",Roboto,"Microsoft Yahei",sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  header h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.5px}
+  header .sub{color:var(--mut);font-size:12px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--bad);display:inline-block;transition:.3s}
+  .dot.open{background:var(--acc);box-shadow:0 0 8px var(--acc)}
+  .spacer{flex:1}
+  .kpirow{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:14px 18px}
+  @media(max-width:1100px){.kpirow{grid-template-columns:repeat(3,1fr)}}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+  .kpi .v{font-size:22px;font-weight:700}
+  .kpi .l{color:var(--mut);font-size:12px;margin-top:2px}
+  .kpi .v.acc{color:var(--acc)} .kpi .v.warn{color:var(--warn)} .kpi .v.bad{color:var(--bad)} .kpi .v.blue{color:var(--acc2)} .kpi .v.mut{color:var(--mut)}
+  nav.tabs{display:flex;gap:4px;padding:0 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+  nav.tabs button{background:none;border:0;color:var(--mut);padding:11px 14px;cursor:pointer;font-size:14px;border-bottom:2px solid transparent}
+  nav.tabs button.active{color:var(--tx);border-bottom-color:var(--acc2)}
+  main{padding:16px 18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px}
+  .card h3{margin:0 0 10px;font-size:14px;display:flex;align-items:center;gap:8px}
+  .card h3 .btn{margin-left:auto}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:7px;padding:5px 11px;cursor:pointer;font-size:12px}
+  .btn:hover{border-color:var(--acc2)}
+  .btn.primary{background:var(--acc2);border-color:var(--acc2);color:#06121f}
+  table{;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--panel)}
+  tbody tr:hover{background:var(--panel2)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;border:1px solid var(--line)}
+  .pill.ok{color:var(--acc);border-color:var(--acc)} .pill.warn{color:var(--warn);border-color:var(--warn)}
+  .pill.bad{color:var(--bad);border-color:var(--bad)} .pill.mut{color:var(--mut)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  .funnel{display:flex;flex-direction:column;gap:6px}
+  .fstep{display:flex;align-items:center;gap:10px}
+  .fstep .bar{flex:1;height:18px;background:var(--panel2);border-radius:5px;overflow:hidden;position:relative}
+  .fstep .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--acc2),var(--acc));border-radius:5px}
+  .fstep .lab{width:96px;color:var(--mut);font-size:12px}
+  .fstep .num{width:54px;text-align:right;font-variant-numeric:tabular-nums}
+  .pager{display:flex;gap:8px;align-items:center;padding:10px 0;color:var(--mut);font-size:13px}
+  .muted{color:var(--mut)}
+  .err{color:var(--bad);font-size:12px;padding:6px 0}
+  .rowlink{cursor:pointer;color:var(--acc2)}
+  .kv{display:grid;grid-template-columns:160px 1fr;gap:6px 12px;font-size:13px}
+  .kv b{color:var(--mut);font-weight:500}
+  .toast{position:fixed;right:18px;bottom:18px;background:var(--panel2);border:1px solid var(--line);padding:9px 14px;border-radius:8px;font-size:13px;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}
+  .toast.show{opacity:1;transform:none}
+  .toplist{list-style:none;margin:0;padding:0;font-size:13px}
+  .toplist li{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12px}
+  .calwrap{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+  .caltable{border-collapse:collapse}
+  .caltable th,.caltable td{border:1px solid var(--line);padding:6px;vertical-align:top;height:56px;width:80px;text-align:left}
+  .caltable th{color:var(--mut);font-weight:600;text-align:center;height:auto}
+  .caltable td .pill{font-size:10px;padding:0 5px;margin-left:3px}
+  .calday{font-size:12px;color:var(--mut)}
+  .caldetail{max-width:420px;min-width:320px}
+  .caldetail li{padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .calmeta{font-size:12px;color:var(--mut);margin:6px 0}
+</style>
+</head>
+<body>
+<header>
+  <span id="wsdot" class="dot" title="实时通道"></span>
+  <h1>MSCMS v14 工作台</h1>
+  <span class="sub">B2 并行 · WebSocket 实时 · 同源 /workbench</span>
+  <span class="spacer"></span>
+  <span class="sub" id="clock"></span>
+</header>
+
+<div class="kpirow" id="kpis">
+  <div class="kpi"><div class="v" id="k_">–</div><div class="l">托管账号</div></div>
+  <div class="kpi"><div class="v acc" id="k_nurture">–</div><div class="l">养号账号</div></div>
+  <div class="kpi"><div class="v blue" id="k_devices">–</div><div class="l">在线云手机</div></div>
+  <div class="kpi"><div class="v" id="k_health">–</div><div class="l">平均健康分</div></div>
+  <div class="kpi"><div class="v warn" id="k_inbox">–</div><div class="l">未读消息</div></div>
+  <div class="kpi"><div class="v" id="k_modules">–</div><div class="l">模块 / 记录</div></div>
+</div>
+<div class="kpirow" id="kpis2" style="padding-top:0">
+  <div class="kpi"><div class="v acc" id="k_content_succ">–</div><div class="l">内容成功率</div></div>
+  <div class="kpi"><div class="v blue" id="k_closure">–</div><div class="l">因果闭环率</div></div>
+  <div class="kpi"><div class="v" id="k_quality2">–</div><div class="l">平均质量分</div></div>
+  <div class="kpi"><div class="v mut" id="k_engage">待回填</div><div class="l">互动率</div></div>
+  <div class="kpi"><div class="v mut" id="k_reply">待回填</div><div class="l">回复率</div></div>
+  <div class="kpi"><div class="v mut" id="k_resp">待回填</div><div class="l">平均响应时长</div></div>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="overview" class="active">概览</button>
+  <button data-tab="">账号</button>
+  <button data-tab="publish">发布</button>
+  <button data-tab="causal">因果链</button>
+  <button data-tab="inbox">互动</button>
+  <button data-tab="kpi">KPI</button>
+  <button data-tab="calendar">日历</button>
+  <button data-tab="attribution">归因</button>
+  <button data-tab="aireply">智能回复</button>
+  <button data-tab="competitor">竞品</button>
+</nav>
+
+<main id="view"></main>
+
+<div class="toast" id="toast"></div>
+
+<script src="./api-client.js"></script>
+<script src="./ws-events.js"></script>
+<script>
+((){
+  'use strict';
+  var api = window.MSCMS.api, ws = window.MSCMS.ws;
+  var state = { tab:'overview', acctPage:1, acctSize:20, publishPage:1, publishSize:15, publishCache:null,
+    calYear:new Date().getFullYear(), calMonth:new Date().getMonth(), calDays:{}, calCache:null, calRange:null,
+    replyQueue:[], competitors:null, attrCache:null, causalCache:null };
+  var view = document.getElementById('view');
+  var $ = (id){ return document.getElementById(id); };
+
+   toast(msg){ var t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout((){t.classList.remove('show');},2200); }
+   esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+   fmt(n){ if(n==null||isNaN(n)) return '–'; n=Number(n); if(n>=1000) return (n/1000).toFixed(n>=10000?0:1)+'k'; return String(n); }
+
+  // ---------- WS ----------
+  var live = ws.connect({
+    onStatus: (s){ $('wsdot').className = 'dot' + (s==='open'?' open':''); },
+    onMessage: (m){ handleWs(m); }
+  });
+   handleWs(m){
+    if(!m) return;
+    if(m.type==='snapshot' || m.type==='sync'){
+      onRealtimeSync(m); // #534 收尾：snapshot(连接即下发) + sync(数据变更去抖广播) 统一处理
+    }
+    if(m.type==='kpi'){ updateKpiCards(m.data); if(state.tab==='kpi') renderKpiView(m.data); }
+    if(m.type==='event'){ pulseWs(); } // 事件脉冲指示（实时通道活跃）
+    if(m.type==='topic'){
+      // 按 topic 刷新当前激活视图
+      if(m.topic==='inbox' && state.tab==='inbox') loadInbox();
+      if(m.topic==='account' && state.tab==='') loadAccounts();
+      if(m.topic==='publish' && state.tab==='publish') loadPublish();
+      if(m.topic==='causal' && state.tab==='causal') loadCausal();
+      if(m.topic==='kpi' || m.topic==='system') loadKpi();
+      toast('实时更新 · '+m.topic);
+    }
+  }
+  // 实时快照/同步到达：事件驱动刷新 KPI 卡 + 当前激活视图，彻底替代 3s 轮询（#534 / M2）
+   onRealtimeSync(m){
+    if(m.stats){
+      if(m.stats.total!=null) $('k_').textContent = fmt(m.stats.total);
+      if(m.stats.funnel) renderFunnel(m.stats.funnel);
+    }
+    loadKpi(); // 复用权威 /api/v14/kpi/overview 端点，避免双数据源不一致
+    var ld = (typeof loaders!=='undefined' && loaders) ? loaders[state.tab] : null;
+    if(ld) ld(); // 当前激活视图事件驱动刷新（仅刷新前台，零后台开销）
+    pulseWs();
+  }
+   pulseWs(){
+    var dot = $('wsdot');
+    if(dot){ dot.style.boxShadow='0 0 10px var(--acc)'; setTimeout((){ dot.style.boxShadow=''; }, 600); }
+  }
+
+  // ---------- KPI (M6 统一聚合) ----------
+  // 因果闭环率 = action.execute / content.generated（真实事件计数，单一窗口指标）
+   closureRate(causal){
+    if(!causal||!causal.stats||!causal.stats.eventCounts) return null;
+    var ec = causal.stats.eventCounts;
+    var gen = ec['content.generated']||0, act = ec['action.execute']||0;
+    if(!gen) return null;
+    return Math.round(act/gen*1000)/10; // 1 位小数
+  }
+   updateKpiCards(k){
+    if(!k||!k.ok) return;
+    if(k.){
+      $('k_').textContent = fmt(k..managed);
+      $('k_nurture').textContent = fmt(k..nurturing);
+      var h = k..avgHealthScore;
+      $('k_health').textContent = h!=null?h:'–';
+      $('k_health').className = 'v ' + ((h||0)>=70?'acc':((h||0)>=50?'warn':'bad'));
+    }
+    if(k.devices){ $('k_devices').textContent = fmt(k.devices.online); }
+    if(k.warehouse){ $('k_modules').textContent = fmt(k.warehouse.totalModules)+' / '+fmt(k.warehouse.totalRecords); }
+    if(k.content){
+      var sr = k.content.successRate; $('k_content_succ').textContent = sr!=null?sr+'%':'–';
+      $('k_content_succ').className = 'v ' + ((sr||0)>=70?'acc':((sr||0)>=50?'warn':'bad'));
+      var q = k.content.avgQualityScore; $('k_quality2').textContent = q!=null?q:'–';
+    }
+    updateKpiRow2(k, state.causalCache);
+  }
+  // 第二行运营效率 KPI（统一指标组件）：完成率(闭环)/互动率/回复率/响应时长
+   updateKpiRow2(k, causal){
+    var cl = closureRate(causal);
+    $('k_closure').textContent = cl!=null?cl+'%':'–';
+    $('k_closure').className = 'v ' + (cl==null?'mut':(cl>=30?'acc':(cl>=10?'warn':'bad')));
+    // 互动率 / 回复率 / 响应时长：真实数据暂缺，诚实「待回填」，绝不编造
+    $('k_engage').textContent = '待回填'; $('k_engage').className = 'v mut';
+    $('k_reply').textContent = '待回填'; $('k_reply').className = 'v mut';
+    $('k_resp').textContent = '待回填'; $('k_resp').className = 'v mut';
+  }
+   loadKpi(){
+    api.get('/api/v14/kpi/overview').then((k){ updateKpiCards(k); if(state.tab==='kpi') renderKpiView(k); }).catch((){});
+    api.get('/api/message-inbox/summary').then((s){
+      var u = (s&&s.unreadTotal!=null)?s.unreadTotal:0;
+      $('k_inbox').textContent = fmt(u);
+      $('k_inbox').className = 'v ' + (u>0?'warn':'');
+    }).catch((){});
+    api.get('/api/v14/causal-chain/status').then((c){
+      state.causalCache = c; updateKpiRow2(null, c);
+    }).catch((){});
+  }
+   loadKpiView(){
+    view.innerHTML = '<div class="card"><h3>统一 KPI 看板 <button class="btn primary" onclick="window.__wb.refresh()">刷新</button></h3>'+
+      '<div id="kpiview"><span class="muted">加载中…</span></div>'+
+      '<div class="muted" style="margin-top:10px">数据源：/api/v14/kpi/overview（实时聚合）· 每 20s 经 WebSocket 推送刷新</div></div>';
+    api.get('/api/v14/kpi/overview').then(renderKpiView).catch((e){ var b=$('kpiview'); if(b) b.innerHTML='<div class="err">KPI 加载失败：'+esc(e.message)+'</div>'; });
+  }
+   renderKpiView(k){
+    var box = $('kpiview'); if(!box) return;
+    if(!k||!k.ok){ box.innerHTML='<div class="err">KPI 暂不可用：'+esc((k&&k.reason)||(k&&k.error)||'未知')+'</div>'; return; }
+    var mb = k..managedByPlatform||{}, nb = k..nurturingByPlatform||{};
+     pbar(obj){
+      var ks = Object.keys(obj); if(!ks.length) return '<span class="muted">无</span>';
+      var mx = Math.max.apply(null, ks.map((x){return obj[x];}));
+      return ks.map((x){ var pct = mx? Math.round(obj[x]/mx*100):0; return '<div class="fstep"><span class="lab">'+esc(x)+'</span><span class="bar"><i style="width:'+pct+'%"></i></span><span class="num">'+fmt(obj[x])+'</span></div>'; }).join('');
+    }
+    var c = k.content||{}, cc = k.causalChain||{}, wh = k.warehouse||{};
+    var successRate = c.successRate!=null? c.successRate+'%':'–';
+    var comp = cc.completionPct!=null? cc.completionPct+'%':'–';
+    var phases = (cc.phases||[]).map((p){
+      return '<div class="fstep"><span class="lab">'+esc(p.label)+'</span><span class="bar"><i style="width:'+(p.progress||0)+'%"></i></span><span class="num">'+fmt(p.current)+'/'+fmt(p.target)+'</span><span class="pill '+(p.status==='completed'?'ok':(p.status==='blocked'?'bad':'warn'))+'">'+esc(p.status||'')+'</span></div>';
+    }).join('') || '<span class="muted">无阶段</span>';
+    var html = '<div class="grid2">';
+    html += '<div class="card"><h3>账号与设备</h3><div class="kv">';
+    html += '<b>托管账号(MySQL)</b><span>'+fmt(k..managed)+'</span>';
+    html += '<b>养号账号</b><span>'+fmt(k..nurturing)+'</span>';
+    html += '<b>平均健康分</b><span>'+(k..avgHealthScore!=null?k..avgHealthScore:'–')+'</span>';
+    html += '<b>风险账号</b><span>'+fmt(k..riskyAccounts)+'</span>';
+    html += '<b>云手机在线</b><span>'+fmt(k.devices.online)+'/'+fmt(k.devices.total)+'</span>';
+    html += '<b>模式</b><span>'+esc(k.devices.mode||'-')+'</span>';
+    html += '</div><div class="muted" style="margin-top:8px">托管账号平台分布</div><div class="funnel">'+pbar(mb)+'</div>';
+    html += '<div class="muted" style="margin-top:8px">养号账号平台分布</div><div class="funnel">'+pbar(nb)+'</div></div>';
+    html += '<div class="card"><h3>内容生成</h3><div class="kv">';
+    html += '<b>生成总数</b><span>'+fmt(c.totalGenerated)+'</span>';
+    html += '<b>成功 / 失败</b><span>'+fmt(c.successCount)+' / '+fmt(c.failCount)+'</span>';
+    html += '<b>成功率</b><span>'+successRate+'</span>';
+    html += '<b>平均质量分</b><span>'+(c.avgQualityScore!=null?c.avgQualityScore:'–')+'</span>';
+    html += '</div><h3 style="">因果链完成度</h3><div class="kv">';
+    html += '<b>总周期</b><span>'+fmt(cc.totalCycles)+'</span>';
+    html += '<b>总推进</b><span>'+fmt(cc.totalAdvancements)+'</span>';
+    html += '<b>阻塞</b><span>'+fmt(cc.totalBlocks)+'</span>';
+    html += '<b>整体完成度</b><span>'+comp+'</span></div>';
+    html += '<div class="funnel" style="margin-top:8px">'+phases+'</div></div>';
+    html += '</div>';
+    html += '<div class="card"><h3>数仓与归因</h3><div class="kv">';
+    html += '<b>模块数</b><span>'+fmt(wh.totalModules)+'</span>';
+    html += '<b>记录总数</b><span>'+fmt(wh.totalRecords)+'</span>';
+    html += '<b>发布记录</b><span>'+fmt(k.publish.total)+'</span>';
+    html += '</div>';
+    html += '<div class="pill mut" style="margin-top:8px">互动归因：'+esc(k.engagement.note)+'</div>';
+    html += '<div class="muted" style="margin-top:6px">生成于 '+esc((k.generatedAt||'').replace('T',' ').slice(0,19))+'</div></div>';
+    // 运营效率 KPI（统一指标卡：完成率/互动率/回复率/响应时长）
+    var cl = closureRate(state.causalCache);
+    html += '<div class="card"><h3>运营效率 KPI（统一指标）</h3><div class="kv">';
+    html += '<b>内容成功率</b><span>'+(c.successRate!=null?c.successRate+'%':'–')+'</span>';
+    html += '<b>因果闭环率<small> action.execute / content.generated</small></b><span>'+(cl!=null?cl+'%':'待回填')+'</span>';
+    html += '<b>平均质量分</b><span>'+(c.avgQualityScore!=null?c.avgQualityScore:'–')+'</span>';
+    html += '<b>互动率<small> (likes+comments) / 曝光</small></b><span class="pill mut">待回填 · reach=0</span>';
+    html += '<b>回复率<small> 已回 / 收到</small></b><span class="pill mut">待回填 · 无 replied 字段</span>';
+    html += '<b>平均响应时长</b><span class="pill mut">待回填 · 无时间戳</span>';
+    html += '</div><div class="muted" style="margin-top:6px">互动率 / 回复率 / 响应时长 当前无真实数据，已诚实标注「待回填」，绝不编造数值。补齐需：发布回采 reach&gt;0、收件箱增加 replied 标记、回复落库时间戳。</div></div>';
+    box.innerHTML = html;
+  }
+
+  // ---------- 概览 ----------
+   renderOverview(ov){
+    var cc = (ov&&ov.causalChain)||{};
+    var html = '<div class="grid2">';
+    html += '<div class="card"><h3>因果链漏斗（7 阶段）</h3><div class="funnel" id="fundom"></div>';
+    html += '<div class="muted" style="margin-top:10px" id="ccstat"></div></div>';
+    html += '<div class="card"><h3>数仓概览</h3><div class="kv" id="ovkv"></div></div>';
+    html += '</div>';
+    view.innerHTML = html;
+    renderFunnel((cc.phases||[]).map((p){return {label:p.label,current:p.current,target:p.target,status:p.status};}));
+    if(cc.stats) $('ccstat').innerHTML = '周期 '+fmt(cc.stats.totalCycles)+' · 推进 '+fmt(cc.stats.totalAdvancements)+' · 阻塞 '+fmt(cc.stats.totalBlocks);
+    if(ov&&ov.summary){
+      var s=ov.summary;
+      $('ovkv').innerHTML =
+        '<b>模块数</b><span>'+fmt(s.totalModules)+'</span>'+
+        '<b>记录总数</b><span>'+fmt(s.totalRecords)+'</span>'+
+        '<b>数据层级</b><span>'+esc(s.level||'-')+'</span>'+
+        '<b>说明</b><span>'+esc(s.description||'-')+'</span>';
+    }
+  }
+   renderFunnel(steps){
+    var box = $('fundom'); if(!box) return;
+    if(!steps||!steps.length){ box.innerHTML='<span class="muted">暂无漏斗数据</span>'; return; }
+    var max = Math.max.apply(null, steps.map((s){return s.target||s.current||1;}));
+    box.innerHTML = steps.map((s){
+      var pct = max? Math.round((Math.min(s.current||0,s.target||0)/max)*100):0;
+      var cls = s.status==='completed'?'ok':(s.status==='active'||s.status==='blocked'?'warn':'mut');
+      return '<div class="fstep"><span class="lab">'+esc(s.label)+'</span>'+
+        '<span class="bar"><i style="width:'+pct+'%"></i></span>'+
+        '<span class="num">'+fmt(s.current)+'/'+fmt(s.target)+'</span>'+
+        '<span class="pill '+cls+'">'+esc(s.status||'')+'</span></div>';
+    }).join('');
+  }
+
+  // ---------- 账号 ----------
+   loadAccounts(){
+    view.innerHTML = '<div class="card"><h3>托管账号 <button class="btn primary" onclick="window.__wb.refresh()">刷新</button></h3>'+
+      '<div id="acctbody"><span class="muted">加载中…</span></div>'+
+      '<div class="pager" id="acctpager"></div></div>';
+    api.get('/api/v14/managed-',{query:{page:state.acctPage,pageSize:state.acctSize,fields:'id,,,status,,,,'}}).then((r){
+      var rows = (r&&r.)||[];
+      var total = (r&&r.total!=null)?r.total:rows.length;
+      var body = rows.map((a){
+        var hs = a.!=null?Number(a.):null;
+        var hc = hs==null?'mut':(hs>=70?'ok':(hs>=50?'warn':'bad'));
+        var st = a.status||'unknown';
+        return '<tr><td>'+esc(a.id)+'</td><td>'+esc(a.||'-')+'</td><td class="rowlink">'+esc(a.||'-')+'</td>'+
+          '<td><span class="pill '+hc+'">'+esc(st)+'</span></td>'+
+          '<td>'+(hs==null?'–':hs)+'</td>'+
+          '<td>'+(a.!=null?a.:'–')+'</td>'+
+          '<td>'+(a.!=null?a.:'–')+'</td>'+
+          '<td class="muted">'+esc(a.||'-')+'</td></tr>';
+      }).join('');
+      $('acctbody').innerHTML = '<table><thead><tr><th>ID</th><th>平台</th><th>用户名</th><th>状态</th><th>健康分</th><th>封号风险</th><th>养号天数</th><th>绑定设备</th></tr></thead><tbody>'+body+'</tbody></table>';
+      var pages = Math.max(1, Math.ceil(total/state.acctSize));
+      $('acctpager').innerHTML = '共 '+fmt(total)+' 条 · 第 '+state.acctPage+'/'+pages+' 页 '+
+        '<button class="btn" '+(state.acctPage<=1?'disabled':'')+' onclick="window.__wb.acct(-1)">上一页</button>'+
+        '<button class="btn" '+(state.acctPage>=pages?'disabled':'')+' onclick="window.__wb.acct(1)">下一页</button>';
+    }).catch((e){ $('acctbody').innerHTML='<div class="err">账号加载失败：'+esc(e.message)+'</div>'; });
+  }
+
+  // ---------- 发布 ----------
+   loadPublish(){
+    view.innerHTML = '<div class="card"><h3>发布历史 <button class="btn primary" onclick="window.__wb.refresh()">刷新</button></h3>'+
+      '<div id="pubbody"><span class="muted">加载中…</span></div>'+
+      '<div class="pager" id="pubpager"></div></div>';
+    api.get('/api/v14/publish/history',{query:{page:1,pageSize:50}}).then((r){
+      state.publishCache = r||{};
+      renderPublish();
+    }).catch((e){ $('pubbody').innerHTML='<div class="err">发布加载失败：'+esc(e.message)+'</div>'; });
+  }
+   renderPublish(){
+    var r = state.publishCache||{};
+    var total = r.total!=null?r.total:0;
+    var posts = r.posts||[];
+    var byP = (r.byPlatform||[]).map((p){return esc(p.)+' '+fmt(p.total);}).join(' · ');
+    var body = posts.slice((state.publishPage-1)*state.publishSize, state.publishPage*state.publishSize).map((p){
+      var u = p.url||(p.links&&p.links[0]&&p.links[0].url)||'-';
+      return '<tr><td class="muted">'+esc(p.id)+'</td><td>'+esc(p.||'-')+'</td><td>'+esc((p.title||'(无标题)').slice(0,40))+'</td>'+
+        '<td><a class="rowlink" href="'+esc(u)+'" target="_blank" rel="noopener">打开</a></td>'+
+        '<td class="muted">'+(p.published_at||p.||'-')+'</td></tr>';
+    }).join('');
+    $('pubbody').innerHTML = '<div class="muted" style="margin-bottom:8px">总计 '+fmt(total)+' · 平台分布：'+(byP||'-')+'</div>'+
+      '<table><thead><tr><th>ID</th><th>平台</th><th>标题</th><th>链接</th><th>时间</th></tr></thead><tbody>'+(body||'<tr><td colspan="5" class="muted">无发布记录</td></tr>')+'</tbody></table>';
+    var pages = Math.max(1, Math.ceil(posts.length/state.publishSize));
+    $('pubpager').innerHTML = '第 '+state.publishPage+'/'+pages+' 页 '+
+      '<button class="btn" '+(state.publishPage<=1?'disabled':'')+' onclick="window.__wb.pub(-1)">上一页</button>'+
+      '<button class="btn" '+(state.publishPage>=pages?'disabled':'')+' onclick="window.__wb.pub(1)">下一页</button>';
+  }
+
+  // ---------- 因果链 ----------
+   loadCausal(){
+    view.innerHTML = '<div class="card"><h3>因果链状态 <button class="btn primary" onclick="window.__wb.refresh()">刷新</button></h3>'+
+      '<div id="ccbody"><span class="muted">加载中…</span></div></div>';
+    api.get('/api/v14/causal-chain/status').then((r){
+      var evs = (r.recentEvents||r.causalEvents||[]).slice(0,20);
+      var stats = r.stats||{};
+      var html = '<div class="kv">';
+      html += '<b>启用</b><span>'+(r.enabled?'是':'否')+'</span>';
+      html += '<b>自动推进</b><span>'+(r.autoAdvance?'是':'否')+'</span>';
+      html += '<b>总周期</b><span>'+fmt(stats.totalCycles)+'</span>';
+      html += '<b>总推进</b><span>'+fmt(stats.totalAdvancements)+'</span>';
+      html += '<b>停滞阻塞</b><span>'+(fmt(stats.totalBlocks))+'</span>';
+      html += '</div>';
+      if(r.chainGate) html += '<div class="muted" style="margin:8px 0">门控：'+esc(JSON.stringify(r.chainGate).slice(0,160))+'</div>';
+      html += '<h3 style="">最近事件</h3><ul class="toplist">';
+      html += evs.map((e){ return '<li><span>'+esc((e.event||e.type||e.phase||'-'))+'</span><span class="muted">'+(e.at||e.ts||e.time||'-')+'</span></li>'; }).join('') || '<li class="muted">暂无事件</li>';
+      html += '</ul>';
+      $('ccbody').innerHTML = html;
+    }).catch((e){ $('ccbody').innerHTML='<div class="err">因果链加载失败：'+esc(e.message)+'</div>'; });
+  }
+
+  // ---------- 互动 (P1-B 统一收件箱 v2：真实分组 + 本地情感留桩) ----------
+  // 本地词典情感打分：仅对真实 body 文本生效；当前消息体为空 → 中性，绝不编造
+  var SENT_POS=['love','great','thanks','nice','awesome','good','cool','amazing','perfect','happy','👍','赞','好','棒','喜欢','感谢','完美'];
+  var SENT_NEG=['hate','bad','awful','angry','sad','wtf','broken','scam','spam','shit','垃圾','差','烂','骗','讨厌','愤怒'];
+   localSentiment(text){
+    if(!text) return 'neutral';
+    var t=String(text).toLowerCase();
+    var p=0,n=0;
+    SENT_POS.forEach((w){ if(t.indexOf(w.toLowerCase())>=0) p++; });
+    SENT_NEG.forEach((w){ if(t.indexOf(w.toLowerCase())>=0) n++; });
+    if(p>n) return 'pos'; if(n>p) return 'neg'; return 'neutral';
+  }
+   loadInbox(){
+    view.innerHTML = '<div class="card"><h3>互动 / 收件箱 (P1-B v2) <button class="btn primary" onclick="window.__wb.refresh()">刷新</button></h3>'+
+      '<div id="inbody"><span class="muted">加载中…</span></div></div>';
+    api.get('/api/message-inbox/summary').then((s){
+      s = s||{}; var ba = s.byAccount||{};
+      var accs = Object.keys(ba);
+      if(!accs.length){ $('inbody').innerHTML='<div class="muted">暂无收件箱账号</div>'; return; }
+      var reqs = accs.map((a){ return api.get('/api/message-inbox/'+encodeURIComponent(a)).then((m){return {acc:a, m:m||{}};}).catch((){return {acc:a, m:{}};}); });
+      Promise.all(reqs).then((all){
+        var groups=[], totalPos=0,totalNeg=0,totalNeu=0;
+        all.forEach((x){
+          var items=(x.m&&x.m.items)||[];
+          var byType={};
+          items.forEach((it){
+            var ty=it.type||'unknown';
+            byType[ty]=(byType[ty]||0)+1;
+            var sent=localSentiment(it.body);
+            if(sent==='pos')totalPos++; else if(sent==='neg')totalNeg++; else totalNeu++;
+          });
+          groups.push({acc:x.acc, items:items, byType:byType, unread:(x.m.unread||0)});
+        });
+        var html='<div class="kv">'+
+          '<b>消息总数</b><span>'+fmt(s.total)+'</span>'+
+          '<b>未读总数</b><span>'+fmt(s.unreadTotal)+'</span>'+
+          '<b>账号数</b><span>'+accs.length+'</span></div>';
+        html+='<div class="muted" style="margin:8px 0">本地情感分层（仅对真实 body 文本打分）：正面 '+totalPos+' · 负面 '+totalNeg+' · 中性 '+totalNeu+'</div>';
+        groups.forEach((g){
+          var ty=Object.keys(g.byType).map((k){return esc(k)+' '+g.byType[k];}).join(' · ');
+          html+='<div class="card" style="margin-top:10px"><h3>'+esc(g.acc)+' <span class="pill warn">未读 '+fmt(g.unread)+'</span></h3>';
+          html+='<div class="calmeta">类型分布：'+(ty||'-')+'</div>';
+          var rows=g.items.slice(0,20).map((it){
+            var sent=localSentiment(it.body);
+            var sp=sent==='pos'?'<span class="pill ok">正面</span>':(sent==='neg'?'<span class="pill bad">负面</span>':'<span class="pill mut">中性</span>');
+            var body=it.body?esc(it.body.slice(0,60)):('<span class="muted">'+(it.title||it.type||'(无文本)')+'</span>');
+            return '<li><span class="pill mut">'+esc(it.type||'-')+'</span> '+sp+' '+body+' <span class="muted">'+(it.receivedAt||'').slice(0,10)+'</span></li>';
+          }).join('');
+          html+='<ul class="toplist">'+rows+'</ul></div>';
+        });
+        html+='<div class="pill mut" style="margin-top:10px">情感文本打分待 P1-E 评论/私信接入（当前消息均为通知类、body 为空，已按中性诚实处理，未编造）</div>';
+        $('inbody').innerHTML=html;
+      });
+    }).catch((e){ $('inbody').innerHTML='<div class="err">收件箱加载失败：'+esc(e.message)+'</div>'; });
+  }
+
+  // ---------- 日历 (P1-A 内容日历：真实发布/内容数据聚合) ----------
+   pad2(n){ n=Number(n); return n<10?('0'+n):(''+n); }
+   isoDay(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+   loadCalendar(){
+    view.innerHTML = '<div class="card"><h3>内容日历 <button class="btn primary" onclick="window.__wb.refresh()">刷新</button></h3>'+
+      '<div id="calbody"><span class="muted">聚合真实发布/内容数据中…</span></div></div>';
+    Promise.all([
+      api.get('/api/v14/data/publish',{query:{limit:2000, fields:'id,content_id,account_id,published_at,reach,likes,comments,shares'}}),
+      api.get('/api/v14/data/content',{query:{limit:2000, fields:'id,content_type,quality_score,status,used_count,account_id,createdAt,title'}})
+    ]).then((r){
+      var pub = (r[0]&&(r[0].items||[]))||[], con = (r[1]&&(r[1].items||[]))||[];
+      state.calCache = { pub:pub, con:con };
+      var days = {}, mins=null, maxs=null;
+      pub.forEach((p){
+        var ds = (p.published_at||'').slice(0,10); if(!ds) return;
+        days[ds] = days[ds]||{published:[],content:[]};
+        days[ds].published.push(p);
+        if(ds<mins||mins==null) mins=ds; if(ds>maxs||maxs==null) maxs=ds;
+      });
+      con.forEach((c){
+        var ds = (c.createdAt||'').slice(0,10); if(!ds) return;
+        days[ds] = days[ds]||{published:[],content:[]};
+        days[ds].content.push(c);
+        if(ds<mins||mins==null) mins=ds; if(ds>maxs||maxs==null) maxs=ds;
+      });
+      state.calDays = days;
+      state.calRange = { from:mins, to:maxs };
+      // 默认定位到数据所在月份（取最新数据月）
+      if(maxs){ state.calYear=+maxs.slice(0,4); state.calMonth=+maxs.slice(5,7)-1; }
+      renderCalendar();
+    }).catch((e){ var b=$('calbody'); if(b) b.innerHTML='<div class="err">日历加载失败：'+esc(e.message)+'</div>'; });
+  }
+   renderCalendar(){
+    var box = $('calbody'); if(!box) return;
+    var year=state.calYear, month=state.calMonth;
+    var first=new Date(year,month,1), startDow=(first.getDay()+6)%7, dim=new Date(year,month+1,0).getDate();
+    var cells=[]; for(var i=0;i<startDow;i++) cells.push(null); for(var d=1;d<=dim;d++) cells.push(d);
+    var wd=['一','二','三','四','五','六','日'], head=wd.map((w){return '<th>'+w+'</th>';}).join('');
+    var rows='';
+    for(var r=0;r<cells.length;r+=7){
+      rows+='<tr>';
+      for(var c=0;c<7;c++){
+        var d=cells[r+c];
+        if(d==null){ rows+='<td></td>'; continue; }
+        var ds=year+'-'+pad2(month+1)+'-'+pad2(d), ev=state.calDays[ds];
+        var p=(ev&&ev.published.length)||0, cn=(ev&&ev.content.length)||0;
+        var badge = (p?'<span class="pill ok">P'+p+'</span>':'') + (cn?'<span class="pill warn">C'+cn+'</span>':'');
+        var cellStyle = ev?' style="background:var(--panel2);cursor:pointer"':'';
+        rows+='<td'+cellStyle+' onclick="window.__wb.calDay(\''+ds+'\')"><div class="calday">'+d+'</div>'+badge+'</td>';
+      }
+      rows+='</tr>';
+    }
+    var rng = state.calRange;
+    var rangeNote = (rng&&rng.from) ? ('真实数据范围：'+rng.from+' → '+rng.to) : '暂无真实发布/内容数据';
+    var totalP = (state.calCache?state.calCache.pub.length:0), totalC = (state.calCache?state.calCache.con.length:0);
+    var html = '<div class="calwrap">';
+    html += '<div><div class="calmeta"><button class="btn" onclick="window.__wb.calNav(-1)">‹</button> '+year+'年'+(month+1)+'月 <button class="btn" onclick="window.__wb.calNav(1)">›</button></div>';
+    html += '<table class="caltable"><thead><tr>'+head+'</tr></thead><tbody>'+rows+'</tbody></table>';
+    html += '<div class="calmeta">'+rangeNote+'</div>';
+    html += '<div class="calmeta">发布 '+totalP+' 条 · 内容 '+totalC+' 条 · 图例：<span class="pill ok">P</span> 已发布 <span class="pill warn">C</span> 内容生成</div>';
+    html += '<div class="pill mut">无 scheduled 队列：当前 publish 记录均无待发布(scheduled)状态，日历仅展示真实已发布/已生成事件</div></div>';
+    html += '<div class="caldetail card"><h3 style="margin-top:0">当日明细 <span class="muted" id="caldlabel">—</span></h3><ul class="toplist" id="caldlist"><li class="muted">点击左侧有标记日期查看</li></ul></div>';
+    html += '</div>';
+    box.innerHTML = html;
+  }
+   renderCalDay(ds){
+    var lab=$('caldlabel'), list=$('caldlist'); if(!list) return;
+    lab.textContent = ds;
+    var ev = state.calDays[ds];
+    if(!ev||(!ev.published.length&&!ev.content.length)){ list.innerHTML='<li class="muted">当日无事件</li>'; return; }
+    var li=[];
+    ev.published.forEach((p){
+      li.push('<li><span class="pill ok">已发布</span> '+esc(p.||'-')+' · '+esc(p.account_id||'-')+' <a class="rowlink" href="'+esc(p.publish_url||'#')+'" target="_blank" rel="noopener">链接</a></li>');
+    });
+    ev.content.forEach((c){
+      li.push('<li><span class="pill warn">内容</span> '+esc(c.content_type||'-')+' · '+esc(c.||'-')+' · '+(c.status||'-')+' · '+esc((c.title||'(无标题)').slice(0,30))+'</li>');
+    });
+    list.innerHTML = li.join('');
+  }
+
+  // ---------- 归因 (P1-D 素材归因飞轮：真实量+质量归因，发布/内容两侧独立统计) ----------
+   loadAttribution(){
+    view.innerHTML = '<div class="card"><h3>素材归因飞轮 (P1-D) <button class="btn primary" onclick="window.__wb.refresh()">刷新</button></h3>'+
+      '<div id="attrbody"><span class="muted">聚合真实发布/内容关联中…</span></div></div>';
+    Promise.all([
+      api.get('/api/v14/data/publish',{query:{limit:2000, fields:'id,content_id,account_id,published_at,reach,likes,comments,shares'}}),
+      api.get('/api/v14/data/content',{query:{limit:2000, fields:'id,content_type,quality_score,status,used_count,account_id,createdAt,title'}})
+    ]).then((r){
+      var pub=(r[0]&&(r[0].items||[]))||[], con=(r[1]&&(r[1].items||[]))||[];
+      var cmap={}; con.forEach((c){ cmap[c.id]=c; });
+      // 发布侧真实指标
+      var byAcc={}, engReady=0, linked=0;
+      pub.forEach((p){
+        if(cmap[p.content_id]) linked++;
+        var acc=p.account_id||'(未知)'; byAcc[acc]=(byAcc[acc]||0)+1;
+        var e=Number(p.reach||0)+Number(p.likes||0)+Number(p.comments||0)+Number(p.shares||0);
+        if(e>0) engReady++;
+      });
+      // 内容库侧真实指标（独立统计，不依赖发布关联）
+      var cByType={}, cByQ={low:0,mid:0,high:0}, conWithQ=0;
+      con.forEach((c){
+        var ct=c.content_type||c.type||'未知'; cByType[ct]=(cByType[ct]||0)+1;
+        var q=c.quality_score!=null?Number(c.quality_score):null;
+        if(q==null){} else { conWithQ++; if(q<=40) cByQ.low++; else if(q<=70) cByQ.mid++; else cByQ.high++; }
+      });
+      var topByUsed=con.slice().sort((a,b){return (b.used_count||0)-(a.used_count||0);}).slice(0,8);
+      state.attrCache={pub:pub.length,con:con.length,linked:linked,engReady:engReady};
+      var box=$('attrbody');
+      var html='<div class="kv">'+
+        '<b>发布总数</b><span>'+pub.length+'（全部 tumblr）</span>'+
+        '<b>内容总数</b><span>'+con.length+'</span>'+
+        '<b>发布↔内容 关联</b><span class="'+(linked>0?'ok':'warn')+'">'+linked+' / '+pub.length+' 已关联（content_id 指向现有内容库）</span>'+
+        '<b>互动已回填</b><span class="'+(engReady>0?'ok':'warn')+'">'+engReady+' / '+pub.length+'（'+(pub.length-engReady)+' 待回填 reach/likes 为空）</span>'+
+        '</div>';
+      html+='<h3 style="">归因飞轮（真实流转）</h3>'+
+        '<div class="kv"><b>① 内容生成</b><span>'+con.length+' 条 · 质量分非空 '+conWithQ+'</span>'+
+        '<b>② 已发布</b><span>'+pub.length+' 条</span>'+
+        '<b>③ 互动归因</b><span class="'+(engReady>0?'ok':'warn')+'">'+engReady+' 条有真实互动 · '+(pub.length-engReady)+' 条待回填</span></div>';
+      html+='<h3 style="">发布量 Top 账号（真实，发布侧）</h3><ul class="toplist">';
+      Object.keys(byAcc).sort((a,b){return byAcc[b]-byAcc[a];}).slice(0,10).forEach((a){ html+='<li><span class="pill mut">'+esc(a)+'</span> '+byAcc[a]+' 条</li>'; });
+      html+='</ul>';
+      html+='<h3 style="">内容库类型分布（真实，内容侧）</h3><table class="caltable" style="width:auto"><thead><tr><th>内容类型</th><th>条数</th></tr></thead><tbody>';
+      Object.keys(cByType).sort((a,b){return cByType[b]-cByType[a];}).forEach((k){ html+='<tr><td>'+esc(k)+'</td><td>'+cByType[k]+'</td></tr>'; });
+      html+='</tbody></table>';
+      html+='<h3 style="">内容质量分桶（真实，内容侧）</h3><div class="kv"><b>低 (≤40)</b><span>'+cByQ.low+'</span><b>中 (41–70)</b><span>'+cByQ.mid+'</span><b>高 (71–100)</b><span>'+cByQ.high+'</span></div>';
+      html+='<h3 style="">内容复用 Top（used_count 真实）</h3><ul class="toplist">';
+      topByUsed.forEach((c){ html+='<li><span class="pill mut">'+esc(c.content_type||'-')+'</span> 复用 '+fmt(c.used_count)+' · '+esc((c.title||'(无标题)').slice(0,30))+'</li>'; });
+      html+='</ul>';
+      if(linked===0){
+        html+='<div class="pill bad" style="margin-top:10px">数据质量缺口：'+pub.length+' 条发布的 content_id 均未指向当前内容库（关联 '+linked+'）。飞轮「内容→发布」逐条归因链路断点，需修复 content_id 持久化（发布时写入真实 content.id）后方可打通。当前发布侧与内容侧指标均真实独立展示，未编造关联。</div>';
+      } else {
+        html+='<div class="pill mut" style="margin-top:10px">飞轮为真实数据驱动；互动归因因 reach/likes 空而标「待回填」，不编造互动数值</div>';
+      }
+      box.innerHTML=html;
+    }).catch((e){ var b=$('attrbody'); if(b) b.innerHTML='<div class="err">归因加载失败：'+esc(e.message)+'</div>'; });
+  }
+
+  // ---------- 智能回复 (P1-E：本地规则意图识别 + 草稿 + 人工审核队列) ----------
+   classifyIntent(it){
+    var type=it.type||'', body=String(it.body||'').toLowerCase();
+    if(type==='command') return '指令';
+    if(/[?？]|\bhow\b|\bwhy\b|怎么|如何|为什么|吗/.test(body)) return '咨询';
+    if(/投诉|退款|差|烂|骗|讨厌|愤怒|scam|broken|bad|hate/.test(body)) return '负面';
+    if(type==='post_activity') return '互动';
+    if(type==='notification') return '通知';
+    return '其他';
+  }
+   draftReply(it, intent){
+    switch(intent){
+      case '咨询': return '感谢您的关注！关于您的疑问，我们会尽快为您详细解答，也欢迎私信告诉我们更多细节。';
+      case '负面': return '非常抱歉给您带来不好的体验。请您私信具体问题描述，我们会第一时间跟进处理。';
+      case '指令': return '已收到指令，正在为您处理，稍后回复结果。';
+      case '互动': return '谢谢支持！期待继续为您带来有价值的内容。';
+      case '通知': return '（系统通知类，通常无需回复）';
+      default: return '感谢您的消息！我们会尽快回复您。';
+    }
+  }
+   loadAiReply(){
+    view.innerHTML='<div class="card"><h3>智能回复助手 (P1-E) <button class="btn primary" onclick="window.__wb.refresh()">刷新</button></h3>'+
+      '<div id="aibody"><span class="muted">拉取真实收件箱并识别意图中…</span></div></div>';
+    api.get('/api/message-inbox/summary').then((s){
+      s=s||{}; var ba=s.byAccount||{}; var accs=Object.keys(ba);
+      if(!accs.length){ $('aibody').innerHTML='<div class="muted">暂无收件箱账号</div>'; return; }
+      var reqs=accs.map((a){ return api.get('/api/message-inbox/'+encodeURIComponent(a)).then((m){return {acc:a,m:m||{}};}).catch((){return {acc:a,m:{}};}); });
+      Promise.all(reqs).then((all){
+        var items=[];
+        all.forEach((x){ (x.m.items||[]).forEach((it){ it._acc=x.acc; items.push(it); }); });
+        var need=items.filter((it){ return it.body && it.body.trim(); });
+        var html='<div class="calmeta">本地规则引擎（非 LLM）：识别意图 + 生成草稿，<b>不自动发送</b>，需人工审核后加入待发送队列。共 '+items.length+' 条消息，其中 '+need.length+' 条含正文可回复。</div>';
+        if(!need.length){ html+='<div class="muted">当前无含正文的消息需回复</div>'; $('aibody').innerHTML=html; return; }
+        html+='<div id="ailist">';
+        need.forEach((it,idx){
+          var sent=localSentiment(it.body), intent=classifyIntent(it);
+          var sp=sent==='pos'?'<span class="pill ok">正面</span>':(sent==='neg'?'<span class="pill bad">负面</span>':'<span class="pill mut">中性</span>');
+          var ip=intent==='负面'?'<span class="pill bad">'+esc(intent)+'</span>':(intent==='咨询'?'<span class="pill warn">'+esc(intent)+'</span>':'<span class="pill mut">'+esc(intent)+'</span>');
+          var draft=draftReply(it,intent);
+          html+='<div class="card" style="margin-top:10px"><h3>'+esc(it._acc)+' <span class="pill mut">'+esc(it.type||'-')+'</span> '+ip+' '+sp+'</h3>'+
+            '<div class="calmeta">'+esc(it.body.slice(0,80))+'</div>'+
+            '< id="draft_'+idx+'" rows="3" style=";margin-top:6px;background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:8px;font:13px/1.5 inherit">'+esc(draft)+'</>'+
+            '<button class="btn primary" style="margin-top:6px" onclick="window.__wb.queueReply('+idx+',\''+esc(it._acc)+'\')">加入待发送队列</button>'+
+            '</div>';
+        });
+        html+='</div>';
+        html+='<h3 style="margin-top:16px">待发送队列（'+state.replyQueue.length+'）</h3><ul class="toplist" id="aiq">';
+        html+=state.replyQueue.map((q){return '<li><span class="pill mut">'+esc(q.acc)+'</span> '+esc((q.text||'').slice(0,40))+' <span class="pill warn">待审核</span></li>';}).join('')||'<li class="muted">队列为空</li>';
+        html+='</ul><div class="pill mut">草稿经人工审核后，可在后续接入真实发送 API 时一键发出；当前仅为本地队列，未触达任何平台</div>';
+        $('aibody').innerHTML=html;
+      });
+    }).catch((e){ $('aibody').innerHTML='<div class="err">智能回复加载失败：'+esc(e.message)+'</div>'; });
+  }
+
+  // ---------- 竞品 (P1-C：自基准 + 导入框架) ----------
+   loadCompetitor(){
+    view.innerHTML='<div class="card"><h3>竞品情报 (P1-C) <button class="btn primary" onclick="window.__wb.refresh()">刷新</button></h3>'+
+      '<div id="cmpbody"><span class="muted">加载自基准中…</span></div></div>';
+    var imported=null; try{ imported=JSON.parse(localStorage.getItem('mscms_competitors')||'null'); }catch(e){}
+    state.competitors=imported;
+    api.get('/api/v14/kpi/overview').then((snap){
+      snap=snap||{};
+      var acc=snap.||{}, con=snap.content||{}, pub=snap.publish||{}, causal=snap.causalChain||{};
+      var pubCount=pub.total||pub.count||pub.published||null;
+      var html='<div class="calmeta">自基准取自真实 KPI 快照（/api/v14/kpi/overview）；竞品对比需导入真实竞品数据（绝不编造）。</div>';
+      html+='<div class="kv">'+
+        '<b>托管账号数</b><span>'+(acc.managed!=null?acc.managed:'–')+'</span>'+
+        '<b>平均健康分</b><span>'+(acc.avgHealthScore!=null?acc.avgHealthScore:'–')+'</span>'+
+        '<b>内容成功率</b><span>'+(con.successRate!=null?con.successRate+'%':'–')+'</span>'+
+        '<b>平均质量分</b><span>'+(con.avgQualityScore!=null?con.avgQualityScore:'–')+'</span>'+
+        '<b>发布量</b><span>'+(pubCount!=null?pubCount:'–')+'</span>'+
+        '<b>因果链完成度</b><span>'+(causal.completionPct!=null?causal.completionPct+'%':'–')+'</span>'+
+        '</div>';
+      if(imported && Array.isArray(imported) && imported.length){
+        var avg=(f){ var v=imported.map((x){return Number(x[f]||0);}).filter((n){return !isNaN(n);}); return v.length?(v.reduce((a,b){return a+b;},0)/v.length):null; };
+        var cFol=avg('followers'), cPosts=avg('posts'), cEng=avg('engagementRate'), cHealth=avg('health');
+        html+='<h3 style="">对比（我们 vs 竞品均值，真实导入 '+imported.length+' 个）</h3>';
+        html+='<table class="caltable"><thead><tr><th>指标</th><th>我们</th><th>竞品均值</th><th>差异</th></tr></thead><tbody>';
+         row(name,ours,comp){ var o=ours==null?'–':ours, cp=comp==null?'–':comp, diff='–'; if(ours!=null&&comp!=null) diff=(ours-comp>=0?'+':'')+(ours-comp); html+='<tr><td>'+name+'</td><td>'+o+'</td><td>'+cp+'</td><td>'+diff+'</td></tr>'; }
+        row('粉丝/账号', null, cFol);
+        row('发布量', pubCount, cPosts);
+        row('互动率%', null, cEng);
+        row('健康分', acc.avgHealthScore!=null?acc.avgHealthScore:null, cHealth);
+        html+='</tbody></table>';
+        html+='<div class="pill mut" style="margin-top:8px">竞品：'+imported.map((x){return esc(x.name||x.||'?');}).join('、')+'</div>';
+        html+='<button class="btn" style="margin-top:8px" onclick="window.__wb.clearCompetitors()">清除导入数据</button>';
+      } else {
+        html+='<h3 style="">导入竞品数据（真实对比前置）</h3>';
+        html+='<div class="calmeta">粘贴竞品账号 JSON 数组（schema: [{name,,followers,posts,engagementRate,health}]），点击导入即生成真实对比。当前未导入，仅展示自基准。</div>';
+        html+='< id="cmp_input" rows="5" style=";background:var(--panel);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:8px;font:13px/1.5 inherit" placeholder=\'[{"name":"竞品A","":"tumblr","followers":12000,"posts":340,"engagementRate":3.2,"health":75}]\'></>';
+        html+='<button class="btn primary" style="margin-top:6px" onclick="window.__wb.importCompetitors()">导入并对比</button>';
+        html+='<div class="pill mut" style="margin-top:8px">数据存于浏览器 localStorage（同源 localhost:3002），不写服务端、无需重启；后续可加后端端点持久化</div>';
+      }
+      $('cmpbody').innerHTML=html;
+    }).catch((e){ $('cmpbody').innerHTML='<div class="err">竞品加载失败：'+esc(e.message)+'</div>'; });
+  }
+
+  // ---------- 路由 ----------
+  var loaders = { overview:(){ api.get('/api/v14/data/overview').then(renderOverview).catch((){}); }, :loadAccounts, publish:loadPublish, causal:loadCausal, inbox:loadInbox, kpi:loadKpiView, calendar:loadCalendar, attribution:loadAttribution, aireply:loadAiReply, competitor:loadCompetitor };
+   switchTab(t){
+    state.tab = t;
+    [].forEach.call('#tabs button'), (b){ b.classList.toggle('active', b.dataset.tab===t); });
+    (loaders[t]||(){})();
+  }
+  document.getElementById('tabs').addEventListener('click', (e){ if(e.target.dataset.tab) switchTab(e.target.dataset.tab); });
+  window.__wb = {
+    refresh:(){ (loaders[state.tab]||(){})(); },
+    acct:(d){ state.acctPage=Math.max(1,state.acctPage+d); loadAccounts(); },
+    pub:(d){ state.publishPage=Math.max(1,state.publishPage+d); renderPublish(); },
+    calDay:(ds){ renderCalDay(ds); },
+    calNav:(d){ var m=state.calMonth+d; if(m<0){m=11;state.calYear--;} else if(m>11){m=0;state.calYear++;} state.calMonth=m; renderCalendar(); },
+    queueReply:(idx,acc){ var ta=$('draft_'+idx); if(!ta) return; var text=ta.value; state.replyQueue.push({acc:acc,text:text,ts:Date.now()}); toast('已加入待发送队列'); loadAiReply(); },
+    importCompetitors:(){ var ta=$('cmp_input'); if(!ta) return; try{ var arr=JSON.parse(ta.value); if(!Array.isArray(arr)) throw new Error('需为 JSON 数组'); localStorage.setItem('mscms_competitors',JSON.stringify(arr)); toast('已导入 '+arr.length+' 个竞品'); loadCompetitor(); }catch(e){ toast('导入失败：'+e.message); } },
+    clearCompetitors:(){ localStorage.removeItem('mscms_competitors'); state.competitors=null; toast('已清除竞品导入'); loadCompetitor(); }
+  };
+
+  // 时钟（仅本地显示，非轮询）
+  setInterval((){ $('clock').textContent = new Date().toLocaleTimeString('zh-CN'); }, 1000);
+
+  // 初始加载
+  loadKpi();
+  switchTab('overview');
+})();
+</script>
+</body>
+</html>

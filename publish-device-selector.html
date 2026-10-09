@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>发布端口设备选择器 · MSCMS v14</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a212b; --panel2: #222c38; --border: #2c3848;
+    --text: #e6edf3; --muted: #8b98a8; --accent: #4f9dff; --accent2: #36c98d;
+    --warn: #f0a23b; --danger: #ef5d68; --chip: #243040;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: var(--bg); color: var(--text); font-size: 14px; }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .tag { font-size: 12px; color: var(--muted); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; }
+  .wrap { padding: 20px 24px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 980px) { .wrap { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .panel h2 { font-size: 14px; margin: 0 0 12px; color: var(--text); font-weight: 600; }
+  .panel h2 small { color: var(--muted); font-weight: 400; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  input, select, , button { font-family: inherit; font-size: 13px; }
+  text], number], select,  {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 7px; padding: 8px 10px; width: 100%;
+  }
+   { min-height: 76px; resize: vertical; }
+  button { cursor: pointer; border: none; border-radius: 7px; padding: 8px 14px; font-weight: 600; }
+  .btn { background: var(--accent); color: #fff; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost { background: var(--chip); color: var(--text); }
+  .btn.warn { background: var(--warn); color: #1a1300; }
+  label { display: block; color: var(--muted); margin: 10px 0 4px; font-size: 12px; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; }
+  td.sel select { padding: 5px 6px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--chip); color: var(--muted); }
+  .badge.over { background: #2a3a2e; color: var(--accent2); }
+  .badge.bound { background: #1f2e44; color: var(--accent); }
+  .badge.none { background: #3a2426; color: var(--danger); }
+  .log { background: #0b0f14; border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+         font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #b8c4d0;
+         height: 220px; overflow: auto; white-space: pre-wrap; }
+  .muted { color: var(--muted); }
+  .ok { color: var(--accent2); }
+  .err { color: var(--danger); }
+  .switch { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📡 发布端口设备选择器</h1>
+  <span class="tag">Phase 3 · 一机一号</span>
+  <span class="tag" id="envTag">REQUIRE_BOUND_DEVICE: ?</span>
+</header>
+
+<div class="wrap">
+  <!-- 左：账号 → 设备映射 + 覆盖设置 -->
+  <div class="panel">
+    <h2>账号发布端口 <small>（账号级默认 = 绑定设备，可被任务级覆盖）</small></h2>
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="搜索用户名 / 邮箱 / ID…" oninput="render()" />
+      <button class="btn ghost" onclick="loadAll()">刷新</button>
+    </div>
+    <div style="max-height:520px;overflow:auto">
+      <table>
+        <thead>
+          <tr><th>账号</th><th>绑定设备</th><th>实际发布端口</th><th>覆盖设置</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 右：指定设备发布测试 + 日志 -->
+  <div class="panel">
+    <h2>指定设备发布（手动 / 自动内容编辑任务）</h2>
+    <label>账号</label>
+    <select id="pubAccount"></select>
+    <div class="row">
+      <div>
+        <label>平台</label>
+        <select id="pubPlatform">
+          <option value="tumblr">tumblr</option>
+          <option value="reddit">reddit</option>
+          <option value="twitter">twitter</option>
+        </select>
+      </div>
+      <div>
+        <label>标题</label>
+        <input type="text" id="pubTitle" placeholder="内容标题" />
+      </div>
+    </div>
+    <label>正文</label>
+    < id="pubBody" placeholder="发布内容正文…"></>
+    <label>任务级设备覆盖（留空 = 用账号默认端口）</label>
+    <select id="pubDeviceOverride"><option value="">— 默认（账号级端口）—</option></select>
+    <label class="switch"><input type="" id="pubRequire" /> 强制一机一号（无端口则 FAILED）</label>
+    <div style=";display:flex;gap:10px">
+      <button class="btn" onclick="doPublish()">🚀 发布</button>
+      <button class="btn ghost" onclick="clearLog()">清空日志</button>
+    </div>
+    <label>执行日志</label>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let ACCOUNTS = [], DEVICES = [];
+
+ log(msg, cls) {
+  const el = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString();
+  const div = document.createElement('div');
+  if (cls) div.className = cls;
+  div.textContent = `[${ts}] ${msg}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+ clearLog() { document.getElementById('log').innerHTML = ''; }
+
+async  api(path, opts) {
+  const r = await fetch(API + path, Object.assign({ headers: { '': 'application/json' } }, opts));
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || (r.status + ' ' + r.statusText));
+  return data;
+}
+
+async  loadAll() {
+  try {
+    const [a, d, env] = await Promise.all([
+      api('/api/?limit=500'),
+      api('/api/cloud-phones'),
+      fetch(API + '/api/v14/cloud-publish/config/tumblr').then(x => x.ok).catch(() => false),
+    ]);
+    ACCOUNTS = (a. || []);
+    DEVICES = (d.devices || []);
+    document.getElementById('envTag').textContent = '设备池: ' + DEVICES.length + ' 台';
+    // 发布账号下拉
+    const pa = document.getElementById('pubAccount');
+    pa.innerHTML = ACCOUNTS.map(x => `<option value="${x.id}">${x. || x.id} (设备#${x. ?? '—'})</option>`).join('');
+    // 覆盖下拉（含全部设备 + 清除）
+    const od = document.getElementById('pubDeviceOverride');
+    od.innerHTML = '<option value="">— 默认（账号级端口）—</option>' +
+      DEVICES.map(x => `<option value="${x.id}">设备 #${x.id} · ${x.model || '未知'} (${x.owner_count}/${x.capacity})</option>`).join('');
+    // 预取每个账号实际发布端口
+    await Promise.all(ACCOUNTS.map(async x => {
+      try { const p = await api('/api//' + x.id + '/publish-device'); x._pub = p.publishDevice; }
+      catch (_) { x._pub = null; }
+    }));
+    render();
+    log('已加载 ' + ACCOUNTS.length + ' 账号 / ' + DEVICES.length + ' 设备', 'ok');
+  } catch (e) { log('加载失败: ' + e.message, 'err'); }
+}
+
+ render() {
+  const q = (document.getElementById('search').value || '').toLowerCase();
+  const rows = ACCOUNTS.filter(x => !q || (x.||'').toLowerCase().includes(q) || (x.email||'').toLowerCase().includes(q) || (x.id||'').toLowerCase().includes(q));
+  const body = document.getElementById('rows');
+  body.innerHTML = rows.map(x => {
+    const bound = x.;
+    const override = x.publish_device_override;
+    const actual = x._pub;
+    let badge;
+    if (override != null) badge = `<span class="badge over">覆盖 → #${override}</span>`;
+    else if (bound != null) badge = `<span class="badge bound">绑定 #${bound}</span>`;
+    else badge = `<span class="badge none">未绑定</span>`;
+    const resolved = actual != null ? `#${actual}` : '—';
+    const opts = DEVICES.map(dev => `<option value="${dev.id}" ${override == dev.id ? 'selected' : ''}>设备 #${dev.id} · ${dev.model || '未知'}</option>`).join('');
+    return `<tr>
+      <td>${x. || x.id}<div class="muted" style="font-size:11px">${x.id}</div></td>
+      <td>${bound != null ? '#' + bound : '<span class="muted">—</span>'}</td>
+      <td>${badge}<div class="muted" style="font-size:11px;margin-top:2px">实际端口 ${resolved}</div></td>
+      <td class="sel">
+        <select onchange="setOverride('${x.id}', this.value)">
+          <option value="">— 默认 —</option>${opts}
+        </select>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async  setOverride(id, val) {
+  const deviceId = val === '' ? null : Number(val);
+  try {
+    const r = await api('/api//' + id + '/set-publish-device', { method: 'POST', body: JSON.stringify({ deviceId }) });
+    const acc = ACCOUNTS.find(x => x.id === id);
+    if (acc) { acc.publish_device_override = r.publishDevice; acc._pub = r.publishDevice; }
+    log(`账号 ${id} 发布端口覆盖 → ${r.publishDevice == null ? '默认' : '#' + r.publishDevice}`, 'ok');
+    render();
+  } catch (e) { log(`设置失败 ${id}: ` + e.message, 'err'); }
+}
+
+async  doPublish() {
+  const accountId = document.getElementById('pubAccount').value;
+  if (!accountId) { log('请先选择一个账号', 'err'); return; }
+  const overrideSel = document.getElementById('pubDeviceOverride').value;
+  const  = document.getElementById('pubPlatform').value;
+  const content = {
+    ,
+    title: document.getElementById('pubTitle').value || '测试发布',
+    body: document.getElementById('pubBody').value || '由发布端口选择器发起的测试内容。',
+  };
+  const account = {
+    id: accountId,
+    ,
+    : (ACCOUNTS.find(x => x.id === accountId) || {}). || null,
+  };
+  const opts = {};
+  if (overrideSel !== '') opts.deviceId = Number(overrideSel);
+  if (document.getElementById('pubRequire').checked) opts.requireBoundDevice = true;
+  log('入队发布 → 账号 ' + accountId + (opts.deviceId ? ' 指定设备#' + opts.deviceId : ' 默认端口') + (opts.requireBoundDevice ? ' [强制]' : ''));
+  try {
+    const r = await api('/api/v14/cloud-publish/enqueue', { method: 'POST', body: JSON.stringify({ content, account, opts }) });
+    log('✅ 已入队 task=' + r.taskId + ' status=' + r.status, 'ok');
+  } catch (e) { log('发布失败: ' + e.message, 'err'); }
+}
+
+loadAll();
+</script>
+</body>
+</html>

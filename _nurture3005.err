@@ -1,0 +1,9 @@
+(node:36116) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[activator] ⚠️ 静态代理 http://:7890 出口  与已有重复，跳过
+[activator] ⚠️ 代理 http://:1081 不健康（出口探测失败），清理 PID 24068
+[activator] ⚠️ 代理 http://:1082 不健康（出口探测失败），清理 PID 52500
+[activator] ⚠️ 代理 http://:1083 不健康（出口探测失败），清理 PID 24204
+[activator] ⚠️ 代理 http://:1084 不健康（出口探测失败），清理 PID 13696
+[activator] ⚠️ 代理 http://:1085 不健康（出口探测失败），清理 PID 53888
+[activator] ⚠️ 代理 http://:1086 不健康（出口探测失败），清理 PID 44784

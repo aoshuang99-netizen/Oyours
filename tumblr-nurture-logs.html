@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tumblr 养号 · 操作日志 & 每日进度</title>
+<style>
+  :root { --bg:#0f1115; --card:#1a1d24; --line:#2a2f3a; --txt:#e6e8ec; --mut:#9aa3b2; --ok:#3fb950; --bad:#f85149; --acc:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+  header { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:16px; margin:0; }
+  .wrap { padding:18px 20px; max-width:1100px; margin:0 auto; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .stat .n { font-size:22px; font-weight:700; }
+  .stat .l { color:var(--mut); font-size:12px; margin-top:2px; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:18px; }
+  .panel h2 { font-size:14px; margin:0 0 10px; color:var(--acc); }
+  table { ; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:600; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  select,button { background:#222631; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font-size:13px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+  .logs { max-height:520px; overflow:auto; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+  .logs .it { border-bottom:1px solid var(--line); padding:6px 4px; display:flex; gap:8px; }
+  .logs .ts { color:var(--mut); white-space:nowrap; }
+  .logs .ac { color:var(--acc); white-space:nowrap; }
+  .logs .er { color:var(--bad); }
+  .pill { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; border:1px solid var(--line); }
+  .refresh { margin-left:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 Tumblr 养号 · 操作日志 &amp; 每日进度</h1>
+  <button class="refresh" onclick="loadAll()">刷新</button>
+</header>
+<div class="wrap">
+  <div class="grid" id="summaryGrid"></div>
+
+  <div class="panel">
+    <h2>每日进度汇总（<span id="sumDate"></span>）</h2>
+    <div class="row">
+      <label>选择日期：</label>
+      <input type="date" id="datePick" onchange="loadSummary()" />
+    </div>
+    <table id="summaryTable"></table>
+  </div>
+
+  <div class="panel">
+    <h2>每账号操作日志</h2>
+    <div class="row">
+      <label>账号：</label>
+      <select id="acctSel" onchange="loadAccountLogs()"></select>
+      <span id="acctInfo" style="color:var(--mut)"></span>
+    </div>
+    <div class="logs" id="acctLogs"></div>
+  </div>
+
+  <div class="panel">
+    <h2>全局最近操作（跨账号）</h2>
+    <div class="logs" id="globalLogs"></div>
+  </div>
+</div>
+
+<script>
+const api = (p) => fetch('/api' + p).then(r => r.json()).catch(e => ({ error: e.message }));
+ fmt(n){ return (n==null)?'—':n; }
+ esc(s){ return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+async  loadSummary(){
+  const date = document.getElementById('datePick').value || '';
+  const s = await api('/summary/daily' + (date?('?date='+date):''));
+  document.getElementById('sumDate').textContent = s.date || date;
+  const grid = document.getElementById('summaryGrid');
+  const cards = [
+    ['总账号', s.totalAccounts],
+    ['当日新增注册', s.newRegistrations],
+    ['已打「正常」标签', s.taggedNormal],
+    ['关注', s.actions && s.actions.follow],
+    ['点赞', s.actions && s.actions.like],
+    ['Reblog', s.actions && s.actions.reblog],
+    ['原创帖', s.actions && s.actions.post],
+    ['移动会话', s.actions && s.actions.deviceSessions],
+    ['成功动作', s.actions && s.actions.okActions],
+    ['失败/错误', s.actions && s.actions.errors],
+    ['代理池出口', s.proxyPoolSize],
+  ];
+  grid.innerHTML = cards.map(c=>`<div class="stat"><div class="n">${fmt(c[1])}</div><div class="l">${c[0]}</div></div>`).join('');
+
+  // 阶段分布 + 动作明细表
+  const ph = s.phases || {};
+  const phStr = Object.keys(ph).map(k=>`${k}:${ph[k]}`).join('  ·  ') || '—';
+  const a = s.actions || {};
+  const rows = [
+    ['阶段分布(P0-P4)', phStr],
+    ['关注 / 点赞 / Reblog / 原创帖', `${fmt(a.follow)} / ${fmt(a.like)} / ${fmt(a.reblog)} / ${fmt(a.post)}`],
+    ['评论', fmt(a.comment)],
+    ['移动端消费会话', fmt(a.deviceSessions)],
+    ['成功 API 动作合计', fmt(a.okActions)],
+    ['失败/错误', `<span class="bad">${fmt(a.errors)}</span>`],
+    ['累计总动作(全部历史)', fmt(a.totalActionsFromStates)],
+    ['数据来源', s.cached?'历史落盘':'实时聚合'],
+  ];
+  document.getElementById('summaryTable').innerHTML =
+    '<tr><th>指标</th><th>值</th></tr>' +
+    rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
+}
+
+async  loadAccounts(){
+  const d = await api('/');
+  const sel = document.getElementById('acctSel');
+  sel.innerHTML = (d.||[]).map(a=>`<option value="${esc(a.id)}">${esc(a.id)}${a.blog?' · '+esc(a.blog):''}</option>`).join('');
+  if(sel.options.length) loadAccountLogs();
+}
+
+async  loadAccountLogs(){
+  const id = document.getElementById('acctSel').value;
+  if(!id) return;
+  const d = await api('/logs/'+encodeURIComponent(id)+'?limit=100');
+  const info = document.getElementById('acctInfo');
+  info.textContent = `(${(d.logs||[]} 条)`;
+  document.getElementById('acctLogs').innerHTML = (d.logs||[]).map(l=>{
+    const meta = l.meta?(' '+esc(JSON.stringify(l.meta)).slice(0,80)):'';
+    const det = l.detail?(' '+esc(JSON.stringify(l.detail)).slice(0,60)):'';
+    const er = l.error?`<span class="er"> ⚠ ${esc(l.error).slice(0,80)}</span>`:'';
+    const cls = l.ok===false?'bad':'';
+    return `<div class="it"><span class="ts">${esc((l.ts||'').slice(11,19))}</span>`+
+           `<span class="ac">[${esc(l.kind)}/${esc(l.type||'-')}]</span>`+
+           `<span class="${cls}">${l.ok===false?'✗':'✓'}</span>`+
+           `<span>${esc(l.tag||'')}${meta}${det}${er}</span></div>`;
+  }).join('') || '<div class="it">暂无日志</div>';
+}
+
+async  loadGlobalLogs(){
+  const d = await api('/logs?limit=120');
+  document.getElementById('globalLogs').innerHTML = (d.logs||[]).map(l=>{
+    const er = l.error?`<span class="er"> ⚠ ${esc(l.error).slice(0,70)}</span>`:'';
+    const cls = l.ok===false?'bad':'';
+    return `<div class="it"><span class="ts">${esc((l.ts||'').slice(5,19))}</span>`+
+           `<span class="ac">${esc(l.accountId)}</span>`+
+           `<span class="ac">[${esc(l.kind)}/${esc(l.type||'-')}]</span>`+
+           `<span class="${cls}">${l.ok===false?'✗':'✓'}</span>`+
+           `<span>${esc(l.tag||'')}${er}</span></div>`;
+  }).join('') || '<div class="it">暂无日志</div>';
+}
+
+async  loadAll(){
+  await Promise.all([loadSummary(), loadAccounts(), loadGlobalLogs()]);
+}
+// 默认日期=今天
+document.getElementById('datePick').value = new Date().toISOString().slice(0,10);
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>

@@ -1,0 +1,162 @@
+--- cloud-publisher.js.bak-20260921	2026-09-21 16:27:04.740064800 +0800
++++ cloud-publisher.js	2026-09-22 19:07:29.231899500 +0800
+@@ -1777,8 +1782,48 @@
+ 
+   // 发布前安全检查
+   _performSafetyCheck(task) {
++    // ── [ACCEL-2026-09-22 · P0-2] provider 通道独立配额命名空间 ────────────────
++    // 背景（反向耦合实证）：provider 平台（nostr 等）在设计上没有自己的账号池，
++    //   内容只能复用 tumblr 账号承载。而原配额记账按 **accountId** 聚合
++    //   ⇒ nostr 每投 1 条就吃掉承载 tumblr 账号 1/12 日配额，并重置其 45 分钟间隔窗口。
++    //   实测：1 个账号承载全部 225 条 nostr 内容时，该账号配额被瞬间打满，
++    //     后续 tumblr 任务全部被判「超出配额 (12/12)」推迟，队列 depth 从 4 单调爬到 43，
++    //     而并发槽 active=0/3 全程为 0 —— 任务被无限推迟、从未真正执行。
++    // 修法：provider 通道改用独立命名空间 `provider:<平台>` 记账 + 独立额度/间隔，
++    //   并**跳过** tumblr 养号规则（nurturingRules.canPerform）与账号级发布间隔。
++    //   落库端（server.js 入队处）写入同一命名空间，两端口径自洽。
++    // tumblr（_provCh=false）路径**逐字不变**，零行为变更。
++    // 回滚：MSCMS_PROVIDER_DAILY_MAX=12 + MSCMS_PROVIDER_MIN_INTERVAL_MS=2700000。
++    const _provCh = this._isProviderChannel(task.);
++    let _provNs = null;
++    if (_provCh) {
++      _provNs = `provider:${String(task. || '').toLowerCase()}`;
++      const _pMax = Math.max(1, Number(process.env.MSCMS_PROVIDER_DAILY_MAX || 200));
++      const _pIvMs = Math.max(1000, Number(process.env.MSCMS_PROVIDER_MIN_INTERVAL_MS || 120000));
++      const _pUsed = this._getDailyPostCount(_provNs);
++      if (_pUsed >= _pMax) {
++        return {
++          passed: false,
++          deferMs: this._nextQuotaReset() - Date.now(),
++          reason: `provider 通道日额度已满 (${_pUsed}/${_pMax}) [${_provNs}]`,
++        };
++      }
++      const _pLast = this._getLastPublishTime(_provNs);
++      if (_pLast && (Date.now() - _pLast) < _pIvMs) {
++        const _pElapsedMin = Math.round((Date.now() - _pLast) / 60000);
++        const _pBase = _pIvMs - (Date.now() - _pLast);
++        // 同上加 0~60% 抖动，避免同批多帖被推迟到同一时刻形成集中连发
++        return {
++          passed: false,
++          deferMs: Math.round(_pBase * (1 + Math.random() * 0.6)),
++          reason: `provider 通道间隔未到（距上次 ${_pElapsedMin} 分钟 < ${Math.round(_pIvMs / 60000)} 分钟）[${_provNs}]`,
++        };
++      }
++    }
++
+     // 1. 检查养号阶段是否允许发帖 + 该账号今日配额
+-    if (this.nurturingRules) {
++    //    [_provCh=true 时跳过：provider 通道已在上面用独立命名空间判过额度]
++    if (this.nurturingRules && !_provCh) {
+       // 修复：原先不传账号年龄 -> 走全局单例的 accountAge=0（注册期），post 配额恒为 0，
+       // 导致「超过每日配额 (0/0)」把全站发布全部冻结。这里改为按账号真实年龄 + 该账号今日已发数判定。
+       const ageDays = this._accountAgeDays(task.account);
+@@ -1812,17 +1857,22 @@
+       const checker = this.contentRules;
+       const checkResult = checker.checkContent(task.content, {
+         accountAge: task.account.age || 30,
+-        dailyPostCount: this._getDailyPostCount(task.account.id),
++        // [ACCEL-2026-09-22 · P0-2] provider 通道按 provider 计数（与配额记账同源），
++        //   避免把承载账号（tumblr）的发帖数误当成 provider 通道的日发帖数。
++        dailyPostCount: _provCh ? this._getDailyPostCount(_provNs) : this._getDailyPostCount(task.account.id),
+       });
+       if (!checkResult.passed) {
+         return { passed: false, reason: `Content compliance failed: ${checkResult.warnings.join('; ')}` };
+       }
+     }
+ 
+-    // 3. 检查发布间隔
++    // 3. 检查发布间隔（账号级）
+     // 这是【节奏控制】而非违规：未到间隔就排到后面去，不消耗失败次数、不烧内容。
+-    const lastPublish = this._getLastPublishTime(task.account.id);
+-    if (lastPublish && (Date.now() - lastPublish) < this.minIntervalMs) {
++    // [ACCEL-2026-09-22 · P0-2] provider 通道**跳过账号级间隔** —— 它已在上面按
++    //   `provider:<平台>` 命名空间判过独立间隔，若再叠加承载账号的 45 分钟窗口，
++    //   provider 与账号会互相锁定（两者交替重置对方的窗口）。
++    const lastPublish = _provCh ? null : this._getLastPublishTime(task.account.id);
++    if (!_provCh && lastPublish && (Date.now() - lastPublish) < this.minIntervalMs) {
+       const elapsedMin = Math.round((Date.now() - lastPublish) / 60000);
+       const base = this.minIntervalMs - (Date.now() - lastPublish);
+       // 加 0~60% 抖动：同一账号若一次入队多帖，避免它们被推迟到同一时刻形成「集中连发」
+@@ -2115,12 +2165,39 @@
+   }
+ 
+   // 辅助方法
++  /**
++   * [ACCEL-2026-09-22 · P0-2] 解析 provider 配额命名空间。
++   *   'provider:nostr' → 'nostr'；其他一律返回 null（走账号级原有语义）。
++   *   为什么用「按平台统计」而非「改写 publish.account_id」：
++   *     改写落库口径会破坏 content.account_id == publish.account_id 的自包含可验证性，
++   *     也会让 JSON 与 MySQL(matrix_posts_published) 两个事实源分歧。
++   *     按  维度统计则**零数据变更**，即可让 provider 与承载账号各自独立记账。
++   */
++  _parseProvNs(key) {
++    const s = String(key || '');
++    const prefix = 'provider:';
++    // 大小写不敏感：命名空间由内部按小写生成，但外部（env / 手工构造的 key）
++    // 可能传入 'PROVIDER:Nostr'，须一并归一，避免静默退化成账号级记账。
++    if (s.slice(0, prefix.length).toLowerCase() !== prefix) return null;
++    const p = s.slice(prefix.length).trim().toLowerCase();
++    return p || null;
++  }
++
+   _getLastPublishTime(accountId) {
+     // 【2026-09-10 修复】原来只查内存 publishHistory → 重启后恒为 null，
+     // 发布间隔闸门等于失效（重启即可连发）。现同时合并磁盘发布记录取最大值。
++    // [ACCEL-2026-09-22 · P0-2] 支持 `provider:<平台>` 命名空间：
++    //   · accountId = 'provider:nostr' → 按 ** 维度**统计（provider 独立间隔窗口）
++    //   · 普通账号 id → 按 account_id 统计，但**排除 provider 通道平台**的记录，
++    //     使承载账号（tumblr）的 45 分钟窗口不再被 nostr 发帖重置（切断反向耦合）。
++    const _ns = this._parseProvNs(accountId);
++    const _hit = (rec) => _ns
++      ? (String(rec. || '').toLowerCase() === _ns)
++      : (String(rec.accountId || rec.account_id || '') === String(accountId)
++         && !this._isProviderChannel(rec.));
+     let last = null;
+     for (const h of this.publishHistory) {
+-      if (String(h.accountId) !== String(accountId)) continue;
++      if (!_hit(h)) continue;
+       const t = new Date(h.publishedAt).getTime();
+       if (!isNaN(t) && (last === null || t > last)) last = t;
+     }
+@@ -2129,8 +2206,7 @@
+         const res = this.dataStore.list('publish', { limit: 20000 });
+         const items = Array.isArray(res) ? res : (res && res.items) || [];
+         for (const p of items) {
+-          const aid = p.account_id || p.accountId;
+-          if (String(aid) !== String(accountId)) continue;
++          if (!_hit(p)) continue;
+           const url = p.publish_url || p.publishUrl || '';
+           if (!/^https?:\/\//i.test(String(url))) continue;
+           const t = new Date(p.published_at || p.publishedAt).getTime();
+@@ -2157,10 +2233,20 @@
+     const seen = new Set();
+     let n = 0;
+     const sameDay = (v) => { const d = new Date(v); return !isNaN(d) && d.toDateString() === today; };
++    // [ACCEL-2026-09-22 · P0-2] provider 命名空间支持（与 _getLastPublishTime 同源语义）：
++    //   · 'provider:nostr' → 统计 =nostr 的今日成功帖（provider 独立日额度）
++    //   · 普通账号 id → 统计 account_id 匹配且**平台不属于 provider 通道**的记录
++    //     ⇒ 承载账号（tumblr）的 12 帖日配额不再被 nostr 帖吃干（切断反向耦合，
++    //        这正是「队列 depth 4→43 单调爬升、active=0/3 全程为 0」的根因）。
++    const _ns = this._parseProvNs(accountId);
++    const _hit = (rec) => _ns
++      ? (String(rec. || '').toLowerCase() === _ns)
++      : (String(rec.accountId || rec.account_id || '') === String(accountId)
++         && !this._isProviderChannel(rec.));
+ 
+     // ① 本次进程内已成功真实发布的记录
+     for (const h of this.publishHistory) {
+-      if (String(h.accountId) !== String(accountId)) continue;
++      if (!_hit(h)) continue;
+       if (h.status !== 'success' || h.real === false) continue;
+       const k = h.taskId || `${h.accountId}|${h.publishedAt}`;
+       if (seen.has(k)) continue;
+@@ -2177,8 +2263,8 @@
+         const res = this.dataStore.list('publish', { limit: 20000 });
+         const items = Array.isArray(res) ? res : (res && res.items) || [];
+         for (const p of items) {
++          if (!_hit(p)) continue;
+           const aid = p.account_id || p.accountId;
+-          if (String(aid) !== String(accountId)) continue;
+           const url = p.publish_url || p.publishUrl || '';
+           if (!/^https?:\/\//i.test(String(url))) continue;
+           const k = p.id || `${aid}|${p.published_at}`;

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gmail Creator Pro — 批量注册控制台</title>
+<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+<style>
+:root {
+  --bg: #0f1117; --bg2: #1a1d27; --bg3: #242836; --border: #2e3344;
+  --text: #c9d1d9; --muted: #6e7681; --accent: #58a6ff; --green: #3fb950;
+  --red: #f85149; --orange: #d29922; --purple: #a371f7;
+  --radius: 8px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.container{max-width:1200px;margin:0 auto;padding:2rem}
+
+/* Header */
+.header{text-align:center;margin-bottom:2rem}
+.header .ascii{font-family:'SF Mono',Consolas,monospace;font-size:0.65rem;line-height:1.15;color:var(--accent);white-space:pre;margin-bottom:0.5rem}
+.header h1{font-size:1.5rem;font-weight:700;margin-bottom:0.25rem}
+.header .sub{color:var(--muted);font-size:0.85rem}
+
+/* Stats row */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;margin-bottom:1.5rem}
+.{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem;text-align:center}
+. .label{font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem}
+. .value{font-size:1.8rem;font-weight:700}
+. .value.green{color:var(--green)}. .value.red{color:var(--red)}. .value.blue{color:var(--accent)}. .value.orange{color:var(--orange)}
+
+/* Config panel */
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1.5rem}
+.panel h3{font-size:0.92rem;font-weight:600;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem}
+.panel h3 .icon{font-size:1.1rem}
+.config-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.75rem}
+.form-group{display:flex;flex-direction:column;gap:0.3rem}
+.form-group label{font-size:0.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em}
+input,select,button{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:0.5rem 0.75rem;border-radius:6px;font-size:0.85rem;font-family:inherit;outline:none}
+input:focus,select:focus{border-color:var(--accent)}
+select{appearance:none;-webkit-appearance:none;padding-right:2rem}
+button{cursor:pointer;font-weight:600;transition:all 0.15s;display:inline-flex;align-items:center;gap:0.4rem}
+button:hover{opacity:0.85;filter:brightness(1.1)}
+.{background:var(--accent);color:#fff;border-color:var(--accent);padding:0.6rem 1.5rem}
+.btn-green{background:var(--green);color:#fff;border-color:var(--green)}
+.btn-red{background:var(--red);color:#fff;border-color:var(--red)}
+
+/* Action bar */
+.action-bar{display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1.5rem}
+.action-bar .count{flex:1;color:var(--muted);font-size:0.85rem}
+
+/* Progress */
+.progress-wrap{margin-bottom:1.5rem}
+.progress-bar{;height:24px;background:var(--bg3);border-radius:12px;overflow:hidden;position:relative}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--purple));border-radius:12px;transition:width 0.4s ease;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:600;color:#fff;min-width:40px}
+.progress-log{font-size:0.82rem;color:var(--muted);margin-top:0.5rem;}
+
+/* Log panel */
+.log-panel{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem 1rem;font-family:'SF Mono',Consolas,monospace;font-size:0.75rem;max-height:200px;overflow-y:auto;margin-bottom:1.5rem}
+.log-line{padding:0.15rem 0;border-bottom:1px solid rgba(255,255,255,0.03)}
+.log-line.success{color:var(--green)}.log-line.error{color:var(--red)}.log-line.warn{color:var(--orange)}.log-line.info{color:var(--accent)}
+
+/* Table */
+.table-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.table-wrap .t-header{padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.table-wrap .t-header h3{font-size:0.92rem;font-weight:600}
+table{;border-collapse:collapse}
+thead{background:var(--bg3)}
+th{padding:0.6rem 0.8rem;font-size:0.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;text-align:left;white-space:nowrap}
+td{padding:0.55rem 0.8rem;font-size:0.82rem;border-top:1px solid var(--border);white-space:nowrap}
+tr:hover td{background:rgba(88,166,255,0.04)}
+.mono{font-family:'SF Mono',Consolas,monospace;font-size:0.78rem}
+.badge{display:inline-block;padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem;font-weight:600}
+.badge.active{background:rgba(63,185,80,0.15);color:var(--green)}
+.badge.failed{background:rgba(248,81,73,0.15);color:var(--red)}
+.badge.pending{background:rgba(110,118,129,0.15);color:var(--muted)}
+
+/* Status pulse */
+.pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite;margin-right:0.4rem}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+.empty-state{text-align:center;padding:3rem 1rem;color:var(--muted)}
+.empty-state .icon{font-size:2.5rem;margin-bottom:0.75rem}
+</style>
+</head>
+<body>
+<div id="app">
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+<pre class="ascii">
+  ╔═╗ ╔╗ ╔══╗ ╔══╗ ╔╗  ╔══╗
+  ║║╚╗║║ ║══╣ ║ ═╣ ║║  ║══╣
+  ║╔╗║║║ ╠══║ ║ ═╣ ║║  ╠══║
+  ╚╝╚╩╝╚╗╚══╝ ╚══╝ ╚╩═╝╚══╝
+</pre>
+<h1>Gmail Creator Pro</h1>
+<p class="sub">基于 ShadowHackrs 架构 | Selenium + 5sim 集成 | 反检测引擎 | v2.0</p>
+</div>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="">
+    <div class="label">📊 总数</div>
+    <div class="value blue">{{ stats.total }}</div>
+  </div>
+  <div class="">
+    <div class="label">✅ 活跃</div>
+    <div class="value green">{{ stats.active }}</div>
+  </div>
+  <div class="">
+    <div class="label">📈 成功率</div>
+    <div class="value orange">{{ stats.success_rate }}%</div>
+  </div>
+  <div class="">
+    <div class="label">💰 5sim余额</div>
+    <div class="value" :class="sim5Balance > 0 ? 'green' : 'red'">{{ sim5Balance }} RUB</div>
+  </div>
+</div>
+
+<!-- Config Panel -->
+<div class="panel">
+<h3><span class="icon">⚙️</span> 配置设置</h3>
+<div class="config-grid">
+  <div class="form-group">
+    <label>5sim API Key</label>
+    <input v-model="cfg." type="" placeholder="">
+  </div>
+  <div class="form-group">
+    <label>国家</label>
+    <select v-model="cfg.fivesim_country">
+      <option value="usa">🇺🇸 USA</option>
+      <option value="russia">🇷🇺 Russia</option>
+      <option value="ukraine">🇺🇦 Ukraine</option>
+      <option value="kazakhstan">🇰🇿 Kazakhstan</option>
+      <option value="england">🇬🇧 England</option>
+      <option value="india">🇮🇳 India</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>生日 ()</label>
+    <input v-model="cfg." type="text" placeholder="1985-03-15">
+  </div>
+  <div class="form-group">
+    <label>性别</label>
+    <select v-model="cfg.gender">
+      <option value="1">👨 Male</option>
+      <option value="2">👩 Female</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>验证方式</label>
+    <select v-model="cfg.use_voice_call">
+      <option :value="true">📞 Voice Call (推荐)</option>
+      <option :value="false">📱 SMS</option>
+    </select>
+  </div>
+</div>
+<div style="margin-top:1rem">
+  <button class="" @click="saveConfig">💾 保存配置</button>
+  <button @click="loadConfig" style="margin-left:0.5rem">🔄 重新加载</button>
+</div>
+</div>
+
+<!-- Action Bar -->
+<div class="action-bar">
+  <button class="btn-green" @click="createAccount" :disabled="creating">
+    <span v-if="creating" class="pulse"></span>
+    {{ creating ? '⏳ 注册中...' : '🚀 创建 Gmail 账号' }}
+  </button>
+  <button @click="createBatch(3)" :disabled="creating">📦 批量创建x3</button>
+  <button @click="createBatch(5)" :disabled="creating">📦 批量创建x5</button>
+  <span class="count">{{ tasks.length }} 个任务运行中</span>
+</div>
+
+<!-- Progress -->
+<div class="progress-wrap" v-if="creating && currentTask">
+  <div class="progress-bar">
+    <div class="progress-fill" :style="{width: currentTask.pct+'%'}">
+      {{ currentTask.pct }}%
+    </div>
+  </div>
+  <div class="progress-log">{{ currentTask.log }}</div>
+</div>
+
+<!-- Log -->
+<div class="log-panel" v-if="logs.length > 0" ref="logPanel">
+  <div v-for="(log,i) in logs" :key="i" class="log-line" :class="log.type">{{ log.text }}</div>
+</div>
+
+<!-- Accounts Table -->
+<div class="table-wrap">
+<div class="t-header">
+  <h3>📁 已创建账户 ({{ .length }})</h3>
+  <div>
+    <button @click="refreshAccounts" class="btn-sm">🔄 刷新</button>
+    <button @click="saveAccounts" class="btn-sm" style="margin-left:0.5rem">💾 保存</button>
+  </div>
+</div>
+<div v-if=".length === 0" class="empty-state">
+  <div class="icon">📭</div>
+  <p>暂无账户，点击上方按钮开始创建</p>
+</div>
+<table v-else>
+<thead>
+<tr><th>邮箱</th><th>用户名</th><th>密码</th><th>创建时间</th><th>状态</th><th>操作</th></tr>
+</thead>
+<tbody>
+<tr v-for="acc in " :key="acc.email">
+  <td class="mono">{{ acc.email }}</td>
+  <td>{{ acc. }}</td>
+  <td class="mono">{{ acc. }}</td>
+  <td>{{ formatDate(acc.) }}</td>
+  <td><span class="badge" :class="acc.status">{{ acc.status }}</span></td>
+  <td>
+    <button class="btn-sm btn-red" @click="deleteAccount(acc.)">🗑</button>
+  </td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</div><!-- container -->
+</div><!-- app -->
+
+<script>
+const { createApp, ref, reactive, computed, onMounted, nextTick, watch } = Vue;
+
+const API = 'http://localhost:3010/api/gmail';
+
+createApp({
+  setup() {
+    const cfg = reactive({
+      : '',
+      fivesim_country: 'usa',
+      : '1985-03-15',
+      gender: '1',
+      use_voice_call: true,
+    });
+    const  = ref([]);
+    const stats = ref({ total: 0, active: 0, success_rate: 0 });
+    const sim5Balance = ref(0);
+    const creating = ref(false);
+    const currentTask = ref(null);
+    const logs = ref([]);
+    const tasks = ref([]);
+    const logPanel = ref(null);
+
+     addLog(text, type = 'info') {
+      logs.value.push({ text: `[${new Date().toLocaleTimeString()}] ${text}`, type });
+      if (logs.value.length > 100) logs.value.shift();
+      nextTick(() => {
+        if (logPanel.value) logPanel.value.scrollTop = logPanel.value.scrollHeight;
+      });
+    }
+
+    async  loadConfig() {
+      try {
+        const r = await fetch(`${API}/config`);
+        if (r.ok) {
+          const data = await r.json();
+          Object.assign(cfg, {
+            : data. || '',
+            fivesim_country: data.fivesim_country || 'usa',
+            : `${data._year || 1985}-${String(data._month || 3).padStart(2,'0')}-${String(data._day || 15).padStart(2,'0')}`,
+            gender: String(data.gender || '1'),
+            use_voice_call: data.use_voice_call !== false,
+          });
+        }
+      } catch(e) { addLog('无法连接服务器', 'error'); }
+    }
+
+    async  saveConfig() {
+      const [y, m, d] = cfg..split('-').map(Number);
+      const payload = {
+        : cfg.,
+        fivesim_country: cfg.fivesim_country,
+        _year: y, _month: m, _day: d,
+        gender: parseInt(cfg.gender),
+        use_voice_call: cfg.use_voice_call,
+      };
+      try {
+        await fetch(`${API}/config`, { method: 'POST', headers: {'':'application/json'}, body: JSON.stringify(payload) });
+        addLog('配置已保存', 'success');
+      } catch(e) { addLog('保存失败', 'error'); }
+    }
+
+    async  refreshAccounts() {
+      try {
+        const r = await fetch(`${API}/`);
+        if (r.ok) .value = await r.json();
+        const s = await fetch(`${API}/stats`);
+        if (s.ok) stats.value = await s.json();
+      } catch(e) {}
+    }
+
+    async  deleteAccount() {
+      try {
+        await fetch(`${API}/delete/${}`, { method: 'DELETE' });
+        await refreshAccounts();
+        addLog(`已删除: ${}`, 'warn');
+      } catch(e) {}
+    }
+
+     saveAccounts() {
+      const blob = new Blob([JSON.stringify(.value, null, 2)], {type:'application/json'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = `gmail__${new Date().toISOString().slice(0,10)}.json`; a.click();
+    }
+
+     formatDate(d) {
+      if (!d) return '-';
+      return new Date(d).toLocaleString('zh-CN');
+    }
+
+    async  createAccount() {
+      if (creating.value) return;
+      creating.value = true;
+      currentTask.value = { pct: 0, log: 'Starting...', step: 0 };
+      tasks.value.push(currentTask.value);
+      addLog('开始创建 Gmail 账号...', 'info');
+
+      try {
+        const r = await fetch(`${API}/create`, { method: 'POST' });
+        if (!r.ok) throw new Error('请求失败');
+        const { task_id } = await r.json();
+        addLog(`任务ID: ${task_id}`);
+
+        // Poll progress
+        let pollCount = 0;
+        while (pollCount < 200) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          const sr = await fetch(`${API}/status/${task_id}`);
+          if (!sr.ok) break;
+          const status = await sr.json();
+          currentTask.value = { pct: status.pct || 0, log: status.log || '', step: status.step || 0 };
+
+          if (status.status === 'completed') {
+            addLog(status.log || '账号创建成功!', 'success');
+            await refreshAccounts();
+            break;
+          } else if (status.status === 'error') {
+            addLog(status.log || '创建失败', 'error');
+            break;
+          } else if (status.status === 'phone_required') {
+            addLog('需要手机验证 (无法跳过)', 'warn');
+            break;
+          } else if (status.status === 'wrong_code' || status.status === 'no_code') {
+            addLog('验证码错误或未收到', 'error');
+            break;
+          }
+          pollCount++;
+        }
+      } catch(e) {
+        addLog(`错误: ${e.message}`, 'error');
+      }
+      
+      creating.value = false;
+      currentTask.value = null;
+    }
+
+    async  createBatch(n) {
+      for (let i = 0; i < n; i++) {
+        await createAccount();
+        if (!creating.value) await new Promise(r => setTimeout(r, 5000));
+      }
+    }
+
+    onMounted(async () => {
+      await loadConfig();
+      await refreshAccounts();
+    });
+
+    return {
+      cfg, , stats, sim5Balance, creating, currentTask,
+      logs, tasks, logPanel, saveConfig, loadConfig, refreshAccounts,
+      createAccount, createBatch, deleteAccount, saveAccounts, formatDate
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

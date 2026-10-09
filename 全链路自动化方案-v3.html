@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MSCMS v14 全链路自动化方案 v3 — DAU目标驱动</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e1a;color:#e0e6f0;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;line-height:1.7;overflow-x:hidden}
+.container{max-width:1400px;margin:0 auto;padding:40px 20px}
+.hero{text-align:center;padding:60px 20px 50px;background:linear-gradient(135deg,rgba(0,212,255,0.08),rgba(123,97,255,0.08));border-radius:24px;margin-bottom:40px;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle,rgba(0,212,255,0.05) 0%,transparent 50%);animation:pulse 8s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:0.5}50%{opacity:1}}
+.hero h1{font-size:2.6em;background:linear-gradient(135deg,#00d4ff,#7b61ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;position:relative;z-index:1}
+.hero .subtitle{font-size:1.15em;color:#8a9bb5;margin-top:12px;position:relative;z-index:1}
+.hero .badges{margin-top:20px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;position:relative;z-index:1}
+.badge{padding:6px 16px;border-radius:20px;font-size:0.85em;font-weight:600}
+.badge-blue{background:rgba(0,212,255,0.15);color:#00d4ff;border:1px solid rgba(0,212,255,0.3)}
+.badge-purple{background:rgba(123,97,255,0.15);color:#7b61ff;border:1px solid rgba(123,97,255,0.3)}
+.badge-green{background:rgba(0,255,136,0.15);color:#00ff88;border:1px solid rgba(0,255,136,0.3)}
+.badge-orange{background:rgba(255,165,0,0.15);color:#ffa500;border:1px solid rgba(255,165,0,0.3)}
+.badge-red{background:rgba(255,77,77,0.15);color:#ff4d4d;border:1px solid rgba(255,77,77,0.3)}
+.section{margin-bottom:50px}
+.section-title{font-size:1.8em;color:#00d4ff;margin-bottom:8px;padding-bottom:12px;border-bottom:2px solid rgba(0,212,255,0.2);display:flex;align-items:center;gap:12px}
+.section-title .icon{font-size:1.2em}
+.section-desc{color:#8a9bb5;font-size:0.95em;margin-bottom:24px}
+
+/* DAU Target Panel */
+.dau-panel{background:linear-gradient(135deg,rgba(123,97,255,0.1),rgba(0,212,255,0.1));border:1px solid rgba(123,97,255,0.3);border-radius:20px;padding:30px;margin-bottom:30px}
+.dau-target{text-align:center;padding:20px}
+.dau-target .number{font-size:3.5em;font-weight:800;background:linear-gradient(135deg,#00ff88,#00d4ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.dau-target .label{color:#8a9bb5;font-size:1.1em}
+.dau-formula{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin-top:20px;padding:16px;background:rgba(0,0,0,0.3);border-radius:12px}
+.dau-formula .op{color:#7b61ff;font-weight:bold;font-size:1.2em}
+.dau-formula .var{padding:6px 14px;background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.3);border-radius:8px;color:#00d4ff;font-size:0.9em}
+
+/* Flow Diagram */
+.flow-container{display:flex;flex-direction:column;gap:0;position:relative}
+.flow-phase{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;margin-bottom:0;position:relative;transition:all 0.3s}
+.flow-phase:hover{border-color:rgba(0,212,255,0.3);background:rgba(0,212,255,0.03)}
+.flow-phase::after{content:'';position:absolute;left:50%;bottom:-20px;width:2px;height:20px;background:linear-gradient(180deg,rgba(0,212,255,0.5),transparent)}
+.flow-phase:last-child::after{display:none}
+.phase-header{display:flex;align-items:center;gap:16px;margin-bottom:16px}
+.phase-num{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.3em;font-weight:800;flex-shrink:0}
+.phase-num.p1{background:linear-gradient(135deg,#00d4ff,#0099cc);color:#fff}
+.phase-num.p2{background:linear-gradient(135deg,#00ff88,#00cc66);color:#fff}
+.phase-num.p3{background:linear-gradient(135deg,#ffa500,#ff6600);color:#fff}
+.phase-num.p4{background:linear-gradient(135deg,#ff4d4d,#cc3333);color:#fff}
+.phase-num.p5{background:linear-gradient(135deg,#7b61ff,#6600ff);color:#fff}
+.phase-num.p6{background:linear-gradient(135deg,#ff61c3,#cc0099);color:#fff}
+.phase-num.p7{background:linear-gradient(135deg,#00ffcc,#00997a);color:#fff}
+.phase-title{font-size:1.25em;font-weight:700;color:#e0e6f0}
+.phase-status{margin-left:auto;padding:4px 12px;border-radius:12px;font-size:0.8em;font-weight:600}
+.status-done{background:rgba(0,255,136,0.15);color:#00ff88;border:1px solid rgba(0,255,136,0.3)}
+.status-partial{background:rgba(255,165,0,0.15);color:#ffa500;border:1px solid rgba(255,165,0,0.3)}
+.status-new{background:rgba(255,77,77,0.15);color:#ff4d4d;border:1px solid rgba(255,77,77,0.3)}
+.phase-content{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.phase-block{background:rgba(0,0,0,0.2);border-radius:12px;padding:16px}
+.phase-block h4{color:#00d4ff;font-size:0.95em;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.phase-block.existing h4{color:#00ff88}
+.phase-block.new h4{color:#ff4d4d}
+.phase-block ul{list-style:none;padding-left:0}
+.phase-block li{padding:4px 0 4px 20px;position:relative;font-size:0.88em;color:#b0bcd4}
+.phase-block li::before{content:'▸';position:absolute;left:0;color:#00d4ff}
+.phase-block.existing li::before{color:#00ff88}
+.phase-block.new li::before{color:#ff4d4d}
+.module-tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:0.75em;font-weight:600;margin-left:6px}
+.tag-exists{background:rgba(0,255,136,0.15);color:#00ff88}
+.tag-new{background:rgba(255,77,77,0.15);color:#ff4d4d}
+.tag-partial{background:rgba(255,165,0,0.15);color:#ffa500}
+
+/* Registration Comparison */
+.reg-compare{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}
+.reg-card{border-radius:16px;padding:24px;position:relative}
+.reg-card.v1{background:linear-gradient(135deg,rgba(0,212,255,0.08),rgba(0,153,204,0.05));border:1px solid rgba(0,212,255,0.2)}
+.reg-card.v2{background:linear-gradient(135deg,rgba(123,97,255,0.08),rgba(102,0,255,0.05));border:1px solid rgba(123,97,255,0.2)}
+.reg-card h3{font-size:1.3em;margin-bottom:12px}
+.reg-card.v1 h3{color:#00d4ff}
+.reg-card.v2 h3{color:#7b61ff}
+.reg-steps{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.reg-step{display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(0,0,0,0.2);border-radius:8px;font-size:0.88em}
+.reg-step .step-num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75em;font-weight:700;flex-shrink:0}
+.reg-card.v1 .step-num{background:rgba(0,212,255,0.2);color:#00d4ff}
+.reg-card.v2 .step-num{background:rgba(123,97,255,0.2);color:#7b61ff}
+.reg-card .pros-cons{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pros-cons .col{padding:8px;border-radius:8px;font-size:0.82em}
+.col.pros{background:rgba(0,255,136,0.05);color:#00ff88}
+.col.cons{background:rgba(255,77,77,0.05);color:#ff8866}
+
+/* API Table */
+.api-table{;border-collapse:collapse;font-size:0.88em}
+.api-table th{background:rgba(0,212,255,0.1);color:#00d4ff;padding:12px;text-align:left;border-bottom:2px solid rgba(0,212,255,0.2);font-weight:600}
+.api-table td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.05);color:#b0bcd4}
+.api-table tr:hover{background:rgba(0,212,255,0.03)}
+.method-badge{padding:2px 8px;border-radius:4px;font-size:0.8em;font-weight:600}
+.method-GET{background:rgba(0,255,136,0.15);color:#00ff88}
+.method-POST{background:rgba(0,212,255,0.15);color:#00d4ff}
+.method-PUT{background:rgba(255,165,0,0.15);color:#ffa500}
+.method-DELETE{background:rgba(255,77,77,0.15);color:#ff4d4d}
+
+/* Gap Analysis */
+.gap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px}
+.gap-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px;transition:all 0.3s}
+.gap-card:hover{border-color:rgba(0,212,255,0.2);transform:translateY(-2px)}
+.gap-card .gap-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.gap-card h4{font-size:1.05em;color:#e0e6f0}
+.gap-card .gap-body{font-size:0.88em;color:#b0bcd4;line-height:1.6}
+.gap-card .gap-tech{padding-top:10px;border-top:1px solid rgba(255,255,255,0.05);font-size:0.82em;color:#8a9bb5}
+.gap-card .gap-tech code{background:rgba(0,212,255,0.1);color:#00d4ff;padding:1px 6px;border-radius:4px;font-size:0.9em}
+
+/* Architecture Diagram (SVG-like with divs) */
+.arch-diagram{background:rgba(0,0,0,0.3);border-radius:20px;padding:30px;margin:20px 0}
+.arch-layer{display:flex;justify-content:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+.arch-node{padding:10px 18px;border-radius:10px;font-size:0.85em;font-weight:600;text-align:center;min-width:120px;transition:all 0.3s}
+.arch-node:hover{transform:scale(1.05)}
+.arch-node.controller{background:linear-gradient(135deg,#7b61ff,#6600ff);color:#fff;box-shadow:0 0 20px rgba(123,97,255,0.3)}
+.arch-node.engine{background:rgba(0,212,255,0.15);color:#00d4ff;border:1px solid rgba(0,212,255,0.3)}
+.arch-node.data{background:rgba(0,255,136,0.15);color:#00ff88;border:1px solid rgba(0,255,136,0.3)}
+.arch-node.new{background:rgba(255,77,77,0.15);color:#ff4d4d;border:1px solid rgba(255,77,77,0.3);border-style:dashed}
+.arch-arrow{text-align:center;color:#8a9bb5;font-size:1.2em;margin:2px 0}
+
+/* Feature Mapping Table */
+.feature-map{;border-collapse:collapse;font-size:0.85em}
+.feature-map th{background:rgba(123,97,255,0.1);color:#7b61ff;padding:12px;text-align:left;border-bottom:2px solid rgba(123,97,255,0.2)}
+.feature-map td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.05)}
+.feature-map .phase-cell{font-weight:600;color:#00d4ff}
+.feature-map .module-cell{font-family:'Consolas','Monaco',monospace;color:#00ff88;font-size:0.9em}
+.feature-map .status-cell{text-align:center}
+
+/* Roadmap */
+.roadmap{position:relative;padding-left:40px}
+.roadmap::before{content:'';position:absolute;left:15px;top:0;bottom:0;width:2px;background:linear-gradient(180deg,#00d4ff,#7b61ff,#ff4d4d)}
+.roadmap-item{position:relative;margin-bottom:24px}
+.roadmap-item::before{content:'';position:absolute;left:-32px;top:4px;width:14px;height:14px;border-radius:50%;border:3px solid}
+.roadmap-item.p0::before{border-color:#ff4d4d;background:#0a0e1a}
+.roadmap-item.p1::before{border-color:#ffa500;background:#0a0e1a}
+.roadmap-item.p2::before{border-color:#00d4ff;background:#0a0e1a}
+.roadmap-item.p3::before{border-color:#00ff88;background:#0a0e1a}
+.roadmap-item h4{font-size:1.1em;margin-bottom:6px}
+.roadmap-item.p0 h4{color:#ff4d4d}
+.roadmap-item.p1 h4{color:#ffa500}
+.roadmap-item.p2 h4{color:#00d4ff}
+.roadmap-item.p3 h4{color:#00ff88}
+.roadmap-item p{font-size:0.88em;color:#b0bcd4}
+.roadmap-item .deliverables{margin-top:8px;font-size:0.82em;color:#8a9bb5}
+.roadmap-item .deliverables span{display:inline-block;margin-right:12px;padding:2px 8px;background:rgba(255,255,255,0.05);border-radius:6px}
+
+/* Dashboard Mockup */
+.dashboard-mock{background:rgba(0,0,0,0.4);border-radius:16px;padding:24px;margin:20px 0;border:1px solid rgba(255,255,255,0.08)}
+.mock-row{display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+.mock-card{flex:1;min-width:200px;background:rgba(255,255,255,0.03);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,0.05)}
+.mock-card .label{font-size:0.8em;color:#8a9bb5;margin-bottom:6px}
+.mock-card .value{font-size:1.8em;font-weight:700}
+.mock-card .delta{font-size:0.82em;margin-top:4px}
+.mock-card .delta.up{color:#00ff88}
+.mock-card .delta.down{color:#ff4d4d}
+.mock-card .delta.neutral{color:#8a9bb5}
+.mock-progress{height:6px;background:rgba(255,255,255,0.1);border-radius:3px;margin-top:8px;overflow:hidden}
+.mock-progress-bar{height:100%;border-radius:3px;transition:width 0.5s}
+
+/* Funnel */
+.funnel{display:flex;flex-direction:column;align-items:center;gap:4px;margin:20px 0}
+.funnel-stage{padding:12px 30px;border-radius:8px;text-align:center;font-size:0.9em;transition:all 0.3s;position:relative;}
+.funnel-stage:hover{transform:scale(1.02)}
+.funnel-stage .stage-name{font-weight:600}
+.funnel-stage .stage-num{font-size:1.5em;font-weight:800;margin-right:8px}
+.funnel-stage .stage-pct{float:right;font-size:0.85em;color:#8a9bb5}
+
+/* Responsive */
+@media(max-width:900px){
+  .phase-content,.reg-compare,.gap-grid{grid-template-columns:1fr}
+  .hero h1{font-size:1.8em}
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ===== HERO ===== -->
+<div class="hero">
+  <h1>MSCMS v14 全链路自动化方案 v3</h1>
+  <div class="subtitle">DAU 目标驱动 · 双注册模式 · 全模块串联 · 自主进化闭环</div>
+  <div class="badges">
+    <span class="badge badge-blue">38个现有模块</span>
+    <span class="badge badge-green">105个现有API</span>
+    <span class="badge badge-orange">6个待开发模块</span>
+    <span class="badge badge-purple">7阶段全链路</span>
+    <span class="badge badge-red">DAU目标驱动</span>
+  </div>
+</div>
+
+<!-- ===== 核心理念 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🎯</span> 核心理念：DAU 目标驱动</div>
+  <div class="section-desc">全链路的终极目标不是"运行流程"，而是"达成网站 DAU 目标"。系统以 DAU 为北极星指标，反向计算所需资源，自动调度全链路。</div>
+  
+  <div class="dau-panel">
+    <div class="dau-target">
+      <div class="number" id="dauNum">10,000</div>
+      <div class="label">每日网站 DAU 目标（可配置）</div>
+    </div>
+    <div class="dau-formula">
+      <span style="color:#8a9bb5;font-size:0.9em">DAU 达成公式：</span>
+      <span class="var">发布内容数</span>
+      <span class="op">×</span>
+      <span class="var">单帖引流率</span>
+      <span class="op">+</span>
+      <span class="var">主动触达数</span>
+      <span class="op">×</span>
+      <span class="var">触达转化率</span>
+      <span class="op">+</span>
+      <span class="var">截流评论数</span>
+      <span class="op">×</span>
+      <span class="var">评论转化率</span>
+      <span class="op">≥</span>
+      <span class="var" style="background:rgba(0,255,136,0.15);border-color:rgba(0,255,136,0.3);color:#00ff88">DAU目标</span>
+    </div>
+    <div style="text-align:center;margin-top:16px;font-size:0.85em;color:#8a9bb5">
+      决策引擎实时监控 DAU 缺口 → 自动增加内容产出 / 加大主动营销 / 扩展账号池 → 闭环优化
+    </div>
+  </div>
+</div>
+
+<!-- ===== 双注册模式 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🔐</span> Phase 0：双注册模式（V1 + V2 共存）</div>
+  <div class="section-desc">保留 V1 邮箱注册流程，新增 V2 Google 账号注册 + OAuth 免密登录。两种模式可独立或组合使用。</div>
+  
+  <div class="reg-compare">
+    <div class="reg-card v1">
+      <h3>V1 · 邮箱注册模式 <span class="badge badge-blue">已实现</span></h3>
+      <div style="color:#8a9bb5;font-size:0.9em">guerrillamail 临时邮箱 → 填表单 → CAPTCHA → 邮件验证</div>
+      <div class="reg-steps">
+        <div class="reg-step"><div class="step-num">1</div>申请 guerrillamail 临时邮箱</div>
+        <div class="reg-step"><div class="step-num">2</div>导航到社媒注册页，填写用户名/密码/邮箱</div>
+        <div class="reg-step"><div class="step-num">3</div>2captcha 自动求解 CAPTCHA</div>
+        <div class="reg-step"><div class="step-num">4</div>轮询邮箱等待验证链接</div>
+        <div class="reg-step"><div class="step-num">5</div>点击验证链接，账号创建完成</div>
+      </div>
+      <div class="pros-cons">
+        <div class="col pros">✓ 成本低<br>✓ 全平台通用<br>✓ 独立邮箱</div>
+        <div class="col cons">✗ CAPTCHA 成本<br>✗ 验证等待 2-5min<br>✗ 封号率较高</div>
+      </div>
+    </div>
+    
+    <div class="reg-card v2">
+      <h3>V2 · Google 注册模式 <span class="badge badge-purple">已添加</span></h3>
+      <div style="color:#8a9bb5;font-size:0.9em">Google 账号注册 → OAuth 免密登录 6 大社媒</div>
+      <div class="reg-steps">
+        <div class="reg-step"><div class="step-num">1</div>注册 Google 账号（姓名/生日/Gmail/密码）</div>
+        <div class="reg-step"><div class="step-num">2</div>5sim 手机验证码验证</div>
+        <div class="reg-step"><div class="step-num">3</div>导航到社媒注册页</div>
+        <div class="reg-step"><div class="step-num">4</div>点击 "Continue with Google"</div>
+        <div class="reg-step"><div class="step-num">5</div>选择 Google 账号 → 授权 → 账号创建</div>
+      </div>
+      <div class="pros-cons">
+        <div class="col pros">✓ 免 CAPTCHA<br>✓ 免邮箱验证<br>✓ 1→6 一键多平台<br>✓ 信任度高 封号率↓50%</div>
+        <div class="col cons">✗ Google 注册需手机号<br>✗ 依赖 Google 账号状态</div>
+      </div>
+    </div>
+  </div>
+  
+  <div style="background:rgba(0,0,0,0.2);border-radius:12px;padding:16px;margin-top:16px">
+    <h4 style="color:#00d4ff;margin-bottom:10px">🔄 推荐策略：V2 优先 + V1 补充</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:0.88em">
+      <div>
+        <strong style="color:#7b61ff">主路径 (V2)：</strong>先批量注册 Google 账号（每个绑定独立手机号+代理），然后通过 OAuth 免密登录 Reddit/X/Discord/Instagram/TikTok/YouTube，30秒内完成6平台账号创建。
+      </div>
+      <div>
+        <strong style="color:#00d4ff">补充路径 (V1)：</strong>对于不支持 Google OAuth 的平台（如部分论坛/小众社媒），使用 V1 邮箱注册模式作为补充。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 全链路7阶段 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🔗</span> 全链路 7 阶段流程</div>
+  <div class="section-desc">从 DAU 目标设定 → 账号注册 → 养号 → AI内容 → 智能发布 → 主动营销 → 数据进化，每个阶段串联现有模块，标注待开发项。</div>
+  
+  <div class="flow-container">
+
+    <!-- Phase 1 -->
+    <div class="flow-phase">
+      <div class="phase-header">
+        <div class="phase-num p1">1</div>
+        <div class="phase-title">DAU 目标设定 & 资源规划</div>
+        <div class="phase-status status-new">新增</div>
+      </div>
+      <div class="phase-content">
+        <div class="phase-block new">
+          <h4>🆕 待开发：DAU 目标控制器</h4>
+          <ul>
+            <li>用户设定每日 DAU 目标（如 10,000）<span class="module-tag tag-new">dau-target-controller.js</span></li>
+            <li>基于历史转化率反推所需资源量</li>
+            <li>计算：需要多少内容帖、多少主动触达、多少截流评论</li>
+            <li>生成每日资源分配计划，下发给各阶段</li>
+            <li>实时监控 DAU 进度，动态调整策略</li>
+          </ul>
+        </div>
+        <div class="phase-block existing">
+          <h4>✅ 已有：决策引擎接入</h4>
+          <ul>
+            <li>decision-engine.js — Q-learning 自主决策</li>
+            <li>AutonomousDecisionEngine 状态机</li>
+            <li>历史数据驱动参数优化</li>
+            <li>API: GET /api/v14/decision/status</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 2 -->
+    <div class="flow-phase">
+      <div class="phase-header">
+        <div class="phase-num p2">2</div>
+        <div class="phase-title">账号注册（双模式）</div>
+        <div class="phase-status status-done">已实现</div>
+      </div>
+      <div class="phase-content">
+        <div class="phase-block existing">
+          <h4>✅ V1 邮箱注册</h4>
+          <ul>
+            <li>full-auto-.js — guerrillamail 临时邮箱</li>
+            <li>2captcha CAPTCHA 求解</li>
+            <li>8节点进度追踪 + ETA 估算</li>
+            <li>支持: Reddit / X / Discord</li>
+            <li>API: POST /api/v14//start</li>
+            <li>API: GET /api/v14//progress</li>
+          </ul>
+        </div>
+        <div class="phase-block existing">
+          <h4>✅ V2 Google 注册</h4>
+          <ul>
+            <li>Google() — Google 账号注册</li>
+            <li>5sim 手机验证码</li>
+            <li>WithGoogleOAuth() — OAuth 免密</li>
+            <li>1→6 一键多平台（30秒）</li>
+            <li>支持: Reddit/X/Discord/IG/TikTok/YouTube</li>
+            <li>注册后自动验证账号有效性</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 3 -->
+    <div class="flow-phase">
+      <div class="phase-header">
+        <div class="phase-num p3">3</div>
+        <div class="phase-title">云手机启动 & 智能养号</div>
+        <div class="phase-status status-done">已实现</div>
+      </div>
+      <div class="phase-content">
+        <div class="phase-block existing">
+          <h4>✅ 云手机矩阵</h4>
+          <ul>
+            <li>device-manager.js — 50台设备管理</li>
+            <li>mobile-emulator.js — 移动设备模拟（50+型号）</li>
+            <li>stealth-injector.js — 指纹反检测注入</li>
+            <li>proxy-manager.js — 每设备独立代理绑定</li>
+            <li>gps-trajectory.js — GPS 轨迹模拟（4种速度）</li>
+            <li>sensor-simulator.js — 6种传感器模拟</li>
+            <li>session-manager.js — Session 备份/迁移/恢复</li>
+          </ul>
+        </div>
+        <div class="phase-block existing">
+          <h4>✅ 智能养号</h4>
+          <ul>
+            <li>account-nurturing.js — 7状态生命周期</li>
+            <li>BanRiskEngine — 封号风险评分</li>
+            <li>BehaviorSimulator — 高斯分布行为模拟</li>
+            <li>BezierTouchGenerator — 触摸轨迹生成</li>
+            <li>FatigueManager — 疲劳管理</li>
+            <li>5平台养号策略（Reddit/X/IG/TikTok/Discord）</li>
+            <li>API: POST /api/v14//:id/warming</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 4 -->
+    <div class="flow-phase">
+      <div class="phase-header">
+        <div class="phase-num p4">4</div>
+        <div class="phase-title">AI 内容生成 & 智能发布</div>
+        <div class="phase-status status-partial">部分实现</div>
+      </div>
+      <div class="phase-content">
+        <div class="phase-block existing">
+          <h4>✅ 内容情报（已有）</h4>
+          <ul>
+            <li>content-intelligence.js — 热点抓取+策略生成</li>
+            <li>HotTopicScraper — 6源热点聚合</li>
+            <li>ContentDNA — 内容模板引擎</li>
+            <li>FourLevelRewriter — 四级文本改写</li>
+            <li>TextDedupEngine — 去重检测</li>
+            <li>EXIFCleaner + ImageReencoder — 图片清洗</li>
+            <li>API: GET /api/v14/trending</li>
+          </ul>
+        </div>
+        <div class="phase-block new">
+          <h4>🆕 AIGC 内容生成（待开发）</h4>
+          <ul>
+            <li>aigc-content-generator.js — LLM API 集成</li>
+            <li>调用 GPT/Claude 生成文案/脚本/标题</li>
+            <li>基于热点关键词生成多平台适配内容</li>
+            <li>自动生成 CTA 引流文案（含网站链接）</li>
+            <li>内容质量评分 + 自动筛选</li>
+            <li>API: POST /api/v14/content/generate</li>
+          </ul>
+        </div>
+        <div class="phase-block existing">
+          <h4>✅ 智能发布（已有）</h4>
+          <ul>
+            <li>smart-publisher.js — 时间窗口优化</li>
+            <li>账号负载均衡 + S级紧急发布</li>
+            <li>CrossAccountSync — 三级跨号同步</li>
+            <li>ffmpeg-processor.js — 视频多渠道处理</li>
+            <li>API: POST /api/v14/publish/schedule</li>
+            <li>API: POST /api/v14/publish/execute</li>
+          </ul>
+        </div>
+        <div class="phase-block new">
+          <h4>🆕 社媒操作桥接（待开发）</h4>
+          <ul>
+            <li>social-bridge.js — Playwright→社媒操作</li>
+            <li>postContent() — 发帖/上传图片/上传视频</li>
+            <li>editProfile() — 个人资料设置（含网站链接）</li>
+            <li>getFeed() — 抓取首页 feed</li>
+            <li>searchTopic() — 话题搜索</li>
+            <li>桥接云手机设备→社媒平台实际操作</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 5 -->
+    <div class="flow-phase">
+      <div class="phase-header">
+        <div class="phase-num p5">5</div>
+        <div class="phase-title">主动营销 & 引流触达</div>
+        <div class="phase-status status-partial">部分实现</div>
+      </div>
+      <div class="phase-content">
+        <div class="phase-block existing">
+          <h4>✅ SCRM 被动截流（已有）</h4>
+          <ul>
+            <li>scrm-intercept.js — 多权重评分截流</li>
+            <li>评论监控 + AI 智能回复</li>
+            <li>情感极性识别 + 用户质量评分</li>
+            <li>审核队列（自动/人工）</li>
+            <li>回复中嵌入网站引流链接</li>
+            <li>API: POST /api/v14/scrm/intercept</li>
+          </ul>
+        </div>
+        <div class="phase-block new">
+          <h4>🆕 主动营销引擎（待开发）</h4>
+          <ul>
+            <li>proactive-marketing.js — 主动触达引擎</li>
+            <li>主动关注目标用户 → 等待回关 → 私信引流</li>
+            <li>话题参与：搜索相关话题 → 发布评论/帖文</li>
+            <li>私信群发：个性化消息 + 网站 CTA</li>
+            <li>KOL 互动：评论大V帖子 → 增加曝光</li>
+            <li>每日触达配额 + 频率控制</li>
+            <li>API: POST /api/v14/marketing/campaign</li>
+          </ul>
+        </div>
+        <div class="phase-block new">
+          <h4>🆕 引流链接管理（待开发）</h4>
+          <ul>
+            <li>traffic-router.js — 引流链接管理</li>
+            <li>每帖/每私信生成独立追踪链接</li>
+            <li>UTM 参数自动拼接</li>
+            <li>短链服务 + 点击追踪</li>
+            <li>A/B 测试不同 CTA 文案</li>
+          </ul>
+        </div>
+        <div class="phase-block existing">
+          <h4>✅ Cloaking 网关（已有）</h4>
+          <ul>
+            <li>server.js /gateway — UA检测</li>
+            <li>bot→白页 / 真人→追踪跳转目标站</li>
+            <li>POST /api/v1/postback — 转化回调</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 6 -->
+    <div class="flow-phase">
+      <div class="phase-header">
+        <div class="phase-num p6">6</div>
+        <div class="phase-title">数据追踪 & 漏斗分析</div>
+        <div class="phase-status status-partial">部分实现</div>
+      </div>
+      <div class="phase-content">
+        <div class="phase-block existing">
+          <h4>✅ 社媒数据采集（已有）</h4>
+          <ul>
+            <li>smart-publisher.js DataFeedbackCollector</li>
+            <li>6大指标：浏览/点赞/评论/分享/点击/转化</li>
+            <li>梯度采集频率（1min~24h）</li>
+            <li>ViralSignalDetector — 病毒信号检测</li>
+            <li>API: POST /api/v14/tracking/start</li>
+            <li>API: GET /api/v14/tracking/:variantId</li>
+          </ul>
+        </div>
+        <div class="phase-block new">
+          <h4>🆕 网站数据分析（待开发）</h4>
+          <ul>
+            <li>website-analytics.js — 网站 DAU 分析</li>
+            <li>追踪像素：记录访客来源社媒/帖文/账号</li>
+            <li>DAU/MAU/留存率/跳出率 实时统计</li>
+            <li>来源归因：哪条帖文/哪个账号引流最多</li>
+            <li>转化漏斗：曝光→点击→访问→注册→留存</li>
+            <li>API: GET /api/v14/analytics/dau</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 7 -->
+    <div class="flow-phase">
+      <div class="phase-header">
+        <div class="phase-num p7">7</div>
+        <div class="phase-title">自主决策 & 进化闭环</div>
+        <div class="phase-status status-done">已实现</div>
+      </div>
+      <div class="phase-content">
+        <div class="phase-block existing">
+          <h4>✅ 自主决策引擎</h4>
+          <ul>
+            <li>decision-engine.js — RL-LLM-AB 混合决策</li>
+            <li>QLearningEngine — Q-learning 状态-动作</li>
+            <li>Thompson Sampling + epsilon-Greedy</li>
+            <li>7状态决策状态机</li>
+            <li>病毒信号自动响应</li>
+            <li>API: POST /api/v14/decision/action</li>
+          </ul>
+        </div>
+        <div class="phase-block existing">
+          <h4>✅ 自进化系统</h4>
+          <ul>
+            <li>EvolutionSystem — Content DNA 进化</li>
+            <li>5维自适应学习（内容/时间/频率/账号/策略）</li>
+            <li>5大策略库自动迭代</li>
+            <li>ABTestEngine — A/B 测试判定</li>
+            <li>日/周进化报告</li>
+            <li>API: GET /api/v14/evolution/report</li>
+          </ul>
+        </div>
+        <div class="phase-block new">
+          <h4>🆕 DAU 闭环反馈（待开发）</h4>
+          <ul>
+            <li>dau-target-controller.js 闭环逻辑</li>
+            <li>DAU 缺口 → 触发决策引擎调整策略</li>
+            <li>低效内容/账号自动降权</li>
+            <li>高效 CTA/平台自动加权</li>
+            <li>每日自动生成优化建议</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== 系统架构图 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🏗️</span> 系统架构总览</div>
+  <div class="section-desc">DAU 目标控制器为中枢，串联 7 层 20+ 模块，形成闭环。</div>
+  
+  <div class="arch-diagram">
+    <div class="arch-layer">
+      <div class="arch-node controller">🎯 DAU 目标控制器<br><small>新增</small></div>
+    </div>
+    <div class="arch-arrow">↓ 下发每日资源计划</div>
+    <div class="arch-layer">
+      <div class="arch-node engine">🔐 注册引擎<br><small>V1邮箱 + V2 Google</small></div>
+      <div class="arch-node engine">📱 云手机矩阵<br><small>50台设备</small></div>
+      <div class="arch-node engine">🌱 智能养号<br><small>7状态生命周期</small></div>
+    </div>
+    <div class="arch-arrow">↓ 账号就绪</div>
+    <div class="arch-layer">
+      <div class="arch-node engine">🔥 内容情报<br><small>热点+策略</small></div>
+      <div class="arch-node new">🤖 AIGC生成<br><small>新增</small></div>
+      <div class="arch-node engine">📤 智能发布<br><small>时间优化</small></div>
+      <div class="arch-node new">🌉 社媒桥接<br><small>新增</small></div>
+    </div>
+    <div class="arch-arrow">↓ 内容发布到社媒</div>
+    <div class="arch-layer">
+      <div class="arch-node engine">🎯 SCRM截流<br><small>被动回复</small></div>
+      <div class="arch-node new">📣 主动营销<br><small>新增</small></div>
+      <div class="arch-node new">🔗 引流路由<br><small>新增</small></div>
+      <div class="arch-node engine">🛡 Cloaking网关<br><small>已有</small></div>
+    </div>
+    <div class="arch-arrow">↓ 用户点击引流链接 → 到达网站</div>
+    <div class="arch-layer">
+      <div class="arch-node data">📊 社媒数据<br><small>6指标采集</small></div>
+      <div class="arch-node new">📈 网站分析<br><small>新增</small></div>
+      <div class="arch-node data">🧠 决策引擎<br><small>Q-learning</small></div>
+      <div class="arch-node data">🔄 自进化<br><small>5维学习</small></div>
+    </div>
+    <div class="arch-arrow">↑ DAU 数据反馈 → 目标控制器调整策略</div>
+  </div>
+</div>
+
+<!-- ===== 现有模块串联表 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">📋</span> 现有模块串联映射</div>
+  <div class="section-desc">38个现有JS模块如何串联到7个阶段中，6个新增模块填补哪些缺口。</div>
+  
+  <table class="feature-map">
+    <thead>
+      <tr>
+        <th>阶段</th>
+        <th>模块文件</th>
+        <th>核心功能</th>
+        <th>状态</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="phase-cell" rowspan="2">注册</td><td class="module-cell">full-auto-.js</td><td>V1邮箱注册 + V2 Google注册 + OAuth免密</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell">captcha-solver.js / 5sim-sms.js / gmail-.js</td><td>CAPTCHA求解 / 手机验证码 / Gmail注册</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      
+      <tr><td class="phase-cell" rowspan="5">云手机</td><td class="module-cell">device-manager.js</td><td>50台云手机生命周期管理</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell">mobile-emulator.js</td><td>移动设备模拟 (50+型号)</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell">stealth-injector.js</td><td>指纹反检测注入 (Canvas/WebGL/Audio)</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell">proxy-manager.js / proxy-checker.js</td><td>代理管理 + 质量检测 + 故障轮换</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell">gps-trajectory.js / sensor-simulator.js / session-manager.js</td><td>GPS轨迹 / 传感器 / Session备份迁移</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      
+      <tr><td class="phase-cell" rowspan="2">养号</td><td class="module-cell">account-nurturing.js</td><td>7状态生命周期 + Ban风险 + 行为模拟</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell">account-validator.js</td><td>账号有效性验证 (Reddit/X)</td><td class="status-cell"><span class="module-tag tag-partial">部分</span></td></tr>
+      
+      <tr><td class="phase-cell" rowspan="3">内容</td><td class="module-cell">content-intelligence.js</td><td>热点抓取 + Content DNA + 四级改写</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell">ffmpeg-processor.js</td><td>视频多渠道处理 + 指纹清洗</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell" style="color:#ff4d4d">aigc-content-generator.js</td><td>LLM API集成 + 文案/脚本/标题生成</td><td class="status-cell"><span class="module-tag tag-new">待开发</span></td></tr>
+      
+      <tr><td class="phase-cell" rowspan="2">发布</td><td class="module-cell">smart-publisher.js</td><td>时间优化 + 负载均衡 + 跨号同步</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell" style="color:#ff4d4d">social-bridge.js</td><td>Playwright→社媒实际操作 (发帖/关注/私信)</td><td class="status-cell"><span class="module-tag tag-new">待开发</span></td></tr>
+      
+      <tr><td class="phase-cell" rowspan="3">营销</td><td class="module-cell">scrm-intercept.js</td><td>被动截流 + AI回复 + 审核队列</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell" style="color:#ff4d4d">proactive-marketing.js</td><td>主动关注/私信/话题参与/KOL互动</td><td class="status-cell"><span class="module-tag tag-new">待开发</span></td></tr>
+      <tr><td class="module-cell" style="color:#ff4d4d">traffic-router.js</td><td>引流链接管理 + UTM + 短链 + 点击追踪</td><td class="status-cell"><span class="module-tag tag-new">待开发</span></td></tr>
+      
+      <tr><td class="phase-cell" rowspan="2">数据</td><td class="module-cell">smart-publisher.js (DataFeedbackCollector)</td><td>6大指标采集 + 梯度频率 + 病毒检测</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell" style="color:#ff4d4d">website-analytics.js</td><td>网站DAU + 来源归因 + 转化漏斗</td><td class="status-cell"><span class="module-tag tag-new">待开发</span></td></tr>
+      
+      <tr><td class="phase-cell" rowspan="2">决策</td><td class="module-cell">decision-engine.js</td><td>Q-learning + Thompson Sampling + AB测试</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+      <tr><td class="module-cell" style="color:#ff4d4d">dau-target-controller.js</td><td>DAU目标驱动 + 资源规划 + 闭环反馈</td><td class="status-cell"><span class="module-tag tag-new">待开发</span></td></tr>
+      
+      <tr><td class="phase-cell">编排</td><td class="module-cell">dag-orchestrator.js</td><td>DAG任务编排 (7状态 + 3预设模板)</td><td class="status-cell"><span class="module-tag tag-exists">已实现</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== 新增模块详细设计 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🆕</span> 6个待开发模块详细设计</div>
+  <div class="section-desc">填补现有系统与 DAU 目标驱动全链路之间的关键缺口。</div>
+  
+  <div class="gap-grid">
+    <div class="gap-card" style="border-color:rgba(255,77,77,0.3)">
+      <div class="gap-header">
+        <h4>P0 · social-bridge.js</h4>
+        <span class="badge badge-red">关键路径</span>
+      </div>
+      <div class="gap-body">
+        <strong>云手机社媒操作桥接层</strong>。将 device-manager.js 的 50 台云手机连接到实际社媒平台，执行发帖、关注、私信、评论等操作。每台设备分配独立 Playwright 浏览器上下文，加载 session-manager.js 的 Cookie/LocalStorage 恢复登录态。
+      </div>
+      <div class="gap-tech">
+        核心方法：<code>postContent(deviceId, , content)</code> <code>followUser(deviceId, targetUser)</code> <code>sendDM(deviceId, targetUser, message)</code> <code>commentOnPost(deviceId, postUrl, comment)</code><br>
+        依赖：<code>device-manager.js</code> <code>session-manager.js</code> <code>stealth-injector.js</code>
+      </div>
+    </div>
+    
+    <div class="gap-card" style="border-color:rgba(255,77,77,0.3)">
+      <div class="gap-header">
+        <h4>P0 · dau-target-controller.js</h4>
+        <span class="badge badge-red">核心中枢</span>
+      </div>
+      <div class="gap-body">
+        <strong>DAU 目标驱动控制器</strong>。系统的"大脑"。用户设定每日 DAU 目标，控制器基于历史转化率反推所需资源（内容数、触达数、截流数），生成每日执行计划，下发给各模块。实时监控 DAU 进度，动态调整策略。
+      </div>
+      <div class="gap-tech">
+        核心方法：<code>setTarget(dau)</code> <code>planDaily()</code> <code>monitorProgress()</code> <code>adjustStrategy()</code><br>
+        依赖：<code>decision-engine.js</code> <code>website-analytics.js</code> <code>所有执行模块</code>
+      </div>
+    </div>
+    
+    <div class="gap-card" style="border-color:rgba(255,165,0,0.3)">
+      <div class="gap-header">
+        <h4>P1 · proactive-marketing.js</h4>
+        <span class="badge badge-orange">主动触达</span>
+      </div>
+      <div class="gap-body">
+        <strong>主动营销引擎</strong>。弥补 SCRM 截流仅能"被动回复"的不足。主动搜索目标用户 → 关注 → 等待回关 → 私信引流。话题参与：搜索相关话题标签 → 发布评论/帖文。KOL 互动：监控大V发帖 → 第一时间评论增加曝光。
+      </div>
+      <div class="gap-tech">
+        核心方法：<code>findTargetUsers(, keywords)</code> <code>followAndWait(deviceId, userId)</code> <code>sendDM(deviceId, userId, template)</code> <code>engageTopic(deviceId, hashtag)</code><br>
+        依赖：<code>social-bridge.js</code> <code>scrm-intercept.js</code>
+      </div>
+    </div>
+    
+    <div class="gap-card" style="border-color:rgba(255,165,0,0.3)">
+      <div class="gap-header">
+        <h4>P1 · aigc-content-generator.js</h4>
+        <span class="badge badge-orange">内容工厂</span>
+      </div>
+      <div class="gap-body">
+        <strong>AIGC 内容生成器</strong>。集成 LLM API（GPT-4o / Claude 3.5），基于 content-intelligence.js 的热点关键词和 Content DNA 模板，自动生成多平台适配的文案、标题、脚本。每条内容自动嵌入引流 CTA 和追踪链接。
+      </div>
+      <div class="gap-tech">
+        核心方法：<code>generatePost(, topic, style)</code> <code>generateTitle(topic, )</code> <code>generateScript(topic, duration)</code> <code>generateCTA(websiteUrl, utmParams)</code><br>
+        依赖：<code>content-intelligence.js</code> <code>traffic-router.js</code>
+      </div>
+    </div>
+    
+    <div class="gap-card" style="border-color:rgba(0,212,255,0.3)">
+      <div class="gap-header">
+        <h4>P2 · website-analytics.js</h4>
+        <span class="badge badge-blue">网站数据</span>
+      </div>
+      <div class="gap-body">
+        <strong>网站 DAU 分析模块</strong>。在目标网站部署追踪像素，记录每个访客的来源社媒、来源帖文、来源账号。统计 DAU/MAU/留存率/跳出率。构建转化漏斗：社媒曝光→链接点击→网站访问→注册转化→次日留存。
+      </div>
+      <div class="gap-tech">
+        核心方法：<code>trackVisit(req)</code> <code>getDAU(date)</code> <code>getFunnel(startDate, endDate)</code> <code>attributeSource(visitorId)</code><br>
+        依赖：<code>traffic-router.js</code> (UTM解析)
+      </div>
+    </div>
+    
+    <div class="gap-card" style="border-color:rgba(0,212,255,0.3)">
+      <div class="gap-header">
+        <h4>P2 · traffic-router.js</h4>
+        <span class="badge badge-blue">引流路由</span>
+      </div>
+      <div class="gap-body">
+        <strong>引流链接管理系统</strong>。为每条帖文/私信/评论生成独立追踪链接，自动拼接 UTM 参数。短链服务将长 URL 转为短链。点击追踪记录每次点击的来源。支持 A/B 测试不同 CTA 文案。
+      </div>
+      <div class="gap-tech">
+        核心方法：<code>createLink(source, medium, campaign, content)</code> <code>shorten(url)</code> <code>trackClick(linkId, metadata)</code> <code>getABVariants(campaignId)</code><br>
+        依赖：无（独立模块，被其他模块引用）
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DAU 闭环流程 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🔄</span> DAU 闭环自动调节流程</div>
+  <div class="section-desc">系统每 15 分钟检查 DAU 进度，自动调整策略。以下是一个完整的闭环周期：</div>
+  
+  <div style="background:rgba(0,0,0,0.3);border-radius:16px;padding:24px;margin:16px 0">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div style="text-align:center;flex:1;min-width:150px">
+        <div style="font-size:2em">🎯</div>
+        <div style="color:#7b61ff;font-weight:600;margin-top:8px">设定目标</div>
+        <div style="font-size:0.82em;color:#8a9bb5;margin-top:4px">DAU = 10,000</div>
+      </div>
+      <div style="color:#8a9bb5;font-size:1.5em">→</div>
+      <div style="text-align:center;flex:1;min-width:150px">
+        <div style="font-size:2em">📊</div>
+        <div style="color:#00d4ff;font-weight:600;margin-top:8px">资源规划</div>
+        <div style="font-size:0.82em;color:#8a9bb5;margin-top:4px">需 200帖 + 500触达 + 300截流</div>
+      </div>
+      <div style="color:#8a9bb5;font-size:1.5em">→</div>
+      <div style="text-align:center;flex:1;min-width:150px">
+        <div style="font-size:2em">🚀</div>
+        <div style="color:#00ff88;font-weight:600;margin-top:8px">执行全链路</div>
+        <div style="font-size:0.82em;color:#8a9bb5;margin-top:4px">注册→养号→发布→营销</div>
+      </div>
+      <div style="color:#8a9bb5;font-size:1.5em">→</div>
+      <div style="text-align:center;flex:1;min-width:150px">
+        <div style="font-size:2em">📈</div>
+        <div style="color:#ffa500;font-weight:600;margin-top:8px">采集数据</div>
+        <div style="font-size:0.82em;color:#8a9bb5;margin-top:4px">社媒6指标 + 网站DAU</div>
+      </div>
+      <div style="color:#8a9bb5;font-size:1.5em">→</div>
+      <div style="text-align:center;flex:1;min-width:150px">
+        <div style="font-size:2em">🧠</div>
+        <div style="color:#ff61c3;font-weight:600;margin-top:8px">决策优化</div>
+        <div style="font-size:0.82em;color:#8a9bb5;margin-top:4px">Q-learning 调整策略</div>
+      </div>
+      <div style="color:#8a9bb5;font-size:1.5em">↻</div>
+      <div style="text-align:center;flex:1;min-width:150px">
+        <div style="font-size:2em">🔄</div>
+        <div style="color:#00ffcc;font-weight:600;margin-top:8px">进化迭代</div>
+        <div style="font-size:0.82em;color:#8a9bb5;margin-top:4px">Content DNA + 策略库更新</div>
+      </div>
+    </div>
+  </div>
+  
+  <div style="background:rgba(255,165,0,0.05);border:1px solid rgba(255,165,0,0.2);border-radius:12px;padding:16px;margin-top:16px">
+    <h4 style="color:#ffa500;margin-bottom:10px">⚡ 动态调节示例</h4>
+    <div style="font-size:0.88em;color:#b0bcd4;line-height:1.8">
+      <strong>场景：</strong>下午 3 点，当前 DAU = 4,200，目标 10,000，进度 42%（预期 60%）<br>
+      <strong>自动调节：</strong><br>
+      • 决策引擎检测到 DAU 缺口 → 触发 <code style="color:#00d4ff">adjustStrategy()</code><br>
+      • 增加内容产出：从 200帖 → 350帖（调用 AIGC 生成器批量产出）<br>
+      • 加大主动营销：从 500触达 → 800触达（扩大目标用户搜索范围）<br>
+      • 启用 S 级紧急发布：<code style="color:#00d4ff">SmartPublisher.emergencyPublish()</code> 立即推送高热度内容<br>
+      • 调整 CTA 策略：AB 测试中表现更好的 CTA 文案自动全量启用<br>
+      • 降权低效账号：转化率 <0.5% 的账号暂停发布，资源转移给高效账号
+    </div>
+  </div>
+</div>
+
+<!-- ===== 转化漏斗 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">📉</span> 全链路转化漏斗</div>
+  <div class="section-desc">从社媒曝光到网站 DAU 的完整转化漏斗，每个阶段都有对应的现有/新增模块支撑。</div>
+  
+  <div class="funnel">
+    <div class="funnel-stage" style="background:linear-gradient(90deg,rgba(0,212,255,0.2),rgba(0,212,255,0.05));">
+      <span class="stage-num">100,000</span><span class="stage-name">社媒曝光（Impressions）</span>
+      <span class="stage-pct">智能发布 + 跨号同步</span>
+    </div>
+    <div class="funnel-stage" style="background:linear-gradient(90deg,rgba(0,255,136,0.2),rgba(0,255,136,0.05));width:85%">
+      <span class="stage-num">15,000</span><span class="stage-name">互动（Likes/Comments/Shares）</span>
+      <span class="stage-pct">SCRM截流 + 主动营销</span>
+    </div>
+    <div class="funnel-stage" style="background:linear-gradient(90deg,rgba(255,165,0,0.2),rgba(255,165,0,0.05));width:65%">
+      <span class="stage-num">5,000</span><span class="stage-name">链接点击（Clicks）</span>
+      <span class="stage-pct">引流链接 + CTA优化</span>
+    </div>
+    <div class="funnel-stage" style="background:linear-gradient(90deg,rgba(123,97,255,0.2),rgba(123,97,255,0.05));width:50%">
+      <span class="stage-num">10,000</span><span class="stage-name">网站访问（DAU）</span>
+      <span class="stage-pct">Cloaking网关 + 追踪像素</span>
+    </div>
+    <div class="funnel-stage" style="background:linear-gradient(90deg,rgba(255,77,77,0.2),rgba(255,77,77,0.05));width:25%">
+      <span class="stage-num">2,000</span><span class="stage-name">注册转化（Conversions）</span>
+      <span class="stage-pct">转化回调 + 归因分析</span>
+    </div>
+    <div class="funnel-stage" style="background:linear-gradient(90deg,rgba(255,97,195,0.2),rgba(255,97,195,0.05));width:12%">
+      <span class="stage-num">800</span><span class="stage-name">次日留存（Retention）</span>
+      <span class="stage-pct">网站分析 + 进化优化</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== DAU 控制台设计 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">📊</span> DAU 控制台设计（新增面板）</div>
+  <div class="section-desc">在 v14-console.html 中新增第 17 个页签 "🎯 DAU 目标"，作为全链路指挥中心。</div>
+  
+  <div class="dashboard-mock">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h3 style="color:#7b61ff">🎯 DAU 目标指挥中心</h3>
+      <div style="display:flex;gap:8px">
+        <span class="badge badge-green">运行中</span>
+        <span class="badge badge-blue">自动模式</span>
+      </div>
+    </div>
+    
+    <div class="mock-row">
+      <div class="mock-card" style="border-left:3px solid #7b61ff">
+        <div class="label">今日 DAU 目标</div>
+        <div class="value" style="color:#7b61ff">10,000</div>
+        <div class="mock-progress"><div class="mock-progress-bar" style="width:42%;background:#7b61ff"></div></div>
+        <div class="delta neutral">已达成 4,200 / 10,000 (42%)</div>
+      </div>
+      <div class="mock-card" style="border-left:3px solid #00ff88">
+        <div class="label">社媒曝光</div>
+        <div class="value" style="color:#00ff88">42K</div>
+        <div class="delta up">↑ 18% vs 昨日</div>
+      </div>
+      <div class="mock-card" style="border-left:3px solid #00d4ff">
+        <div class="label">链接点击</div>
+        <div class="value" style="color:#00d4ff">2.1K</div>
+        <div class="delta up">↑ 12% vs 昨日</div>
+      </div>
+      <div class="mock-card" style="border-left:3px solid #ffa500">
+        <div class="label">活跃账号</div>
+        <div class="value" style="color:#ffa500">87/120</div>
+        <div class="delta neutral">73% 利用率</div>
+      </div>
+    </div>
+    
+    <div class="mock-row">
+      <div class="mock-card" style="border-left:3px solid #ff4d4d">
+        <div class="label">主动触达</div>
+        <div class="value" style="color:#ff4d4d">340/500</div>
+        <div class="mock-progress"><div class="mock-progress-bar" style="width:68%;background:#ff4d4d"></div></div>
+        <div class="delta neutral">68% 完成</div>
+      </div>
+      <div class="mock-card" style="border-left:3px solid #ff61c3">
+        <div class="label">截流评论</div>
+        <div class="value" style="color:#ff61c3">156/300</div>
+        <div class="mock-progress"><div class="mock-progress-bar" style="width:52%;background:#ff61c3"></div></div>
+        <div class="delta neutral">52% 完成</div>
+      </div>
+      <div class="mock-card" style="border-left:3px solid #00ffcc">
+        <div class="label">内容产出</div>
+        <div class="value" style="color:#00ffcc">78/200</div>
+        <div class="mock-progress"><div class="mock-progress-bar" style="width:39%;background:#00ffcc"></div></div>
+        <div class="delta down">↓ 需加速</div>
+      </div>
+      <div class="mock-card" style="border-left:3px solid #7b61ff">
+        <div class="label">预估最终 DAU</div>
+        <div class="value" style="color:#7b61ff">~8,500</div>
+        <div class="delta down">↓ 预计缺口 1,500</div>
+      </div>
+    </div>
+    
+    <div style="background:rgba(255,165,0,0.08);border:1px solid rgba(255,165,0,0.2);border-radius:12px;padding:16px;margin-top:12px">
+      <h4 style="color:#ffa500;margin-bottom:8px">🧠 决策引擎建议</h4>
+      <div style="font-size:0.88em;color:#b0bcd4;line-height:1.8">
+        ⚡ DAU 进度落后预期 18%，建议：<br>
+        1. 增加内容产出至 300帖（AIGC 生成器已就绪）<br>
+        2. 扩大主动营销目标用户池（从科技→科技+游戏+生活方式）<br>
+        3. 启用 S 级紧急发布（3条高热度帖文待发布）<br>
+        4. CTA 文案 "免费体验" 转化率 3.2% > "立即注册" 1.8%，全量切换<br>
+        <span style="color:#00ff88">→ 自动执行中（置信度 87%）</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== API 新增端点 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🔌</span> 新增 API 端点设计</div>
+  <div class="section-desc">6个新模块对应的 API 端点，与现有 105 个端点无缝集成。</div>
+  
+  <table class="api-table">
+    <thead>
+      <tr><th>方法</th><th>路径</th><th>功能</th><th>所属模块</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/dau/target</td><td>设定DAU目标</td><td>dau-target-controller.js</td></tr>
+      <tr><td><span class="method-badge method-GET">GET</span></td><td>/api/v14/dau/progress</td><td>DAU实时进度</td><td>dau-target-controller.js</td></tr>
+      <tr><td><span class="method-badge method-GET">GET</span></td><td>/api/v14/dau/plan</td><td>每日资源计划</td><td>dau-target-controller.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/dau/auto-adjust</td><td>触发自动调节</td><td>dau-target-controller.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/content/generate</td><td>AIGC内容生成</td><td>aigc-content-generator.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/content/batch-generate</td><td>批量内容生成</td><td>aigc-content-generator.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/social/post</td><td>发帖到社媒</td><td>social-bridge.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/social/follow</td><td>关注用户</td><td>social-bridge.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/social/dm</td><td>发送私信</td><td>social-bridge.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/social/comment</td><td>评论帖文</td><td>social-bridge.js</td></tr>
+      <tr><td><span class="method-badge method-GET">GET</span></td><td>/api/v14/social/feed/:deviceId</td><td>获取设备Feed</td><td>social-bridge.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/marketing/campaign</td><td>创建营销活动</td><td>proactive-marketing.js</td></tr>
+      <tr><td><span class="method-badge method-GET">GET</span></td><td>/api/v14/marketing/active</td><td>活跃活动列表</td><td>proactive-marketing.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/marketing/engage</td><td>执行话题参与</td><td>proactive-marketing.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/traffic/link</td><td>创建追踪链接</td><td>traffic-router.js</td></tr>
+      <tr><td><span class="method-badge method-GET">GET</span></td><td>/api/v14/traffic/:linkId</td><td>链接点击统计</td><td>traffic-router.js</td></tr>
+      <tr><td><span class="method-badge method-GET">GET</span></td><td>/api/v14/traffic/redirect/:linkId</td><td>短链重定向</td><td>traffic-router.js</td></tr>
+      <tr><td><span class="method-badge method-GET">GET</span></td><td>/api/v14/analytics/dau</td><td>网站DAU统计</td><td>website-analytics.js</td></tr>
+      <tr><td><span class="method-badge method-GET">GET</span></td><td>/api/v14/analytics/funnel</td><td>转化漏斗分析</td><td>website-analytics.js</td></tr>
+      <tr><td><span class="method-badge method-GET">GET</span></td><td>/api/v14/analytics/attribution</td><td>来源归因报告</td><td>website-analytics.js</td></tr>
+      <tr><td><span class="method-badge method-POST">POST</span></td><td>/api/v14/analytics/track</td><td>追踪像素端点</td><td>website-analytics.js</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ===== DAG 编排 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">⚙️</span> 全链路 DAG 编排模板</div>
+  <div class="section-desc">基于现有 dag-orchestrator.js，新增 "DAU驱动全链路" 预设模板，15个节点自动编排。</div>
+  
+  <div style="background:rgba(0,0,0,0.3);border-radius:16px;padding:24px;overflow-x:auto">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;font-size:0.82em">
+      <div style="padding:8px 12px;background:rgba(123,97,255,0.15);border:1px solid rgba(123,97,255,0.3);border-radius:8px;color:#7b61ff;font-weight:600">N0: DAU目标设定</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(0,212,255,0.15);border:1px solid rgba(0,212,255,0.3);border-radius:8px;color:#00d4ff">N1: 资源规划</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(0,255,136,0.15);border:1px solid rgba(0,255,136,0.3);border-radius:8px;color:#00ff88">N2: Google注册</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(0,255,136,0.15);border:1px solid rgba(0,255,136,0.3);border-radius:8px;color:#00ff88">N2b: OAuth免密</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(0,255,136,0.15);border:1px solid rgba(0,255,136,0.3);border-radius:8px;color:#00ff88">N3: 云手机启动</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(0,255,136,0.15);border:1px solid rgba(0,255,136,0.3);border-radius:8px;color:#00ff88">N4: 智能养号</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;font-size:0.82em;margin-top:8px">
+      <div style="padding:8px 12px;background:rgba(255,165,0,0.15);border:1px solid rgba(255,165,0,0.3);border-radius:8px;color:#ffa500">N5: 热点抓取</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(255,165,0,0.15);border:1px solid rgba(255,165,0,0.3);border-radius:8px;color:#ffa500">N6: AIGC生成</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(255,165,0,0.15);border:1px solid rgba(255,165,0,0.3);border-radius:8px;color:#ffa500">N7: 内容去重+改写</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(255,77,77,0.15);border:1px solid rgba(255,77,77,0.3);border-radius:8px;color:#ff4d4d">N8: 智能发布</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(255,77,77,0.15);border:1px solid rgba(255,77,77,0.3);border-radius:8px;color:#ff4d4d">N9: 社媒桥接执行</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;font-size:0.82em;margin-top:8px">
+      <div style="padding:8px 12px;background:rgba(255,97,195,0.15);border:1px solid rgba(255,97,195,0.3);border-radius:8px;color:#ff61c3">N10: SCRM截流</div>
+      <span style="color:#8a9bb5">+</span>
+      <div style="padding:8px 12px;background:rgba(255,97,195,0.15);border:1px solid rgba(255,97,195,0.3);border-radius:8px;color:#ff61c3">N11: 主动营销</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(0,255,204,0.15);border:1px solid rgba(0,255,204,0.3);border-radius:8px;color:#00ffcc">N12: 数据采集</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(123,97,255,0.15);border:1px solid rgba(123,97,255,0.3);border-radius:8px;color:#7b61ff">N13: 决策分析</div>
+      <span style="color:#8a9bb5">→</span>
+      <div style="padding:8px 12px;background:rgba(123,97,255,0.15);border:1px solid rgba(123,97,255,0.3);border-radius:8px;color:#7b61ff">N14: 进化迭代</div>
+      <span style="color:#7b61ff;font-weight:600">↻ 回到 N0</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 开发路线图 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">🗺️</span> 开发路线图</div>
+  <div class="section-desc">按优先级排序，P0 为关键路径（不开发则全链路不通），P3 为锦上添花。</div>
+  
+  <div class="roadmap">
+    <div class="roadmap-item p0">
+      <h4>P0 · social-bridge.js — 云手机社媒操作桥接</h4>
+      <p>全链路的关键路径。没有这一层，云手机无法在社媒上执行任何操作。封装 Playwright 操作为统一接口：发帖、关注、私信、评论、获取 Feed。</p>
+      <div class="deliverables">
+        <span>6个核心方法</span>
+        <span>5平台适配</span>
+        <span>5个API端点</span>
+      </div>
+    </div>
+    
+    <div class="roadmap-item p0">
+      <h4>P0 · dau-target-controller.js — DAU 目标驱动中枢</h4>
+      <p>系统的"大脑"。设定 DAU 目标 → 资源规划 → 下发计划 → 监控进度 → 动态调节。串联决策引擎和所有执行模块。</p>
+      <div class="deliverables">
+        <span>4个核心方法</span>
+        <span>4个API端点</span>
+        <span>15min轮询</span>
+        <span>控制台面板</span>
+      </div>
+    </div>
+    
+    <div class="roadmap-item p1">
+      <h4>P1 · proactive-marketing.js — 主动营销引擎</h4>
+      <p>弥补 SCRM 仅被动截流的不足。主动搜索目标用户 → 关注 → 回关后私信 → 话题参与 → KOL 互动。每日配额+频率控制防封。</p>
+      <div class="deliverables">
+        <span>4个核心方法</span>
+        <span>3个API端点</span>
+        <span>5平台策略</span>
+      </div>
+    </div>
+    
+    <div class="roadmap-item p1">
+      <h4>P1 · aigc-content-generator.js — AIGC 内容生成器</h4>
+      <p>集成 LLM API，基于热点关键词自动生成多平台适配文案。每条内容自动嵌入引流 CTA 和追踪链接。</p>
+      <div class="deliverables">
+        <span>4个核心方法</span>
+        <span>2个API端点</span>
+        <span>GPT/Claude集成</span>
+      </div>
+    </div>
+    
+    <div class="roadmap-item p2">
+      <h4>P2 · website-analytics.js — 网站 DAU 分析</h4>
+      <p>追踪像素 + DAU 统计 + 来源归因 + 转化漏斗。为 DAU 目标控制器提供实时数据。</p>
+      <div class="deliverables">
+        <span>4个核心方法</span>
+        <span>4个API端点</span>
+        <span>追踪像素JS</span>
+      </div>
+    </div>
+    
+    <div class="roadmap-item p2">
+      <h4>P2 · traffic-router.js — 引流链接管理</h4>
+      <p>每帖/每私信独立追踪链接 + UTM 拼接 + 短链 + 点击统计。为来源归因提供数据基础。</p>
+      <div class="deliverables">
+        <span>4个核心方法</span>
+        <span>3个API端点</span>
+        <span>短链服务</span>
+      </div>
+    </div>
+    
+    <div class="roadmap-item p3">
+      <h4>P3 · 控制台 UI 集成 + DAG 模板</h4>
+      <p>在 v14-console.html 新增 "DAU目标" 页签（第17个）。在 dag-orchestrator.js 新增 "DAU驱动全链路" 预设模板（15节点）。</p>
+      <div class="deliverables">
+        <span>DAU控制面板</span>
+        <span>DAG预设模板</span>
+        <span>实时图表</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 总结 ===== -->
+<div class="section">
+  <div class="section-title"><span class="icon">✅</span> 总结</div>
+  <div style="background:linear-gradient(135deg,rgba(0,212,255,0.05),rgba(123,97,255,0.05));border:1px solid rgba(0,212,255,0.2);border-radius:20px;padding:30px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px">
+      <div style="text-align:center">
+        <div style="font-size:2.5em;font-weight:800;color:#00ff88">38</div>
+        <div style="color:#8a9bb5;font-size:0.9em">现有JS模块</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:2.5em;font-weight:800;color:#00d4ff">105</div>
+        <div style="color:#8a9bb5;font-size:0.9em">现有API端点</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:2.5em;font-weight:800;color:#ff4d4d">6</div>
+        <div style="color:#8a9bb5;font-size:0.9em">待开发模块</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:2.5em;font-weight:800;color:#ffa500">21</div>
+        <div style="color:#8a9bb5;font-size:0.9em">新增API端点</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:2.5em;font-weight:800;color:#7b61ff">7</div>
+        <div style="color:#8a9bb5;font-size:0.9em">全链路阶段</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:2.5em;font-weight:800;color:#ff61c3">15</div>
+        <div style="color:#8a9bb5;font-size:0.9em">DAG编排节点</div>
+      </div>
+    </div>
+    <div style="padding:16px;background:rgba(0,0,0,0.2);border-radius:12px;font-size:0.92em;line-height:1.8;color:#b0bcd4">
+      <strong style="color:#00d4ff">核心理念：</strong>全链路不是"运行流程"，而是"达成 DAU 目标"。<br>
+      <strong style="color:#7b61ff">双注册共存：</strong>V1 邮箱注册（guerrillamail + CAPTCHA）保留，V2 Google 注册（OAuth免密）新增，两种模式可独立或组合使用。<br>
+      <strong style="color:#00ff88">现有模块全串联：</strong>38个现有JS模块全部映射到7个阶段中，无遗漏。<br>
+      <strong style="color:#ffa500">6个新模块填缺口：</strong>社媒桥接层、DAU控制器、主动营销、AIGC生成、网站分析、引流路由。<br>
+      <strong style="color:#ff4d4d">闭环进化：</strong>DAU目标 → 执行 → 采集 → 决策 → 进化 → 回到DAU目标，15分钟自动调节。
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MSCMS · 正向内容 & 二次创作分发台</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#2b3340;
+    --text:#e6edf3; --muted:#8b949e; --accent:#6ea8fe; --green:#3fb950;
+    --red:#f85149; --amber:#d29922; --purple:#bc8cff;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:18px;}
+  h1{font-size:20px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:900px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;}
+  .card h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:8px;}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;}
+  input,,select{;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px;font-size:13px;font-family:inherit;}
+  {min-height:64px;resize:vertical;}
+  button{background:var(--accent);color:#06101f;border:0;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+  button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--border);}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .kv{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);}
+  .kv span:last-child{color:var(--accent);}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px;}
+  .pill.ok{background:rgba(63,185,80,.15);color:var(--green);}
+  .pill.no{background:rgba(248,81,73,.15);color:var(--red);}
+  .pos-item{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:10px;}
+  .pos-item .t{font-weight:600;font-size:13px;word-break:break-all;}
+  .pos-item .m{color:var(--muted);font-size:12px;margin-top:4px;}
+  .pos-item .actions{margin-top:8px;}
+  .log{background:#07090d;border:1px solid var(--border);border-radius:8px;padding:10px;;font-size:12px;max-height:220px;overflow:auto;white-space:pre-wrap;color:var(--muted);}
+  .pos-num{font-size:22px;font-weight:700;color:var(--green);}
+  .mini{font-size:11px;color:var(--muted);}
+  .success{color:var(--green);} .fail{color:var(--red);}
+  table{;border-collapse:collapse;font-size:12px;}
+  th,td{text-align:left;padding:6px;border-bottom:1px solid var(--border);vertical-align:top;}
+  th{color:var(--muted);font-weight:600;}
+  a{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📈 正向内容 & 二次创作分发台</h1>
+  <div class="sub">基于真实回收的 note_count 筛选正向内容，一键 reblog 到其它账号（零伪造 · 真实 Tumblr API）</div>
+
+  <div class="grid">
+    <!-- 左：正向内容 -->
+    <div class="card">
+      <h2>① 正向内容榜 <span class="mini" id="posCount"></span></h2>
+      <div class="row">
+        <div style="flex:1;">
+          <label>最小笔记数 minNotes</label>
+          <input id="minNotes" value="50" />
+        </div>
+        <div style="flex:1;">
+          <label>最小增长率% minGrowthPct</label>
+          <input id="minGrowth" value="30" />
+        </div>
+        <div style="flex:1;">
+          <label>返回上限 limit</label>
+          <input id="posLimit" value="30" />
+        </div>
+      </div>
+      <button id="btnRefresh">刷新正向内容</button>
+      <div id="posList" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- 右：二次创作 reblog -->
+    <div class="card">
+      <h2>② 二次创作并分发（reblog 跨账号）</h2>
+      <label>源帖 URL（真实 Tumblr 帖子，如 https://www.tumblr.com/blog/view/xxx/yyy）</label>
+      <input id="srcUrl" placeholder="粘贴源帖 URL" />
+      <label>目标账号（每行一个 accountId，或从下方「真实授权账号」一键填充）</label>
+      < id="targets" placeholder="tumblr_00hprh88&#10;tumblr_xxxx"></>
+      <div class="row">
+        <button class="ghost" id="btnFillTargets">↧ 填充全部已授权账号</button>
+        <button class="ghost" id="btnFillTargets2">↧ 仅填 5 个</button>
+      </div>
+      <label>评论/导语 comment</label>
+      <input id="comment" placeholder="可选，留空则自动拟人化生成" />
+      <label>标签 tags（逗号分隔）</label>
+      <input id="tags" placeholder="ai,tech,news" />
+      <div class="row" style="margin-top:8px;">
+        <div style="flex:1"><label>jitter 0-1</label><input id="jitter" value="0.5" /></div>
+        <div style="flex:1"><label>并发 concurrency</label><input id="concurrency" value="2" /></div>
+        <div style="flex:1"><label>每批 batchSize</label><input id="batchSize" value="10" /></div>
+        <div style="flex:1"><label>间隔ms</label><input id="delay" value="4000" /></div>
+      </div>
+      <button id="btnRemix">🚀 执行二次创作分发</button>
+      <details style=""><summary class="mini">真实授权账号清单（hasApiToken）</summary>
+        <div id="" class="mini" style="margin-top:6px;max-height:160px;overflow:auto;"></div>
+      </details>
+    </div>
+  </div>
+
+  <!-- 图文批量 -->
+  <div class="card" style="margin-top:16px;">
+    <h2>③ 图文批量发布（postPhoto）</h2>
+    <div class="row">
+      <div style="flex:2;">
+        <label>图片 URL（远程 http/https 链接，将download后发布）</label>
+        <input id="imgUrl" placeholder="https://.../img.jpg" />
+      </div>
+      <div style="flex:2;">
+        <label>账号 ids（逗号或换行分隔）</label>
+        <input id="imgTargets" placeholder="tum
+blr_00hprh88,tumblr_xxxx" />
+      </div>
+    </div>
+    <label>文案 caption</label>
+    < id="imgCaption" placeholder="图文文案"></>
+    <label>标签（逗号分隔）</label>
+    <input id="imgTags" placeholder="art,design" />
+    <button id="btnPhoto">🚀 批量发布图文</button>
+  </div>
+
+  <!-- 任务监控 -->
+  <div class="card" style="margin-top:16px;">
+    <h2>④ 任务进度</h2>
+    <div class="row">
+      <button class="ghost" id="btnTasks">↻ 刷新任务列表</button>
+      <span class="mini" id="taskHint"></span>
+    </div>
+    <div id="taskArea" style=""></div>
+  </div>
+</div>
+
+<script>
+const API='/api/v14';
+ $(id){return document.getElementById(id);}
+ log(msg){console.log(msg);}
+async  api(path,opts){const r=await fetch(API+path,opts);const text=await r.text();try{return JSON.parse(text);}catch(e){return {_raw:text};}}
+async  postJson(path,body){return api(path,{method:'POST''':'application/json'},body:JSON.stringify(body||{})});}
+
+async  loadAccounts(){
+  try{
+    const j=await api('/real-');
+    const accs=(j.||[]).filter(a=>a.hasApiToken && a.status==='active');
+    window.__accs=accs;
+    $('').innerHTML=accs.map(a=>`<div>${a.id} · ${a.||''} <span class="pill ok">token</span></div>`).join('');
+  }catch(e){$('').textContent='加载失败: '+e.message;}
+}
+ fillTargets(n){
+  if(!window.__accs)return;
+  const list=window.__accs.slice(0,n||window.__accs.length).map(a=>a.id);
+  $('targets').value=list.join('\n');
+}
+
+async  refreshPositive(){
+  const mn=parseInt($('minNotes').value)||50, mg=parseInt($('minGrowth').value)||30, lim=parseInt($('posLimit').value)||30;
+  const j=await api(`/tumblr/engagement/positive?minNotes=${mn}&minGrowthPct=${mg}&limit=${lim}`);
+  if(!j.ok){$('posList').innerHTML='<div class="fail">查询失败: '+(j.error||'')+'</div>';return;}
+  $('posCount').textContent='('+(j.count||0)+' 条)';
+  if(!j.items||!j.items.length){$('posList').innerHTML='<div class="mini">暂无达标的正向内容（新帖尚未积累互动，运行 /engagement/harvest 回收真实笔记数）</div>';return;}
+  $('posList').innerHTML=j.items.map(it=>`
+    <div class="pos-item">
+      <div class="t">${escapeHtml(it.title||'(无标题)')}</div>
+      <div class="m">👁 笔记 <span class="pos-num">${it.noteCount}</span> · 基线 ${it.baseline} · 增长 ${it.growthAbs} (${it.growthPct}%) · ${it.publishedAt||''}</div>
+      <div class="m" style="word-break:break-all;"><a href="${it.postUrl}" target="_blank">${it.postUrl}</a></div>
+      <div class="actions">
+        <button class="ghost" onclick="useAsSource('${encodeURIComponent(it.postUrl)}')">↪ 作为源帖用于二次创作</button>
+      </div>
+    </div>`).join('');
+}
+window.useAsSource=(u){$('srcUrl').value=decodeURIComponent(u);};
+
+async  startRemix(){
+  const src=$('srcUrl').value.trim();
+  if(!src){alert('请填写源帖 URL');return;}
+  const ids=$('targets').value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+  const body={sourcePostUrl:src,targetAccountIds:ids,comment:$('comment').value.trim(),
+    tags:$('tags').value.trim(),jitter:parseFloat($('jitter').value)||0.5,
+    concurrency:parseInt($('concurrency').value)||2,batchSize:parseInt($('batchSize').value)||10,
+    batchDelayMs:parseInt($('delay').value)||4000,humanize:true};
+  const j=await postJson('/tumblr/remix',body);
+  if(j.ok){pollTask(j.taskId);}else{alert('发起失败: '+(j.error||JSON.stringify(j)));}
+}
+async  startPhoto(){
+  const ids=$('imgTargets').value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+  const body={sourceUrl:$('imgUrl').value.trim(),accountIds:ids,caption:$('imgCaption').value.trim(),
+    tags:$('imgTags').value.trim(),concurrency:2,batchSize:10,batchDelayMs:4000,humanize:true};
+  const j=await postJson('/tumblr/photo-batch',body);
+  if(j.ok){pollTask(j.taskId);}else{alert('发起失败: '+(j.error||JSON.stringify(j)));}
+}
+async  pollTask(id){
+  const div=$('taskArea');
+  div.innerHTML=`<div class="log">任务 ${id} 进行中…</div>`;
+  for(let i=0;i<60;i++){
+    await new Promise(r=>setTimeout(r,2000));
+    const t=await api('/tumblr/batch-publish/'+id);
+    if(t.id){
+      const rows=(t.results||[]).map(r=>`<tr><td>${r.accountId}</td><td>${r.blogName||''}</td><td class="${r.status==='success'?'success':'fail'}">${r.status}</td><td>${r.postUrl?('<a href="'+r.postUrl+'" target="_blank">链接</a>'):(r.error||'')}</td></tr>`).join('');
+      div.innerHTML=`<div class="kv"><span>状态</span><span>${t.status}</span></div>
+        <div class="kv"><span>进度</span><span>${t.done}/${t.total}（成功 ${t.success} / 失败 ${t.fail}）</span></div>
+        ${t.error?`<div class="fail">错误: ${t.error}</div>`:''}
+        <table><thead><tr><th>账号</th><th>博客</th><th>结果</th><th>链接/错误</ ` +
+        `th></tr></thead><tbody>${rows}</tbody></table>`;
+      if(t.status==='done'||t.status==='failed')break;
+    }
+  }
+}
+async  loadTasks(){
+  const j=await api('/tumblr/batch-publish');
+  if(!j.tasks)return;
+  const rows=j.tasks.slice(0,15).map(t=>`<div class="kv"><span>${t.id}</span><span>${t.status} · ${t.success}/${t.total}</span></div>`).join('');
+  $('taskArea').innerHTML=rows||'<div class="mini">无任务</div>';
+}
+ escapeHtml(s){return (s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
+
+$('btnRefresh').onclick=refreshPositive;
+$('btnFillTargets').onclick=()=>fillTargets(0);
+$('btnFillTargets2').onclick=()=>fillTargets(5);
+$('btnRemix').onclick=startRemix;
+$('btnPhoto').onclick=startPhoto;
+$('btnTasks').onclick=loadTasks;
+loadAccounts();refreshPositive();loadTasks();
+</script>
+</body>
+</html>

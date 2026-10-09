@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MSCMS v14 — 登录</title>
+<script src="/vue.global.prod.js"></script>
+<style>
+:root{
+  --bg:#0f1117;--bg2:#1a1d27;--bg3:#242836;--border:#2e3344;
+  --text:#c9d1d9;--muted:#6e7681;--accent:#58a6ff;--green:#3fb950;
+  --red:#f85149;--orange:#d29922;--purple:#a371f7;
+  --grad-v14:linear-gradient(135deg,#1a1d27 0%,#1a2a3e 50%,#1a1d27 100%);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:1rem;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(88,166,255,0.08) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(163,113,247,0.06) 0%, transparent 50%);
+}
+.wrap{
+  display:grid;
+  grid-template-columns: 1fr 360px;
+  gap:1.4rem;
+  max-width:880px;
+  ;
+}
+@media (max-width:760px){ .wrap{ grid-template-columns:1fr; } .info-panel{ order:-1; } }
+
+.login-card{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:2rem 2.2rem;
+  box-shadow:0 20px 60px rgba(0,0,0,0.4);
+}
+.brand{
+  display:flex;align-items:center;gap:0.6rem;
+  margin-bottom:0.4rem;
+}
+.brand .logo{
+  width:36px;height:36px;
+  background:linear-gradient(135deg,var(--accent),var(--purple));
+  border-radius:9px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;color:#fff;font-weight:700;
+}
+.brand .name{font-size:1rem;font-weight:700;color:var(--text)}
+.brand .name span{color:var(--accent)}
+.brand .ver{font-size:0.7rem;color:var(--muted)}
+
+h1{font-size:1.4rem;font-weight:700;margin:0.6rem 0 0.3rem}
+.sub{font-size:0.8rem;color:var(--muted);margin-bottom:1.4rem;line-height:1.5}
+
+.field{margin-bottom:0.85rem}
+.field label{display:block;font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.35rem;font-weight:600}
+.input-wrap{position:relative}
+.input-wrap .ic{position:absolute;left:0.7rem;top:50%;transform:translateY(-50%);color:var(--muted);font-size:0.85rem;pointer-events:none}
+.input-wrap input{
+  ;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:0.65rem 0.8rem 0.65rem 2.2rem;
+  border-radius:8px;
+  font-size:0.92rem;
+  font-family:inherit;
+  outline:none;
+  transition:border-color 0.15s;
+}
+.input-wrap input:focus{border-color:var(--accent)}
+.input-wrap .toggle{
+  position:absolute;right:0.7rem;top:50%;transform:translateY(-50%);
+  cursor:pointer;color:var(--muted);font-size:0.78rem;user-select:none;
+}
+.input-wrap .toggle:hover{color:var(--text)}
+
+.row{display:flex;justify-content:space-between;align-items:center;margin:0.4rem 0 1rem;font-size:0.75rem;color:var(--muted)}
+.row .{display:flex;align-items:center;gap:0.3rem;cursor:pointer}
+.row . input{margin:0}
+
+.{
+  ;
+  background:linear-gradient(135deg,var(--accent),var(--purple));
+  color:#fff;
+  border:0;
+  padding:0.7rem 1rem;
+  border-radius:8px;
+  font-size:0.92rem;
+  font-weight:700;
+  cursor:pointer;
+  transition:opacity 0.15s, transform 0.1s;
+}
+.:hover:not(:disabled){opacity:0.92}
+.:active:not(:disabled){transform:translateY(1px)}
+.:disabled{opacity:0.5;cursor:not-allowed}
+
+.err{
+  background:rgba(248,81,73,0.1);
+  border:1px solid rgba(248,81,73,0.3);
+  color:var(--red);
+  padding:0.55rem 0.7rem;
+  border-radius:8px;
+  font-size:0.78rem;
+  margin-bottom:1rem;
+  display:flex;align-items:center;gap:0.4rem;
+}
+.warn{
+  background:rgba(210,153,34,0.1);
+  border:1px solid rgba(210,153,34,0.3);
+  color:var(--orange);
+  padding:0.55rem 0.7rem;
+  border-radius:8px;
+  font-size:0.78rem;
+  margin-bottom:1rem;
+}
+
+.hint{
+  background:rgba(88,166,255,0.08);
+  border:1px solid rgba(88,166,255,0.2);
+  padding:0.6rem 0.8rem;
+  border-radius:8px;
+  font-size:0.74rem;
+  color:var(--text);
+  margin-bottom:1rem;
+  line-height:1.5;
+}
+.hint b{color:var(--accent)}
+.hint code{background:var(--bg3);padding:0.05rem 0.35rem;border-radius:4px;font-size:0.85em}
+
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 信息面板（右侧） */
+.info-panel{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:1.3rem 1.5rem;
+  font-size:0.78rem;
+}
+.info-panel h3{
+  font-size:0.78rem;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+  margin-bottom:0.6rem;
+  font-weight:700;
+}
+.kv{display:grid;grid-template-columns:80px 1fr;gap:0.35rem 0.5rem;margin-bottom:1rem}
+.kv .k{color:var(--muted);font-size:0.72rem}
+.kv .v{color:var(--text);font-family:'SF Mono',Consolas,monospace;font-size:0.74rem;word-break:break-all}
+
+.role-list{display:flex;flex-direction:column;gap:0.45rem}
+.role{
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:7px;
+  padding:0.5rem 0.7rem;
+}
+.role .rname{font-weight:700;font-size:0.78rem;display:flex;align-items:center;gap:0.4rem}
+.role .rname .dot{width:8px;height:8px;border-radius:50%}
+.role.admin .dot{background:var(--purple)}
+.role. .dot{background:var(--accent)}
+.role.viewer .dot{background:var(--green)}
+.role .rdesc{color:var(--muted);font-size:0.7rem;margin-top:0.2rem}
+
+.foot{
+  margin-top:1.4rem;
+  padding-top:0.8rem;
+  border-top:1px solid var(--border);
+  font-size:0.7rem;
+  color:var(--muted);
+  text-align:center;
+  line-height:1.5;
+}
+.foot a{color:var(--accent);text-decoration:none}
+.foot a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="wrap">
+    <!-- 登录卡片 -->
+    <div class="login-card">
+      <div class="brand">
+        <div class="logo">M</div>
+        <div>
+          <div class="name">MSCMS <span>v14</span></div>
+          <div class="ver">Multi-Stream Content Management System · v{{ sys.version || '14.5' }}</div>
+        </div>
+      </div>
+
+      <h1>登录控制台</h1>
+      <div class="sub">请使用系统分发的账号登录。连续失败 5 次将临时锁定 60 秒。</div>
+
+      <div v-if="bootstrap === true" class="warn">
+        ⚠️ 首次启动，已自动创建默认管理员账号 <code>admin / MSCMS@2026</code>，请登录后立即修改密码。
+      </div>
+
+      <div v-if="errMsg" class="err">❌ {{ errMsg }}</div>
+
+      <div class="field">
+        <label>用户名</label>
+        <div class="input-wrap">
+          <span class="ic">👤</span>
+          <input v-model="" type="text" autocomplete="" placeholder="admin" autofocus @keyup.enter="doLogin">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>密码</label>
+        <div class="input-wrap">
+          <span class="ic">🔒</span>
+          <input v-model="" :type="showPwd ? 'text' : ''" autocomplete="current-" placeholder="MSCMS@2026" @keyup.enter="doLogin">
+          <span class="toggle" @click="showPwd = !showPwd">{{ showPwd ? '隐藏' : '显示' }}</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class=""><input type="" v-model=""> 7天免登录（refresh token）</label>
+        <span style="color:var(--muted)">忘记密码？联系系统管理员重置</span>
+      </div>
+
+      <button class="" @click="doLogin" :disabled="loading || ! || !">
+        <span v-if="loading" class="spinner"></span>
+        {{ loading ? '登录中…' : '登 录' }}
+      </button>
+
+      <div class="foot">
+        后台地址：
+        <a :href="sys.backend?.primary" target="_blank">{{ sys.backend?.primary || 'http://localhost:3002' }}</a>
+        <br>
+        <span style="opacity:0.6">Node {{ sys.nodeVersion }} · PID {{ sys.pid }} · {{ sys.uptime }}s up</span>
+      </div>
+    </div>
+
+    <!-- 信息面板 -->
+    <div class="info-panel">
+      <h3>📡 系统信息</h3>
+      <div class="kv">
+        <div class="k">地址</div><div class="v">{{ sys.backend?.primary || '加载中…' }}</div>
+        <div class="k">本地</div><div class="v">{{ sys.backend?.local || '-' }}</div>
+        <div class="k">隧道</div><div class="v">{{ sys.backend?.tunnel || '-' }}</div>
+        <div class="k">端口</div><div class="v">{{ sys.port }}</div>
+        <div class="k">启动</div><div class="v">{{ (sys.startedAt || '').slice(0,19).replace('T',' ') }}</div>
+      </div>
+
+      <h3>🔑 角色权限</h3>
+      <div class="role-list">
+        <div v-for="r in roles" :key="r.key" :class="['role', r.key]">
+          <div class="rname"><span class="dot"></span>{{ r.label }} <span style="color:var(--muted);font-weight:400;font-size:0.72rem;margin-left:0.4rem">({{ r.key }})</span></div>
+          <div class="rdesc">{{ r.permissions.join(' · ') }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, reactive, onMounted } = Vue;
+const API = '/api/v14';
+
+createApp({
+  setup() {
+    const sys = reactive({
+      ok: false,
+      version: '14.5',
+      nodeVersion: '-',
+      pid: '-',
+      uptime: 0,
+      backend: { local: '', tunnel: '', primary: '' },
+      port: 3002,
+      startedAt: ''
+    });
+    const roles = ref([]);
+    const  = ref(localStorage.getItem('mscms-') || 'admin');
+    const  = ref('');
+    const  = ref(false);
+    const showPwd = ref(false);
+    const loading = ref(false);
+    const errMsg = ref('');
+    const bootstrap = ref(false);
+
+    async  loadSystemInfo() {
+      try {
+        const r = await fetch(API + '/system/info');
+        const j = await r.json();
+        if (j.ok) {
+          Object.assign(sys, j);
+          sys.backend = j.backend || sys.backend;
+          sys.startedAt = j.startedAt;
+          sys.uptime = j.uptime;
+          if (j.auth && j.auth.roles) roles.value = j.auth.roles;
+        }
+      } catch (e) {
+        console.warn('[login] system/info failed', e.message);
+      }
+    }
+
+    async  loadRoles() {
+      try {
+        const r = await fetch(API + '/auth/roles');
+        const j = await r.json();
+        if (j.ok && j.roles) roles.value = j.roles;
+      } catch (e) { /* fallback from system/info */ }
+    }
+
+    async  loadBootstrap() {
+      try {
+        const r = await fetch(API + '/auth/snapshot');
+        const j = await r.json();
+        if (j.ok) bootstrap.value = j.userCount <= 1; // 仅 admin = bootstrap
+      } catch (e) { /* ignore */ }
+    }
+
+    async  doLogin() {
+      errMsg.value = '';
+      if (!.value || !.value) { errMsg.value = ''; return; }
+      loading.value = true;
+      try {
+        const r = await fetch(API + '/auth/login', {
+          method: 'POST',
+          headers: { '': 'application/json' },
+          body: JSON.stringify({ : .value, : .value })
+        });
+        const j = await r.json();
+        if (!j.ok) {
+          if (j.error === 'rate_limited') {
+            errMsg.value = '登录尝试过于频繁，请 ' + (j.retryAfter || 60) + ' 秒后再试';
+          } else if (j.error === 'invalid_credentials') {
+            errMsg.value = '用户名或密码错误';
+          } else if (j.error === 'disabled') {
+            errMsg.value = '账号已被禁用，请联系管理员';
+          } else {
+            errMsg.value = '登录失败：' + (j.error || '未知错误');
+          }
+          return;
+        }
+        // 成功
+        localStorage.setItem('', j.token);
+        localStorage.setItem('mscms-auth-user', JSON.stringify(j.user));
+        if (j.refresh) localStorage.setItem('mscms-auth-refresh', j.refresh);
+        localStorage.setItem('mscms-', .value);
+
+        // 跳转
+        const target = new URLSearchParams(location.search).get('redirect') || '/v14-console.html';
+        location.replace(target);
+      } catch (e) {
+        errMsg.value = '网络错误：' + e.message;
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    onMounted(async () => {
+      // 已有 token → 直接跳走
+      const tok = localStorage.getItem('');
+      if (tok) {
+        try {
+          const r = await fetch(API + '/auth/me', { headers: { : 'Bearer ' + tok } });
+          const j = await r.json();
+          if (j.ok) {
+            const target = new URLSearchParams(location.search).get('redirect') || '/v14-console.html';
+            location.replace(target);
+            return;
+          }
+        } catch (_) { /* token 可能过期，继续登录 */ }
+      }
+      await Promise.all([loadSystemInfo(), loadRoles(), loadBootstrap()]);
+    });
+
+    return { sys, roles, , , , showPwd, loading, errMsg, bootstrap, doLogin };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

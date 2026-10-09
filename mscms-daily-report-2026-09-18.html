@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>MSCMS 每日数据日报 2026-09-18</title><style>
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:28px}
+h1{font-size:22px;margin:0 0 4px} h2{font-size:15px;margin:26px 0 10px;color:#94a3b8;border-bottom:1px solid #1e293b;padding-bottom:6px}
+.sub{color:#64748b;font-size:12px;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.kpi{background:#1e293b;border-radius:10px;padding:14px}
+.kl{font-size:11px;color:#94a3b8}.kv{font-size:26px;font-weight:700;margin:4px 0}.ks{font-size:11px;color:#64748b}
+table{border-collapse:collapse;;font-size:13px}td,th{padding:7px 10px;border-bottom:1px solid #1e293b;text-align:left}th{color:#94a3b8;font-weight:500}
+.mut{color:#64748b}.alert{background:#1e293b;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px}
+.pos{color:#22c55e}.neg{color:#ef4444}
+</style></head><body>
+<h1>MSCMS v14 每日数据日报</h1>
+<div class="sub">日期 2026-09-18 · 生成于 2026-09-18 06:21:18 · 数据源 D:/mscms-ws/data（真实数据，零伪造）</div>
+
+<h2>⚠ 告警（5）</h2>
+<div class="alert" style="border-left:4px solid #f59e0b"><b>P1</b> 今日发布 98 条但 reach=0，内容可能无曝光（限流/内容质量）</div><div class="alert" style="border-left:4px solid #f59e0b"><b>P1</b> 今日零热点入库，抓取链路未运转（内容将失去真实来源，reach 难以提升）</div><div class="alert" style="border-left:4px solid #6b7280"><b>P2</b> 质检单轨：新内容 10717 条中 170 条未达 quality_v2≥60，已拦截不进发布池</div><div class="alert" style="border-left:4px solid #6b7280"><b>P2</b> 今日零新注册账号</div><div class="alert" style="border-left:4px solid #6b7280"><b>P2</b> 已隔离历史垃圾 427 条（其中 114 条曾外发，待人工决定是否删帖）；当前发布池已无垃圾</div>
+
+<h2>账号</h2>
+<div class="grid">
+<div class="kpi"><div class="kl">账号总数</div><div class="kv">123</div><div class="ks">今日新增 0</div></div>
+<div class="kpi"><div class="kl">今日活跃</div><div class="kv">4</div><div class="ks">占比 3%</div></div>
+<div class="kpi"><div class="kl">平均健康分</div><div class="kv">64</div><div class="ks">偏低</div></div>
+<div class="kpi"><div class="kl">已推广归属</div><div class="kv">0</div><div class="ks">未分配 123</div></div>
+</div>
+<h2>因果链阶段分布（S1~S7）</h2>
+<table><tr><th>阶段</th><th>账号数</th><th>占比</th></tr><tr><td>S3</td><td>60</td><td>49%</td></tr><tr><td>S4</td><td>53</td><td>43%</td></tr><tr><td>S5</td><td>9</td><td>7%</td></tr><tr><td>未知</td><td>1</td><td>1%</td></tr></table>
+<div class="sub" style="margin-top:8px">今日阶段推进事件 613 次 ：S3→S4×73，S4→S4×15，S3→S3×52，S4→S3×23，S5→S5×448，S5→S4×1，S4→S5×1</div>
+
+<h2>内容</h2>
+<div class="grid">
+<div class="kpi"><div class="kl">内容总量</div><div class="kv">12395</div><div class="ks">今日新增 79</div></div>
+<div class="kpi"><div class="kl">ready 待发布</div><div class="kv">7230</div><div class="ks">queued 10</div></div>
+<div class="kpi"><div class="kl">已发布标记</div><div class="kv">2505</div><div class="ks"></div></div>
+<div class="kpi"><div class="kl">垃圾内容(发布池)</div><div class="kv">0</div><div class="ks">✅ 已清零</div></div>
+<div class="kpi"><div class="kl">已隔离垃圾</div><div class="kv">427</div><div class="ks">114 条曾外发待复核</div></div>
+</div>
+<div class="sub" style="margin-top:8px">垃圾内容 = 标题为「400 Bad Request」或「Auto-generated content」的占位数据，这类内容不该被发布</div>
+
+<h2>发布与效果</h2>
+<div class="grid">
+<div class="kpi"><div class="kl">热点池</div><div class="kv">746</div><div class="ks">今日+0 · 业务相关 343 · 来源 google_trends/devto/hackernews/medium/lobsters</div></div>
+<div class="kpi"><div class="kl">质检单轨 v2</div><div class="kv">10547/10717 通过</div><div class="ks">拦截 170 条未达 60 分</div></div>
+<div class="kpi"><div class="kl">今日发布</div><div class="kv">98</div><div class="ks">累计 3762</div></div>
+<div class="kpi"><div class="kl">发布回采</div><div class="kv">113 帖</div><div class="ks">真实互动 12 · 有互动 12 帖 · 已采 8/57 博客</div></div>
+<div class="kpi"><div class="kl">今日 reach</div><div class="kv">0</div><div class="ks">累计 16</div></div>
+<div class="kpi"><div class="kl">累计 likes</div><div class="kv">0</div><div class="ks"></div></div>
+<div class="kpi"><div class="kl">累计 comments</div><div class="kv">0</div><div class="ks"></div></div>
+<div class="kpi"><div class="kl">已发布账号</div><div class="kv">148</div><div class="ks">占 120%</div></div>
+<div class="kpi"><div class="kl">从未发布账号</div><div class="kv">14</div><div class="ks">占 11% · 沉睡资产</div></div>
+</div>
+
+<h2>推广站点归属</h2>
+<table><tr><th>站点</th><th>账号数</th><th>占比</th></tr><tr><td>未分配</td><td>123</td><td>100%</td></tr></table>
+
+<h2>其他链路</h2>
+<div class="grid">
+<div class="kpi"><div class="kl">DAU 记录(累计)</div><div class="kv">1622</div><div class="ks">今日 50</div></div>
+<div class="kpi"><div class="kl">养号日志(今日)</div><div class="kv">0</div><div class="ks"></div></div>
+</div>
+</body></html>

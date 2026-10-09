@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MSCMS v14 · 实时大盘</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --card-2:#fafbfc; --text:#0f172a; --muted:#64748b;
+    --border:rgba(15,23,42,.09); --border-strong:rgba(15,23,42,.16);
+    --accent:#2563eb; --accent-soft:rgba(37,99,235,.10);
+    --ok:#16a34a; --ok-soft:rgba(22,163,74,.12);
+    --warn:#d97706; --warn-soft:rgba(217,119,6,.12);
+    --err:#dc2626; --err-soft:rgba(220,38,38,.12);
+    --shadow:0 1px 2px rgba(15,23,42,.05),0 8px 24px rgba(15,23,42,.06);
+    --radius:14px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0e1015; --card:#161920; --card-2:#1b1f27; --text:#e8eaf0; --muted:#98a2b3;
+      --border:rgba(255,255,255,.10); --border-strong:rgba(255,255,255,.18);
+      --accent:#5b8def; --accent-soft:rgba(91,141,239,.16);
+      --ok:#3ecf7a; --ok-soft:rgba(62,207,122,.14);
+      --warn:#e8a33d; --warn-soft:rgba(232,163,61,.14);
+      --err:#f2665f; --err-soft:rgba(242,102,95,.14);
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.35);
+    }
+  }
+  html[data-theme="light"]{
+    --bg:#f5f6f8; --card:#ffffff; --card-2:#fafbfc; --text:#0f172a; --muted:#64748b;
+    --border:rgba(15,23,42,.09); --border-strong:rgba(15,23,42,.16);
+    --accent:#2563eb; --accent-soft:rgba(37,99,235,.10);
+    --ok:#16a34a; --ok-soft:rgba(22,163,74,.12); --warn:#d97706; --warn-soft:rgba(217,119,6,.12);
+    --err:#dc2626; --err-soft:rgba(220,38,38,.12);
+    --shadow:0 1px 2px rgba(15,23,42,.05),0 8px 24px rgba(15,23,42,.06);
+  }
+  html[data-theme="dark"]{
+    --bg:#0e1015; --card:#161920; --card-2:#1b1f27; --text:#e8eaf0; --muted:#98a2b3;
+    --border:rgba(255,255,255,.10); --border-strong:rgba(255,255,255,.18);
+    --accent:#5b8def; --accent-soft:rgba(91,141,239,.16);
+    --ok:#3ecf7a; --ok-soft:rgba(62,207,122,.14); --warn:#e8a33d; --warn-soft:rgba(232,163,61,.14);
+    --err:#f2665f; --err-soft:rgba(242,102,95,.14);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text)}
+  body{
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;padding:20px;min-height:100vh;
+  }
+  .wrap{max-width:1400px;margin:0 auto}
+
+  /* ── 顶栏 ── */
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  h1{font-size:19px;font-weight:650;letter-spacing:-.01em;margin:0}
+  .sub{color:var(--muted);font-size:12.5px}
+  .spacer{flex:1}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
+    background:var(--card);border:1px solid var(--border);font-size:12.5px;font-variant-numeric:tabular-nums}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+  .dot.live{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft);animation:pulse 2s ease-in-out infinite}
+  .dot.connecting{background:var(--warn);box-shadow:0 0 0 3px var(--warn-soft)}
+  .dot.down{background:var(--err);box-shadow:0 0 0 3px var(--err-soft)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .btn{padding:6px 12px;border-radius:9px;border:1px solid var(--border-strong);background:var(--card);
+    color:var(--text);cursor:pointer;font-size:12.5px;transition:background .15s,transform .15s}
+  .btn:hover{background:var(--card-2);transform:translateY(-1px)}
+
+  /* ── 布局 ── */
+  .grid{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+  @media (max-width:1060px){.grid{grid-template-columns:1fr}}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:12px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:14px 15px;box-shadow:var(--shadow);transition:border-color .2s}
+  .card .k{font-size:11.5px;color:var(--muted);letter-spacing:.02em;text-transform:uppercase;margin-bottom:7px}
+  .card .v{font-size:26px;font-weight:640;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+  .card .u{font-size:12px;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums}
+  .card.flash{border-color:var(--accent);background:var(--accent-soft)}
+  .v.pending{color:var(--muted);font-weight:500;font-size:20px}
+
+  /* ── 面板 ── */
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:16px;box-shadow:var(--shadow);margin-top:16px}
+  .panel h2{font-size:13.5px;font-weight:620;margin:0 0 14px;display:flex;align-items:center;gap:8px}
+  .panel h2 .tag{font-size:11px;font-weight:500;color:var(--muted);padding:2px 7px;border-radius:6px;background:var(--card-2);border:1px solid var(--border)}
+
+  /* ── 因果链 ── */
+  .phase{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--border)}
+  .phase:last-child{border-bottom:none}
+  .phase .nm{width:150px;font-size:12.5px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar{flex:1;height:6px;background:var(--card-2);border-radius:999px;overflow:hidden;border:1px solid var(--border)}
+  .bar > i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+  .phase .pc{width:82px;text-align:right;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+  .badge{font-size:10.5px;padding:2px 7px;border-radius:5px;flex:none;width:52px;text-align:center;
+    font-weight:600;letter-spacing:.02em}
+  .b-ok{background:var(--ok-soft);color:var(--ok)}
+  .b-warn{background:var(--warn-soft);color:var(--warn)}
+  .b-err{background:var(--err-soft);color:var(--err)}
+  .b-idle{background:var(--card-2);color:var(--muted);border:1px solid var(--border)}
+  .b-run{background:var(--accent-soft);color:var(--accent)}
+
+  /* ── 事件流 ── */
+  .feed{max-height:420px;overflow-y:auto;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .ev{display:flex;gap:9px;padding:6px 0;border-bottom:1px solid var(--border);align-items:baseline}
+  .ev:last-child{border-bottom:none}
+  .ev .t{color:var(--muted);flex:none;font-variant-numeric:tabular-nums;font-size:11.5px}
+  .ev .m{flex:1;word-break:break-all}
+  .ev.ok .m{color:var(--ok)}
+  .ev.warn .m{color:var(--warn)}
+  .ev.err .m{color:var(--err)}
+  .ev.info .m{color:var(--muted)}
+  .empty{color:var(--muted);font-size:12.5px;padding:10px 0;text-align:center}
+
+  /* ── 状态条 ── */
+  .notice{border-radius:10px;padding:10px 13px;font-size:12.5px;margin-bottom:14px;display:none;
+    border:1px solid transparent;align-items:flex-start;gap:9px}
+  .notice.show{display:flex}
+  .notice.warn{background:var(--warn-soft);border-color:rgba(217,119,6,.28);color:var(--warn)}
+  .notice.err{background:var(--err-soft);border-color:rgba(220,38,38,.28);color:var(--err)}
+
+  .meta{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .meta b{color:var(--text);font-weight:600}
+  .foot{margin-top:20px;font-size:11.5px;color:var(--muted);line-height:1.7}
+  .foot code{background:var(--card-2);border:1px solid var(--border);padding:1px 5px;border-radius:5px;font-size:11px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>MSCMS v14 · 实时大盘</h1>
+    <span class="sub" id="hdr-sub">SSE 实时通道 · 秒级更新</span>
+    <span class="spacer"></span>
+    <span class="chip"><span class="dot connecting" id="conn-dot"></span><span id="conn-txt">连接中…</span></span>
+    <span class="chip">最后更新 <b id="last-ts" style="font-variant-numeric:tabular-nums">—</b></span>
+    <span class="chip">帧 <b id="frame-n">0</b></span>
+    <button class="btn" id="btn-theme" title="切换主题">◐ 主题</button>
+    <button class="btn" id="btn-refresh" title="强制重算并下发">⟳ 立即刷新</button>
+  </header>
+
+  <div class="notice" id="notice"><span id="notice-txt"></span></div>
+
+  <div class="grid">
+    <div>
+      <div class="cards" id="cards"></div>
+
+      <div class="panel">
+        <h2>因果链阶段进度 <span class="tag" id="chain-tag">—</span></h2>
+        <div id="chain"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel" style="margin-top:0">
+        <h2>实时事件流 <span class="tag">仅变化时推送</span></h2>
+        <div class="feed" id="feed"><div class="empty">等待首个数据帧…</div></div>
+      </div>
+
+      <div class="panel">
+        <h2>通道状态</h2>
+        <div class="meta" id="meta">
+          <div>服务端推送间隔 <b id="m-interval">—</b></div>
+          <div>缓存 TTL <b id="m-ttl">—</b></div>
+          <div>订阅客户端 <b id="m-subs">—</b></div>
+          <div>累计推送 <b id="m-pushed">—</b></div>
+          <div>跳过（无变化） <b id="m-skipped">—</b></div>
+          <div>缓存命中率 <b id="m-hit">—</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    数据源：<code>computeKpiSnapshot()</code>（与 <code>/api/v14/kpi/overview</code> 同一事实源，本页不产生任何数据）。
+    服务端 60s 缓存 + 变化才推；浏览器断线由 EventSource 自动重连。
+    若出现 <b>stale</b> 标记，表示上游本次聚合失败、当前展示的是上一次成功值并已标注原因 —— 系统不会用模拟数据顶替。
+  </div>
+</div>
+
+<script>
+( () {
+  'use strict';
+
+  var $ =  (id) { return document.getElementById(id); };
+  var cardsEl = $('cards'), chainEl = $('chain'), feedEl = $('feed');
+  var state = { frames: 0, seq: 0, lastOk: null, prev: {} };
+
+  // ── 主题 ─────────────────────────────────────────
+  var savedTheme = null;
+  try { savedTheme = localStorage.getItem('mscms-theme'); } catch (_) {}
+  if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+  $('btn-theme').addEventListener('click',  () {
+    var cur = document.documentElement.getAttribute('data-theme');
+    if (!cur) cur = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('mscms-theme', next); } catch (_) {}
+  });
+
+  // ── 工具 ─────────────────────────────────────────
+   fmtNum(v) {
+    if (v === null || v === undefined) return null;
+    if (typeof v !== 'number' || !isFinite(v)) return String(v);
+    return v.toLocaleString('zh-CN');
+  }
+   fmtTime(d) {
+    var p =  (n) { return String(n).padStart(2, '0'); };
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+   ago(iso) {
+    if (!iso) return '—';
+    var ms = Date.now() - new Date(iso).getTime();
+    if (!isFinite(ms) || ms < 0) return '刚刚';
+    if (ms < 1000) return '刚刚';
+    if (ms < 60000) return Math.floor(ms / 1000) + 's 前';
+    if (ms < 3600000) return Math.floor(ms / 60000) + 'm 前';
+    return Math.floor(ms / 3600000) + 'h 前';
+  }
+   notice(kind, text) {
+    var n = $('notice');
+    if (!text) { n.className = 'notice'; return; }
+    n.className = 'notice show ' + kind;
+    $('notice-txt').textContent = text;
+  }
+   feed(kind, msg) {
+    if (feedEl.querySelector('.empty')) feedEl.innerHTML = '';
+    var row = document.createElement('div');
+    row.className = 'ev ' + kind;
+    row.innerHTML = '<span class="t">' + fmtTime(new Date()) + '</span><span class="m"></span>';
+    row.querySelector('.m').textContent = msg;
+    feedEl.insertBefore(row, feedEl.firstChild);
+    while (feedEl.children.length > 120) feedEl.removeChild(feedEl.lastChild);
+  }
+
+  // ── KPI 卡定义（字段全部来自 computeKpiSnapshot，不存在即显 —）──
+  var CARD_DEFS = [
+    // ⚠️ 「托管账号」取自 MySQL matrix__managed（含历史归档行），
+    //    与账号页 /managed-?source=live 的 live 口径（123）不同 —— 必须标注，避免被当成同一口径。
+    { k: '托管账号',        p: ['', 'managed'],          u:  () { return 'MySQL 表（含归档行，账号页 live 口径为 123）'; } },
+    { k: '养号中',          p: ['', 'nurturing'],         u:  () { return 'tumblr 养号池'; } },
+    { k: '平均健康分',      p: ['', 'avgHealthScore'],    u:  () { return '满分 100'; } },
+    { k: '风险账号',        p: ['', 'riskyAccounts'],     u:  () { return '健康分低于阈值'; } },
+    { k: '设备在线',        p: ['devices', 'online'],             u:  (d) { return '共 ' + (d.devices && d.devices.total != null ? d.devices.total : '—') + ' 台'; } },
+    { k: '内容生成总数',    p: ['content', 'totalGenerated'],     u:  () { return '当前进程累计'; } },
+    { k: '内容成功率',      p: ['content', 'successRate'],        u:  (d) { var c = d.content || {}; return (c.successCount != null ? c.successCount : '—') + ' 成功 / ' + (c.failCount != null ? c.failCount : '—') + ' 失败'; }, suffix: '%' },
+    { k: '内容均质分',      p: ['content', 'avgQualityScore'],    u:  () { return '满分 90'; } },
+    { k: '发布记录',        p: ['publish', 'total'],              u:  () { return 'DataStore publish 模块'; } },
+    { k: '仓库模块',        p: ['warehouse', 'totalModules'],     u:  (d) { return (d.warehouse && d.warehouse.totalRecords != null ? d.warehouse.totalRecords.toLocaleString('zh-CN') : '—') + ' 条记录'; } },
+    { k: '因果链完成度',    p: ['causalChain', 'completionPct'],  u:  (d) { var c = d.causalChain || {}; return '循环 ' + (c.totalCycles != null ? c.totalCycles : '—') + ' 次'; }, suffix: '%' },
+    { k: '因果链阻塞',      p: ['causalChain', 'totalBlocks'],    u:  () { return '累计阻塞次数'; } },
+  ];
+
+   dig(obj, path) {
+    var cur = obj;
+    for (var i = 0; i < path.length; i++) {
+      if (cur == null || typeof cur !== 'object') return null;
+      cur = cur[path[i]];
+    }
+    return cur === undefined ? null : cur;
+  }
+
+   buildCards() {
+    cardsEl.innerHTML = '';
+    CARD_DEFS.forEach( (def, i) {
+      var el = document.createElement('div');
+      el.className = 'card';
+      el.id = 'card-' + i;
+      el.innerHTML = '<div class="k">' + def.k + '</div><div class="v pending">—</div><div class="u"></div>';
+      cardsEl.appendChild(el);
+    });
+  }
+
+   renderCards(d) {
+    CARD_DEFS.forEach( (def, i) {
+      var el = $('card-' + i);
+      if (!el) return;
+      var v = dig(d, def.p);
+      var vEl = el.querySelector('.v'), uEl = el.querySelector('.u');
+      var txt = v === null ? '—' : (fmtNum(v) + (def.suffix || ''));
+      if (txt !== vEl.textContent) {
+        vEl.textContent = txt;
+        vEl.classList.toggle('pending', v === null);
+        // 变化闪烁反馈（让「实时」可见）
+        el.classList.add('flash');
+        setTimeout( () { el.classList.remove('flash'); }, 900);
+      }
+      // 说明文字只接受「函数形式」（返回人类可读文案）。
+      // 字符串形式的 u 表示「同路径字段引用」，绝不可直接当文案显示 ——
+      // 否则卡片下方会印出 .managed 这类原始字段路径，观感等同调试信息。
+      var u = typeof def.u === '' ? (def.u(d) || '') : '';
+      if (uEl.textContent !== u) uEl.textContent = u;
+    });
+  }
+
+  var STATUS_BADGE = {
+    ok: ['b-ok', '达标'], good: ['b-ok', '正常'], completed: ['b-ok', '完成'],
+    done: ['b-ok', '完成'], success: ['b-ok', '成功'],
+    running: ['b-run', '进行中'], active: ['b-run', '进行中'],
+    warn: ['b-warn', '偏低'], warning: ['b-warn', '偏低'],
+    error: ['b-err', '异常'], blocked: ['b-err', '阻塞'], failed: ['b-err', '失败'],
+    pending: ['b-idle', '待启'], idle: ['b-idle', '空闲'],
+  };
+
+   renderChain(chain) {
+    var phases = (chain && chain.phases) || [];
+    $('chain-tag').textContent = chain
+      ? ('enabled=' + (chain.enabled ? 'true' : 'false') + ' · autoAdvance=' + (chain.autoAdvance ? 'true' : 'false'))
+      : '—';
+    if (!phases.length) {
+      chainEl.innerHTML = '<div class="empty">暂无阶段数据（chainGate 未返回 phases）</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < phases.length; i++) {
+      var p = phases[i] || {};
+      var pct = Math.max(0, Math.min(100, Number(p.progress) || 0));
+      var b = STATUS_BADGE[String(p.status || '').toLowerCase()] || ['b-idle', p.status || '—'];
+      html += '<div class="phase">' +
+        '<span class="badge ' + b[0] + '">' + b[1] + '</span>' +
+        '<span class="nm" title="' + (p.label || p.name || '') + '">' + (p.label || p.name || ('#' + i)) + '</span>' +
+        '<span class="bar"><i style="width:' + pct + '%"></i></span>' +
+        '<span class="pc">' + (p.current != null ? p.current : '—') + ' / ' + (p.target != null ? p.target : '—') + ' · ' + pct + '%</span>' +
+        '</div>';
+    }
+    chainEl.innerHTML = html;
+  }
+
+   renderMeta(s) {
+    if (!s) return;
+    $('m-interval').textContent = (s.intervalMs != null ? (s.intervalMs / 1000) + 's' : '—');
+    $('m-ttl').textContent = (s.cache && s.cache.ttlMs != null ? (s.cache.ttlMs / 1000) + 's' : '—');
+    $('m-subs').textContent = s.subscribers != null ? s.subscribers : '—';
+    $('m-pushed').textContent = s.pushed != null ? s.pushed : '—';
+    $('m-skipped').textContent = s.skipped != null ? s.skipped : '—';
+    $('m-hit').textContent = (s.cache && s.cache.hitRate != null) ? s.cache.hitRate + '%' : '—';
+  }
+
+   applySnapshot(d, tag) {
+    state.frames++;
+    state.lastOk = new Date();
+    $('frame-n').textContent = state.frames;
+    $('last-ts').textContent = fmtTime(state.lastOk);
+
+    var c = d._cache || {};
+    if (c.stale) {
+      notice('warn', '上游本次聚合失败，当前展示的是上一次成功值（stale）。原因：' + (d._cache.error || '未提供') );
+    } else {
+      notice(null, null);
+    }
+    renderCards(d);
+    renderChain(d.causalChain);
+  }
+
+  // ── SSE 连接 ─────────────────────────────────────
+  var es = null, retryTimer = null, statsTimer = null;
+
+   setConn(cls, txt) {
+    $('conn-dot').className = 'dot ' + cls;
+    $('conn-txt').textContent = txt;
+  }
+
+   connect() {
+    if (es) { try { es.close(); } catch (_) {} }
+    setConn('connecting', '连接中…');
+
+    es = new EventSource('/api/v14/metrics/stream');
+
+    es.addEventListener('hello',  (e) {
+      var d = {};
+      try { d = JSON.parse(e.data); } catch (_) {}
+      $('m-interval').textContent = d.intervalMs != null ? (d.intervalMs / 1000) + 's' : '—';
+      $('m-ttl').textContent = d.ttlMs != null ? (d.ttlMs / 1000) + 's' : '—';
+      feed('info', '已连接 SSE 通道（服务端 ' + (d.server || '?') + '，推送间隔 ' + (d.intervalMs / 1000) + 's，缓存 ' + (d.ttlMs / 1000) + 's）');
+    });
+
+    es.addEventListener('metrics',  (e) {
+      setConn('live', '实时');
+      var d = null;
+      try { d = JSON.parse(e.data); } catch (err) {
+        notice('err', '收到无法解析的数据帧：' + err.message);
+        feed('err', '数据帧解析失败：' + err.message);
+        return;
+      }
+      var seq = d._cache && d._cache.seq;
+      applySnapshot(d, 'metrics');
+      if (seq != null && seq !== state.seq) {
+        state.seq = seq;
+        feed('ok', '#' + seq + ' 指标已更新' + (d._cache && d._cache.cached ? '（缓存 age=' + d._cache.ageMs + 'ms）' : '（全量重算）'));
+      }
+      pullStats();
+    });
+
+    es.addEventListener('error',  (e) {
+      // 服务端业务错误帧（非断开）
+      var d = null;
+      try { d = JSON.parse(e.data); } catch (_) {}
+      if (d && d.error) {
+        notice('err', '服务端聚合失败：' + d.error);
+        feed('err', '聚合失败：' + d.error);
+      }
+    });
+
+    es.onopen =  () { setConn('live', '实时'); };
+
+    es.onerror =  () {
+      // EventSource 会自行重连，这里只反映状态，不伪造成功
+      if (es && es.readyState === EventSource.CONNECTING) {
+        setConn('connecting', '重连中…');
+        feed('warn', 'SSE 连接中断，正在自动重连…');
+      } else if (es && es.readyState === EventSource.CLOSED) {
+        setConn('down', '已断开');
+        notice('err', 'SSE 通道已关闭。实时页无法自动恢复，请手动刷新本页。');
+      }
+    };
+  }
+
+   pullStats() {
+    fetch('/api/v14/metrics/stream/stats', { cache: '' })
+      .then( (r) { return r.json(); })
+      .then( (j) { if (j && j.ok) renderMeta(j.stream); })
+      .catch( () { /* 状态面板失败不影响主通道 */ });
+  }
+
+  $('btn-refresh').addEventListener('click',  () {
+    feed('info', '手动触发：请求服务端强制重算（?refresh=1）');
+    fetch('/api/v14/metrics/snapshot?refresh=1', { cache: '' })
+      .then( (r) { return r.json().then( (j) { return { status: r.status, j: j }; }); })
+      .then( (o) {
+        if (o.j && o.j.ok) {
+          applySnapshot(o.j.data, 'manual');
+          feed('ok', '强制重算完成（服务器缓存已刷新，下一次推送将携带新 seq）');
+          notice(null, null);
+        } else {
+          var msg = (o.j && o.j.error) || ('HTTP ' + o.status);
+          notice('err', '强制重算失败：' + msg);
+          feed('err', '强制重算失败：' + msg);
+        }
+      })
+      .catch( (e) { notice('err', '强制重算请求失败：' + e.message); feed('err', '请求失败：' + e.message); });
+  });
+
+  // ── 启动 ─────────────────────────────────────────
+  buildCards();
+  feed('info', '实时页已加载，正在建立 SSE 连接…');
+  connect();
+  pullStats();
+  statsTimer = setInterval(pullStats, 30000); // 仅拉轻量统计，不触发聚合
+
+  // 相对时间每秒刷新一次（保持新鲜感）
+  setInterval( () {
+    if (state.lastOk) {
+      var el = $('last-ts');
+      el.textContent = fmtTime(state.lastOk);
+      el.title = ago(state.lastOk.toISOString()) ;
+    }
+  }, 1000);
+
+  window.addEventListener('beforeunload',  () {
+    if (es) { try { es.close(); } catch (_) {} }
+    if (statsTimer) clearInterval(statsTimer);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+{
+  "name": "mscms-v14-desktop",
+  "version": "3.0.0",
+  "description": "MSCMS v14 综合精细化管理系统 - 桌面应用",
+  "main": "main.js",
+  "author": "MSCMS Team",
+  "license": "ISC",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:portable": "electron-builder --win portable",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "electron": "^33.4.11"
+  },
+  "devDependencies": {
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.mscms.v14.desktop",
+    "productName": "MSCMS v14",
+    "copyright": "Copyright © 2026 MSCMS",
+    "directories": {
+      "output": "../dist-desktop",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**/*",
+      "../server.js",
+      "../v14-console.html",
+      "../device-manager.js",
+      "../account-nurturing.js",
+      "../content-intelligence.js",
+      "../smart-publisher.js",
+      "../decision-engine.js",
+      "../schema-v14.sql",
+      "../package.json",
+      "../node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../node_modules",
+        "to": "node_modules",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MSCMS v14",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "license": "../LICENSE.txt"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    }
+  }
+}

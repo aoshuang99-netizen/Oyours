@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MSCMS v14 — 系统用户管理</title>
+<script src="/vue.global.prod.js"></script>
+<style>
+  :root {
+    --bg:#0f1117;--bg2:#1a1d27;--bg3:#242836;--border:#2e3344;
+    --text:#c9d1d9;--muted:#6e7681;--accent:#58a6ff;--green:#3fb950;
+    --purple:#a371f7;--red:#f85149;--warn:#d29922;--orange:#db61a2;
+  }
+  * { box-sizing: border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); margin:0; min-height:100vh; }
+  a { color:var(--accent); text-decoration:none; }
+
+  .wrap { max-width:1280px; margin:0 auto; padding:1.2rem 1.4rem 3rem; }
+
+  /* Topbar */
+  .topbar { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.2rem; }
+  .topbar h1 { font-size:1.05rem; margin:0; color:var(--text); }
+  .topbar h1 span { color:var(--accent); }
+  .pill { font-size:0.72rem; padding:0.25rem 0.6rem; border-radius:999px; border:1px solid var(--border); display:inline-flex; align-items:center; gap:0.35rem; }
+  .pill .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); }
+  .pill.open .dot { background:var(--green); box-shadow:0 0 8px var(--green); }
+  .pill.closed .dot { background:var(--red); }
+  .pill.connecting .dot { background:var(--warn); }
+  .spacer { flex:1; }
+  .btn { background:var(--bg3); color:var(--text); border:1px solid var(--border); padding:0.4rem 0.8rem; border-radius:6px; cursor:pointer; font-size:0.8rem; }
+  .btn:hover { border-color:var(--accent); }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+  . { background:linear-gradient(135deg,var(--accent),var(--purple)); color:#fff; border-color:transparent; }
+  .btn-danger { background:rgba(248,81,73,.15); color:var(--red); border-color:rgba(248,81,73,.4); }
+  .btn-danger:hover { background:rgba(248,81,73,.25); }
+  .btn-sm { padding:0.25rem 0.55rem; font-size:0.72rem; }
+
+  /* Tabs */
+  .tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.2rem; }
+  .tabs .t { padding:0.7rem 1.2rem; cursor:pointer; font-size:0.85rem; color:var(--muted); border-bottom:2px solid transparent; user-select:none; }
+  .tabs .t:hover { color:var(--text); }
+  .tabs .t.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tabs .t .cnt { background:var(--bg3); color:var(--muted); padding:0.1rem 0.5rem; border-radius:999px; font-size:0.7rem; margin-left:0.5rem; }
+  .tabs .t.active .cnt { background:rgba(88,166,255,.2); color:var(--accent); }
+
+  /* Summary 卡 */
+  .summary { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:0.8rem; margin-bottom:1.2rem; }
+  .scard { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1rem; }
+  .scard .lbl { font-size:0.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; }
+  .scard .val { font-size:1.8rem; font-weight:800; margin:0.2rem 0; }
+  .scard .sub { font-size:0.7rem; color:var(--muted); }
+
+  /* Card */
+  .card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:1rem; margin-bottom:1rem; }
+  .card .h { font-size:0.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin:0 0 0.7rem; display:flex; align-items:center; gap:0.5rem; }
+  .card .h .spacer { flex:1; }
+
+  /* Filters */
+  .filters { display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin-bottom:0.8rem; }
+  .filters input, .filters select { background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:0.4rem 0.6rem; border-radius:6px; font-size:0.8rem; }
+  .filters input { min-width:200px; }
+
+  /* Table */
+  table { ; border-collapse:collapse; font-size:0.82rem; }
+  table th, table td { padding:0.6rem 0.7rem; text-align:left; border-bottom:1px solid var(--border); vertical-align:middle; }
+  table th { color:var(--muted); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.04em; background:var(--bg3); }
+  table tr:hover td { background:rgba(88,166,255,.06); }
+  table .name { font-weight:600; color:var(--text); }
+  table .name .sub { color:var(--muted); font-size:0.7rem; }
+  table .actions { display:flex; gap:0.4rem; flex-wrap:wrap; }
+
+  /* Badges */
+  .badge { font-size:0.68rem; padding:0.1rem 0.45rem; border-radius:999px; border:1px solid var(--border); display:inline-block; font-weight:500; }
+  .role-admin { color:var(--red); border-color:rgba(248,81,73,.4); background:rgba(248,81,73,.1); }
+  .role- { color:var(--orange); border-color:rgba(210,153,34,.4); background:rgba(210,153,34,.1); }
+  .role-viewer { color:var(--accent); border-color:rgba(88,166,255,.4); background:rgba(88,166,255,.1); }
+  .status-active { color:var(--green); border-color:rgba(63,185,80,.4); }
+  .status-disabled { color:var(--muted); }
+
+  /* Permission matrix */
+  .perm-table th { text-align:center; }
+  .perm-table td { text-align:center; }
+  .perm-table td.lbl { text-align:left; }
+  .check-yes { color:var(--green); font-weight:700; }
+  .check-no { color:var(--muted); }
+  .check-wild { color:var(--orange); font-weight:700; }
+
+  /* Audit timeline */
+  .audit-entry { padding:0.5rem 0; border-bottom:1px solid var(--border); display:grid; grid-template-columns: 140px 1fr auto; gap:0.8rem; align-items:center; font-size:0.78rem; }
+  .audit-entry:last-child { border-bottom:0; }
+  .audit-entry .ts { color:var(--muted); font-size:0.74rem; }
+  .audit-entry .action { font-weight:600; }
+  .audit-entry .meta { color:var(--muted); font-size:0.74rem; }
+  .action-create { color:var(--green); }
+  .action-delete { color:var(--red); }
+  .action-update { color:var(--accent); }
+  .action-login { color:var(--orange); }
+  .action-reset_, .action-change_ { color:var(--purple); }
+
+  /* Modal */
+  .mask { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:50; }
+  .modal { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:1.5rem; width:min(520px, 92vw); z-index:51; max-height:88vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  .modal h2 { font-size:1rem; margin:0 0 0.3rem; }
+  .modal .x { position:absolute; top:1rem; right:1rem; cursor:pointer; color:var(--muted); font-size:1.1rem; }
+  .modal .sub { font-size:0.74rem; color:var(--muted); margin-bottom:1rem; }
+
+  .field { margin-bottom:0.85rem; }
+  .field label { display:block; font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.35rem; font-weight:600; }
+  .field input, .field select, .field  { ; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:0.55rem 0.7rem; border-radius:6px; font-size:0.88rem; font-family:inherit; outline:none; }
+  .field input:focus, .field select:focus, .field :focus { border-color:var(--accent); }
+  .field .hint { font-size:0.7rem; color:var(--muted); margin-top:0.2rem; }
+  .field .err { font-size:0.72rem; color:var(--red); margin-top:0.2rem; }
+  .actions-bar { display:flex; justify-content:flex-end; gap:0.6rem; margin-top:1rem; }
+
+  /* Toast */
+  .toast { position:fixed; bottom:1.4rem; left:50%; transform:translateX(-50%); background:var(--bg3); border:1px solid var(--accent); color:var(--text); padding:0.6rem 1rem; border-radius:8px; font-size:0.8rem; z-index:60; box-shadow:0 8px 32px rgba(0,0,0,.4); }
+  .toast.err { border-color:var(--red); }
+  .toast.ok { border-color:var(--green); }
+
+  .empty { color:var(--muted); font-size:0.85rem; padding:2rem; text-align:center; }
+
+  .loading { padding:2rem; text-align:center; color:var(--muted); }
+
+  /* Me card */
+  .me-card { display:flex; align-items:center; gap:0.7rem; background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:0.55rem 0.85rem; }
+  .me-card .avatar { width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--purple)); display:flex; align-items:center; justify-content:center; font-size:0.78rem; font-weight:700; color:#fff; }
+  .me-card .meta { font-size:0.78rem; }
+  .me-card .meta .name { font-weight:600; }
+  .me-card .meta .role { color:var(--muted); font-size:0.7rem; }
+
+  /* Perm cell colorize */
+  .perm-cell { background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:0.15rem 0.4rem; font-size:0.7rem; margin:0.1rem; display:inline-block; }
+  .perm-cell.own { background:rgba(88,166,255,.15); border-color:rgba(88,166,255,.4); color:var(--accent); }
+
+  /* Detail drawer */
+  .drawer { position:fixed; top:0; right:0; bottom:0; width:min(480px, 92vw); background:var(--bg2); border-left:1px solid var(--border); z-index:51; padding:1.4rem; overflow-y:auto; box-shadow:-10px 0 40px rgba(0,0,0,.4); }
+  .drawer .x { position:absolute; top:1rem; right:1rem; cursor:pointer; color:var(--muted); font-size:1.1rem; }
+  .drawer h2 { font-size:1rem; margin:0 0 0.2rem; }
+  .kv { display:grid; grid-template-columns: 110px 1fr; gap:0.4rem 0.6rem; font-size:0.8rem; margin:0.8rem 0; }
+  .kv .k { color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 未鉴权：显示提示跳登录 -->
+  <div v-if="!tokenChecked" class="loading">正在鉴权…</div>
+  <div v-else-if="!me" class="wrap">
+    <div class="card">
+      <h2 style="margin:0 0 0.5rem">需要登录</h2>
+      <p class="sub">请返回登录页面获取访问令牌。</p>
+      <button class="btn " @click="goLogin">前往登录</button>
+    </div>
+  </div>
+
+  <div v-else class="wrap">
+    <!-- Topbar -->
+    <div class="topbar">
+      <h1>👥 系统用户管理 · <span>RBAC + 审计</span></h1>
+      <span class="pill" :class="loadState"><span class="dot"></span>{{ loadLabel }}</span>
+      <div class="spacer"></div>
+      <div class="me-card">
+        <div class="avatar">{{ meInitials }}</div>
+        <div class="meta">
+          <div class="name">{{ me.displayName || me. }}</div>
+          <div class="role"><span class="badge" :class="'role-' + me.role">{{ roleLabel(me.role) }}</span></div>
+        </div>
+      </div>
+      <button class="btn btn-sm" @click="backConsole">← 控制台</button>
+      <button class="btn btn-sm" @click="refreshAll">🔄 刷新</button>
+      <button class="btn btn-sm" @click="logout">⎋ 登出</button>
+      <button class="btn btn-sm " v-if="isAdmin" @click="openCreate">+ 新建用户</button>
+    </div>
+
+    <!-- Summary 卡 -->
+    <div class="summary" v-if="tab==='users'">
+      <div class="scard">
+        <div class="lbl">总用户数</div>
+        <div class="val">{{ users.length }}</div>
+        <div class="sub">含已禁用账号</div>
+      </div>
+      <div class="scard">
+        <div class="lbl">活跃用户</div>
+        <div class="val" style="color:var(--green)">{{ activeCount }}</div>
+        <div class="sub">状态 = active</div>
+      </div>
+      <div class="scard">
+        <div class="lbl">管理员</div>
+        <div class="val" style="color:var(--red)">{{ adminCount }}</div>
+        <div class="sub">至少保留 1 名</div>
+      </div>
+      <div class="scard">
+        <div class="lbl">最近 7 天登录</div>
+        <div class="val" style="color:var(--accent)">{{ recentLoginCount }}</div>
+        <div class="sub">活跃度参考</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="t" :class="{active: tab==='users'}" @click="switchTab('users')">
+        用户列表 <span class="cnt">{{ users.length }}</span>
+      </div>
+      <div class="t" :class="{active: tab==='roles'}" @click="switchTab('roles')">
+        角色权限 <span class="cnt">{{ roles.length }}</span>
+      </div>
+      <div class="t" :class="{active: tab==='audit'}" @click="switchTab('audit')">
+        审计日志 <span class="cnt">{{ audit.length }}</span>
+      </div>
+    </div>
+
+    <!-- Tab: 用户列表 -->
+    <div v-if="tab==='users'">
+      <div class="card">
+        <div class="h">
+          <span>🔍 筛选</span>
+          <div class="spacer"></div>
+          <span class="sub" style="color:var(--muted);font-size:0.75rem;">显示 {{ filtered.length }} / {{ users.length }} 条</span>
+        </div>
+        <div class="filters">
+          <input v-model="filters.search" @input="onFilter" placeholder="搜索用户名 / 显示名 / 邮箱 / ID" />
+          <select v-model="filters.role" @change="onFilter">
+            <option value="">全部角色</option>
+            <option v-for="r in roles" :key="r.key" :value="r.key">{{ r.label }} ({{ r.key }})</option>
+          </select>
+          <select v-model="filters.status" @change="onFilter">
+            <option value="">全部状态</option>
+            <option value="active">活跃</option>
+            <option value="disabled">已禁用</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>用户</th>
+              <th>角色</th>
+              <th>状态</th>
+              <th>邮箱</th>
+              <th>创建时间</th>
+              <th>最近登录</th>
+              <th style="text-align:right">操作</th>
+            </tr>
+          </thead>
+          <tbody v-if="filtered.length">
+            <tr v-for="u in filtered" :key="u.id">
+              <td>
+                <div class="name">{{ u. }}</div>
+                <div class="name sub" style="margin-top:0.1rem;">{{ u.displayName || '—' }} · {{ u.id }}</div>
+              </td>
+              <td><span class="badge" :class="'role-' + u.role">{{ roleLabel(u.role) }}</span></td>
+              <td><span class="badge" :class="'status-' + u.status">{{ u.status === 'active' ? '活跃' : '已禁用' }}</span></td>
+              <td>{{ u.email || '—' }}</td>
+              <td>{{ fmtTime(u.createdAt) }}</td>
+              <td>
+                <span v-if="u.lastLoginAt" :style="{ color: isRecentLogin(u.lastLoginAt) ? 'var(--green)' : 'var(--muted)' }">{{ fmtTime(u.lastLoginAt) }}</span>
+                <span v-else style="color:var(--muted)">从未登录</span>
+              </td>
+              <td class="actions" style="justify-content:flex-end">
+                <button class="btn btn-sm" @click="openDetail(u)">详情</button>
+                <button class="btn btn-sm" :disabled="" @click="openEdit(u)">编辑</button>
+                <button class="btn btn-sm" :disabled="" @click="openReset(u)">重置密码</button>
+                <button class="btn btn-sm" :disabled=" || u.id===me.id" @click="toggleStatus(u)">{{ u.status==='active' ? '禁用' : '启用' }}</button>
+                <button class="btn btn-sm btn-danger" :disabled=" || u.==='admin' || u.id===me.id" @click="confirmDelete(u)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="!filtered.length && !loading" class="empty">无匹配用户</div>
+        <div v-if="loading && !users.length" class="loading">加载中…</div>
+      </div>
+    </div>
+
+    <!-- Tab: 角色权限 -->
+    <div v-if="tab==='roles'">
+      <div class="card">
+        <div class="h">📋 角色权限矩阵</div>
+        <table class="perm-table">
+          <thead>
+            <tr>
+              <th style="text-align:left">权限</th>
+              <th v-for="r in roles" :key="r.key">
+                <span class="badge" :class="'role-' + r.key">{{ r.label }}</span>
+                <div style="color:var(--muted);font-size:0.68rem;margin-top:0.2rem;">{{ r.permissions.length === 1 && r.permissions[0]==='*' ? '全部权限' : r.permissions.length + ' 项' }}</div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="perm in allPermissions" :key="perm.key">
+              <td style="text-align:left">
+                <code style="color:var(--accent);font-size:0.78rem;background:var(--bg3);padding:0.15rem 0.4rem;border-radius:4px;">{{ perm.key }}</code>
+                <div style="color:var(--muted);font-size:0.7rem;margin-top:0.15rem;">{{ perm.desc }}</div>
+              </td>
+              <td v-for="r in roles" :key="r.key">
+                <span v-if="hasPerm(r, perm.key)" class="check-yes" v-if="r.permissions.length === 1 && r.permissions[0]==='*'">✱</span>
+                <span v-else-if="hasPerm(r, perm.key)" class="check-yes">✓</span>
+                <span v-else class="check-no">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="h">🎭 角色说明</div>
+        <div v-for="r in roles" :key="r.key" style="margin-bottom:0.8rem;">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
+            <span class="badge" :class="'role-' + r.key">{{ r.label }}</span>
+            <code style="color:var(--muted);font-size:0.78rem;">{{ r.key }}</code>
+          </div>
+          <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.3rem;">{{ roleDesc(r.key) }}</div>
+          <div>
+            <span v-for="p in r.permissions" :key="p" class="perm-cell">{{ p }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: 审计日志 -->
+    <div v-if="tab==='audit'">
+      <div class="card">
+        <div class="h">
+          📜 最近 200 条审计日志
+          <div class="spacer"></div>
+          <span class="sub" style="color:var(--muted);font-size:0.74rem;">登录 / 用户变更 / 密码变更 / 令牌刷新</span>
+        </div>
+        <div v-if="!audit.length" class="empty">暂无审计记录</div>
+        <div v-else>
+          <div v-for="(a, i) in audit" :key="i" class="audit-entry">
+            <div class="ts">{{ fmtTime(a.ts) }}</div>
+            <div>
+              <span :class="'action action-' + a.action.split('.')[0]" class="action">{{ auditLabel(a.action) }}</span>
+              <span class="meta" style="margin-left:0.5rem;">{{ a.userId || a. || '—' }}</span>
+              <div class="meta" v-if="auditMeta(a)">{{ auditMeta(a) }}</div>
+            </div>
+            <div class="meta">{{ auditIcon(a.action) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mask -->
+  <div class="mask" v-if="anyModalOpen" @click="closeAllModal"></div>
+
+  <!-- 新建用户 Modal -->
+  <div class="modal" v-if="createModal.open">
+    <span class="x" @click="createModal.open=false">✕</span>
+    <h2>新建用户</h2>
+    <div class="sub">为 MSCMS v14 后台创建一个系统用户。</div>
+    <div class="field">
+      <label>用户名 *</label>
+      <input v-model="createModal." placeholder="例如：1" />
+      <div class="hint">3-32 个字符，区分大小写，全局唯一</div>
+    </div>
+    <div class="field">
+      <label>初始密码 *</label>
+      <input v-model="createModal." type="text" placeholder="至少 6 个字符" />
+      <div class="hint">建议至少 8 位，包含字母+数字</div>
+    </div>
+    <div class="field">
+      <label>角色 *</label>
+      <select v-model="createModal.role">
+        <option v-for="r in roles" :key="r.key" :value="r.key">{{ r.label }}（{{ r.key }}）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>显示名</label>
+      <input v-model="createModal.displayName" placeholder="例如：李运营" />
+    </div>
+    <div class="field">
+      <label>邮箱</label>
+      <input v-model="createModal.email" placeholder="可选，用于审计关联" />
+    </div>
+    <div v-if="createModal.error" class="err">{{ createModal.error }}</div>
+    <div class="actions-bar">
+      <button class="btn" @click="createModal.open=false">取消</button>
+      <button class="btn " @click="submitCreate" :disabled="creating">创建</button>
+    </div>
+  </div>
+
+  <!-- 编辑用户 Modal -->
+  <div class="modal" v-if="editModal.open">
+    <span class="x" @click="editModal.open=false">✕</span>
+    <h2>编辑用户</h2>
+    <div class="sub">用户：<code style="background:var(--bg3);padding:0.1rem 0.4rem;border-radius:4px;">{{ editModal.user ? editModal.user. : '—' }}</code></div>
+    <div class="field">
+      <label>显示名</label>
+      <input v-model="editModal.displayName" />
+    </div>
+    <div class="field">
+      <label>邮箱</label>
+      <input v-model="editModal.email" />
+    </div>
+    <div class="field">
+      <label>角色</label>
+      <select v-model="editModal.role">
+        <option v-for="r in roles" :key="r.key" :value="r.key">{{ r.label }}</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>用户名（重命名）</label>
+      <input v-model="editModal." />
+      <div class="hint">改名后会失效旧令牌？不变更即保留。</div>
+    </div>
+    <div v-if="editModal.error" class="err">{{ editModal.error }}</div>
+    <div class="actions-bar">
+      <button class="btn" @click="editModal.open=false">取消</button>
+      <button class="btn " @click="submitEdit" :disabled="editing">保存</button>
+    </div>
+  </div>
+
+  <!-- 重置密码 Modal -->
+  <div class="modal" v-if="resetModal.open">
+    <span class="x" @click="resetModal.open=false">✕</span>
+    <h2>重置密码</h2>
+    <div class="sub">用户：<code style="background:var(--bg3);padding:0.1rem 0.4rem;border-radius:4px;">{{ resetModal.user ? resetModal.user. : '—' }}</code></div>
+    <div class="field">
+      <label>新密码 *</label>
+      <input v-model="resetModal." type="text" placeholder="至少 6 个字符" />
+    </div>
+    <div class="field">
+      <label>确认密码 *</label>
+      <input v-model="resetModal.2" type="text" placeholder="再次输入新密码" />
+    </div>
+    <div v-if="resetModal.error" class="err">{{ resetModal.error }}</div>
+    <div v-if="resetModal.ok" class="sub" style="color:var(--green)">密码已重置，请告知用户。</div>
+    <div class="actions-bar">
+      <button class="btn" @click="resetModal.open=false">关闭</button>
+      <button class="btn " @click="submitReset" :disabled="resetting">重置</button>
+    </div>
+  </div>
+
+  <!-- 删除确认 Modal -->
+  <div class="modal" v-if="delModal.open">
+    <span class="x" @click="delModal.open=false">✕</span>
+    <h2>删除用户</h2>
+    <div class="sub">用户：<code style="background:var(--bg3);padding:0.1rem 0.4rem;border-radius:4px;">{{ delModal.user ? delModal.user. : '—' }}</code></div>
+    <div style="font-size:0.85rem;margin-bottom:0.7rem;">此操作不可撤销。用户的审计记录会保留。</div>
+    <div v-if="delModal.error" class="err">{{ delModal.error }}</div>
+    <div class="actions-bar">
+      <button class="btn" @click="delModal.open=false">取消</button>
+      <button class="btn btn-danger" @click="submitDelete" :disabled="deleting">确认删除</button>
+    </div>
+  </div>
+
+  <!-- 详情抽屉 -->
+  <div class="mask" v-if="detailModal.open" @click="detailModal.open=false"></div>
+  <div class="drawer" v-if="detailModal.open && detailModal.user">
+    <span class="x" @click="detailModal.open=false">✕</span>
+    <h2>{{ detailModal.user. }}</h2>
+    <div style="margin:0.5rem 0;">
+      <span class="badge" :class="'role-' + detailModal.user.role">{{ roleLabel(detailModal.user.role) }}</span>
+      <span class="badge" :class="'status-' + detailModal.user.status" style="margin-left:0.4rem">{{ detailModal.user.status === 'active' ? '活跃' : '已禁用' }}</span>
+    </div>
+
+    <div class="kv">
+      <div class="k">用户 ID</div><div><code style="font-size:0.74rem;">{{ detailModal.user.id }}</code></div>
+      <div class="k">显示名</div><div>{{ detailModal.user.displayName || '—' }}</div>
+      <div class="k">邮箱</div><div>{{ detailModal.user.email || '—' }}</div>
+      <div class="k">创建时间</div><div>{{ fmtTime(detailModal.user.createdAt) }}</div>
+      <div class="k">更新时间</div><div>{{ fmtTime(detailModal.user.updatedAt) }}</div>
+      <div class="k">最近登录</div><div>{{ detailModal.user.lastLoginAt ? fmtTime(detailModal.user.lastLoginAt) : '从未登录' }}</div>
+      <div class="k">我的权限</div><div><span v-for="p in detailModal.user.permissions || []" :key="p" class="perm-cell own">{{ p }}</span></div>
+    </div>
+
+    <div v-if="isAdmin" class="actions" style="display:flex;gap:0.5rem;margin-top:1rem;">
+      <button class="btn btn-sm" @click="openEdit(detailModal.user); detailModal.open=false">编辑</button>
+      <button class="btn btn-sm" @click="openReset(detailModal.user); detailModal.open=false">重置密码</button>
+      <button class="btn btn-sm" v-if="detailModal.user.id !== me.id" @click="toggleStatus(detailModal.user); detailModal.open=false">{{ detailModal.user.status==='active' ? '禁用' : '启用' }}</button>
+      <button class="btn btn-sm btn-danger" v-if="detailModal.user. !== 'admin' && detailModal.user.id !== me.id" @click="confirmDelete(detailModal.user); detailModal.open=false">删除</button>
+    </div>
+  </div>
+
+  <div class="toast" v-if="toast" :class="toastClass">{{ toast }}</div>
+</div>
+
+<script>
+const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+const API = '/api/v14';
+const TOKEN_KEY = '';
+const REFRESH_KEY = 'mscms-auth-refresh';
+const USER_KEY = 'mscms-auth-user';
+
+ authedFetch(url, init = {}) {
+  const tok = localStorage.getItem(TOKEN_KEY);
+  init.headers = init.headers || {};
+  if (tok && !init.headers. && !init.headers.authorization) {
+    init.headers. = 'Bearer ' + tok;
+  }
+  return fetch(url, init);
+}
+
+const ROLE_LABELS = { admin: '系统管理员', : '运营操作员', viewer: '只读观察员' };
+const ROLE_DESC = {
+  admin:    '全部权限。可创建/删除用户、重置密码、查看所有审计日志。',
+  : '数据读写 + 系统状态读取 + 触发执行 + 发布执行（不能管理用户）。',
+  viewer:   '只读。可看数据 + 系统状态，但不可触发任何写入操作。',
+};
+const ROLE_PERMS = {
+  admin:    new Set(['*', 'user:manage', 'data:read', 'data:write', 'system:read', 'trigger:execute', 'publish:execute']),
+  : new Set(['data:read', 'data:write', 'system:read', 'trigger:execute', 'publish:execute']),
+  viewer:   new Set(['data:read', 'system:read']),
+};
+
+const ALL_PERMS = [
+  { key: 'user:manage', desc: '用户 CRUD、重置密码、查看完整审计' },
+  { key: 'data:read', desc: '读取数据存储（DataStore、MySQL）' },
+  { key: 'data:write', desc: '修改数据存储' },
+  { key: 'system:read', desc: '读取系统状态、模块列表、配置' },
+  { key: 'trigger:execute', desc: '手动触发因果链节点' },
+  { key: 'publish:execute', desc: '立即执行发布任务' },
+];
+
+const AUDIT_LABEL = {
+  'user.bootstrap':      '引导管理员',
+  'user.create':         '创建用户',
+  'user.update':         '更新用户',
+  'user.delete':         '删除用户',
+  'user.reset_': '管理员重置密码',
+  'user.change_':'用户改密码',
+  'login.success':       '登录成功',
+  '':          '登录失败',
+  'logout':              '登出',
+  '':       '刷新令牌',
+};
+const AUDIT_ICON = {
+  'user.bootstrap': '🚀',
+  'user.create': '➕',
+  'user.update': '✏️',
+  'user.delete': '🗑️',
+  'user.reset_': '🔑',
+  'user.change_': '🔐',
+  'login.success': '✅',
+  '': '⚠️',
+  'logout': '👋',
+  '': '🔄',
+};
+
+createApp({
+  setup() {
+    const tokenChecked = ref(false);
+    const me = ref(null);
+    const isAdmin = computed(() => !!(me.value && me.value.role === 'admin'));
+
+    // Data
+    const users = ref([]);
+    const roles = ref([
+      { key: 'admin', label: ROLE_LABELS.admin, permissions: ['*'] },
+      { key: '', label: ROLE_LABELS., permissions: ['data:read','data:write','system:read','trigger:execute','publish:execute'] },
+      { key: 'viewer', label: ROLE_LABELS.viewer, permissions: ['data:read','system:read'] },
+    ]);
+    const audit = ref([]);
+    const loading = ref(false);
+    const loadState = ref('connecting');
+    const loadLabel = ref('加载中…');
+    const tab = ref('users');
+
+    // Filters
+    const filters = reactive({ search: '', role: '', status: '' });
+
+    // Modals
+    const createModal = reactive({ open:false, :'', :'', role:'', displayName:'', email:'', error:'' });
+    const editModal = reactive({ open:false, user:null, :'', displayName:'', email:'', role:'', error:'' });
+    const resetModal = reactive({ open:false, user:null, :'', 2:'', error:'', ok:false });
+    const delModal = reactive({ open:false, user:null, error:'' });
+    const detailModal = reactive({ open:false, user:null });
+
+    const creating = ref(false);
+    const editing = ref(false);
+    const resetting = ref(false);
+    const deleting = ref(false);
+
+    const anyModalOpen = computed(() => createModal.open || editModal.open || resetModal.open || delModal.open);
+
+    // Toast
+    const toast = ref('');
+    const toastClass = ref('ok');
+    let toastTimer = null;
+     showToast(msg, kind='ok'){
+      toast.value = msg;
+      toastClass.value = kind;
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.value = ''; }, 2400);
+    }
+
+    // Filtered users
+    const filtered = computed(() => {
+      const q = filters.search.trim().toLowerCase();
+      return users.value.filter(u => {
+        if (filters.role && u.role !== filters.role) return false;
+        if (filters.status && u.status !== filters.status) return false;
+        if (q) {
+          const t = [u., u.displayName, u.email, u.id].join(' ').toLowerCase();
+          if (!t.includes(q)) return false;
+        }
+        return true;
+      });
+    });
+
+    const activeCount = computed(() => users.value.filter(u => u.status === 'active');
+    const adminCount = computed(() => users.value.filter(u => u.role === 'admin' && u.status === 'active');
+    const recentLoginCount = computed(() => {
+      const weekAgo = Date.now() - 7*24*3600*1000;
+      return users.value.filter(u => u.lastLoginAt && new Date(u.lastLoginAt).getTime() > weekAgo;
+    });
+
+    const meInitials = computed(() => {
+      const n = (me.value && (me.value.displayName || me.value.)) || '?';
+      return n.slice(0, 2).toUpperCase();
+    });
+
+     roleLabel(r){ return ROLE_LABELS[r] || r || '-'; }
+     roleDesc(r){ return ROLE_DESC[r] || ''; }
+
+     hasPerm(role, perm) {
+      if (!role || !role.permissions) return false;
+      if (role.permissions.includes('*')) return true;
+      return role.permissions.includes(perm);
+    }
+
+     allPermissions() { return ALL_PERMS; }
+
+     auditLabel(a) { return AUDIT_LABEL[a] || a; }
+     auditIcon(a) { return AUDIT_ICON[a] || '·'; }
+     auditMeta(a) {
+      const m = [];
+      if (a.ip) m.push('IP ' + a.ip);
+      if (a.role) m.push('角色=' + a.role);
+      if (a.updates) m.push('变更=' + (a.updates.join(', ')));
+      if (a.createdBy) m.push('创建者=' + a.createdBy);
+      if (a.actor) m.push('操作者=' + a.actor);
+      if (a.) m.push('用户=' + a.);
+      if (a.reason) m.push('原因=' + a.reason);
+      if (a.failedCount) m.push('失败次数=' + a.failedCount);
+      return m.join(' · ');
+    }
+
+     fmtTime(s){ if(!s) return ''; try { return new Date(s).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch(_){ return s; } }
+
+     isRecentLogin(s) {
+      const t = new Date(s).getTime();
+      const weekAgo = Date.now() - 7*24*3600*1000;
+      return t > weekAgo;
+    }
+
+     onFilter(){ /* triggers computed */ }
+
+     switchTab(t){
+      tab.value = t;
+      if (t === 'users') loadUsers();
+      else if (t === 'audit') loadAudit();
+      else if (t === 'roles') loadRoles();
+    }
+
+     backConsole(){ location.href = '/v14-console.html'; }
+     goLogin(){ location.replace('/login.html?redirect=' + encodeURIComponent(location.pathname + location.search)); }
+
+    async  logout(){
+      if (!confirm('确认退出登录？')) return;
+      try { await authedFetch(API + '/auth/logout', { method:'POST' }); } catch(_) {}
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REFRESH_KEY);
+      localStorage.removeItem(USER_KEY);
+      location.replace('/login.html');
+    }
+
+    async  loadMe() {
+      try {
+        const raw = localStorage.getItem(USER_KEY);
+        if (raw) me.value = JSON.parse(raw);
+        const r = await authedFetch(API + '/auth/me');
+        if (r.status === 401) { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); me.value = null; return false; }
+        const j = await r.json();
+        if (j.ok && j.user) {
+          me.value = j.user;
+          localStorage.setItem(USER_KEY, JSON.stringify(j.user));
+          return true;
+        }
+        return false;
+      } catch (e) { return false; }
+    }
+
+    async  loadUsers() {
+      if (.value) return;
+      loading.value = true; loadState.value = 'connecting'; loadLabel.value = '加载中…';
+      try {
+        const r = await authedFetch(API + '/auth/users');
+        if (r.status === 401) { me.value = null; return; }
+        const j = await r.json();
+        if (j.ok) { users.value = j.users || []; loadState.value = 'open'; loadLabel.value = '已加载'; }
+        else showToast(j.error || '加载失败', 'err');
+      } catch (e) {
+        loadState.value = 'closed'; loadLabel.value = '加载失败';
+      } finally { loading.value = false; }
+    }
+
+    async  loadRoles() {
+      try {
+        const r = await authedFetch(API + '/auth/roles');
+        const j = await r.json();
+        if (j.ok && j.roles && j.roles.length) {
+          roles.value = j.roles;
+        }
+      } catch (e) { /* ignore - use defaults */ }
+    }
+
+    async  loadAudit() {
+      if (.value) return;
+      try {
+        const r = await authedFetch(API + '/auth/audit');
+        if (r.status === 403) { audit.value = []; showToast('无权查看审计日志', 'err'); return; }
+        if (r.status === 401) { me.value = null; return; }
+        const j = await r.json();
+        if (j.ok) {
+          // GET /api/v14/auth/audit returns { ok, count, items: [] } (most-recent first)
+          audit.value = (j.items || j.entries || j.audit || j.log || []).slice();
+        }
+      } catch (e) {
+        showToast('审计日志加载失败: ' + e.message, 'err');
+      }
+    }
+
+    async  refreshAll() {
+      if (tab.value === 'users') await loadUsers();
+      else if (tab.value === 'audit') await loadAudit();
+      else if (tab.value === 'roles') await loadRoles();
+    }
+
+     openCreate() {
+      createModal. = '';
+      createModal. = '';
+      createModal.role = '';
+      createModal.displayName = '';
+      createModal.email = '';
+      createModal.error = '';
+      createModal.open = true;
+    }
+
+    async  submitCreate() {
+      createModal.error = '';
+      if (!createModal. || createModal..length < 3) { createModal.error = '用户名至少 3 字符'; return; }
+      if (!createModal. || createModal..length < 6) { createModal.error = '密码至少 6 字符'; return; }
+      if (!createModal.role || !ROLE_PERMS[createModal.role]) { createModal.error = '请选择有效角色'; return; }
+      creating.value = true;
+      try {
+        const r = await authedFetch(API + '/auth/users', {
+          method:'POST', headers:{'':'application/json'},
+          body: JSON.stringify({
+            : createModal..trim(),
+            : createModal.,
+            role: createModal.role,
+            displayName: createModal.displayName.trim(),
+            email: createModal.email.trim(),
+          })
+        });
+        const j = await r.json();
+        if (j.ok) {
+          showToast('用户创建成功');
+          createModal.open = false;
+          await loadUsers();
+        } else {
+          createModal.error = j.error || '创建失败';
+        }
+      } catch (e) { createModal.error = e.message; }
+      finally { creating.value = false; }
+    }
+
+     openEdit(u) {
+      editModal.user = u;
+      editModal. = u.;
+      editModal.displayName = u.displayName || '';
+      editModal.email = u.email || '';
+      editModal.role = u.role;
+      editModal.error = '';
+      editModal.open = true;
+    }
+
+    async  submitEdit() {
+      editModal.error = '';
+      if (!editModal.user) return;
+      editing.value = true;
+      try {
+        const r = await authedFetch(API + '/auth/users/' + editModal.user.id, {
+          method:'PATCH', headers:{'':'application/json'},
+          body: JSON.stringify({
+            : editModal..trim(),
+            displayName: editModal.displayName.trim(),
+            email: editModal.email.trim(),
+            role: editModal.role,
+          })
+        });
+        const j = await r.json();
+        if (j.ok) {
+          showToast('已保存');
+          editModal.open = false;
+          await loadUsers();
+        } else {
+          editModal.error = j.error || '保存失败';
+        }
+      } catch (e) { editModal.error = e.message; }
+      finally { editing.value = false; }
+    }
+
+     openReset(u) {
+      resetModal.user = u;
+      resetModal. = '';
+      resetModal.2 = '';
+      resetModal.error = '';
+      resetModal.ok = false;
+      resetModal.open = true;
+    }
+
+    async  submitReset() {
+      resetModal.error = '';
+      if (!resetModal. || resetModal..length < 6) { resetModal.error = '新密码至少 6 字符'; return; }
+      if (resetModal. !== resetModal.2) { resetModal.error = '两次输入不一致'; return; }
+      resetting.value = true;
+      try {
+        const r = await authedFetch(API + '/auth/users/' + resetModal.user.id + '/reset', {
+          method:'POST', headers:{'':'application/json'},
+          body: JSON.stringify({ : resetModal. })
+        });
+        const j = await r.json();
+        if (j.ok) {
+          resetModal.ok = true;
+          showToast('密码已重置');
+          resetModal. = '';
+          resetModal.2 = '';
+          await loadAudit();
+        } else {
+          resetModal.error = j.error || '重置失败';
+        }
+      } catch (e) { resetModal.error = e.message; }
+      finally { resetting.value = false; }
+    }
+
+    async  toggleStatus(u) {
+      const next = u.status === 'active' ? 'disabled' : 'active';
+      if (!confirm(`确认将「${u.}」${next === 'active' ? '启用' : '禁用'}?`)) return;
+      try {
+        const r = await authedFetch(API + '/auth/users/' + u.id, {
+          method:'PATCH', headers:{'':'application/json'},
+          body: JSON.stringify({ status: next })
+        });
+        const j = await r.json();
+        if (j.ok) { showToast('已更新'); await loadUsers(); }
+        else showToast(j.error || '更新失败', 'err');
+      } catch (e) { showToast(e.message, 'err'); }
+    }
+
+     confirmDelete(u) {
+      delModal.user = u;
+      delModal.error = '';
+      delModal.open = true;
+    }
+
+    async  submitDelete() {
+      if (!delModal.user) return;
+      delModal.error = '';
+      deleting.value = true;
+      try {
+        const r = await authedFetch(API + '/auth/users/' + delModal.user.id, { method:'DELETE' });
+        const j = await r.json();
+        if (j.ok) {
+          showToast('用户已删除');
+          delModal.open = false;
+          await loadUsers();
+        } else {
+          delModal.error = j.error || '删除失败';
+        }
+      } catch (e) { delModal.error = e.message; }
+      finally { deleting.value = false; }
+    }
+
+     openDetail(u) {
+      detailModal.user = u;
+      detailModal.open = true;
+    }
+
+     closeAllModal() {
+      createModal.open = false;
+      editModal.open = false;
+      resetModal.open = false;
+      delModal.open = false;
+    }
+
+    onMounted(async () => {
+      const tok = localStorage.getItem(TOKEN_KEY);
+      if (!tok) { tokenChecked.value = true; return; }
+      const ok = await loadMe();
+      tokenChecked.value = true;
+      if (!ok) { me.value = null; return; }
+      await loadRoles();
+      await loadUsers();
+    });
+
+    return {
+      tokenChecked, me, isAdmin, meInitials,
+      users, roles, allPermissions, hasPerm, audit, loading, loadState, loadLabel, tab,
+      filters, filtered, onFilter, switchTab,
+      activeCount, adminCount, recentLoginCount,
+      createModal, editModal, resetModal, delModal, detailModal, anyModalOpen,
+      creating, editing, resetting, deleting,
+      openCreate, submitCreate, openEdit, submitEdit,
+      openReset, submitReset, toggleStatus, confirmDelete, submitDelete,
+      openDetail, closeAllModal, loadUsers, loadAudit, refreshAll,
+      backConsole, goLogin, logout,
+      roleLabel, roleDesc, auditLabel, auditIcon, auditMeta,
+      fmtTime, isRecentLogin, toast, toastClass, showToast,
+    };
+  }
+}).mount('#app');
+</script>
+<!-- B2：常态 10 分钟自动刷新（可视化倒计时 + 手动刷新 + 暂停；输入中/对话框打开时自动推迟） -->
+<script src="/v14-autorefresh.js" defer></script>
+</body>
+</html>

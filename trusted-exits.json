@@ -1,0 +1,14 @@
+[
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a01:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-01" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a02:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-02" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a03:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-03" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a04:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-04" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a05:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-05" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a06:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-06" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a07:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-07" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a08:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-08" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a09:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-09" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a10:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-10" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a11:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-11" },
+  { "url": "http://brd-customer-hl_ac0f9818-zone-isp_proxy1-session-a12:d2ream9zn4am@brd.superproxy.io:44445", "name": "brightdata-isp-12" }
+]

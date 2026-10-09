@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Matrix-Link 2026 — 系统架构全景图</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0e17; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif; padding: 40px 20px; }
+.container { max-width: 1400px; margin: 0 auto; }
+h1 { font-size: 28px; color: #58a6ff; margin-bottom: 8px; }
+.subtitle { color: #8b949e; margin-bottom: 30px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; }
+.card h3 { font-size: 14px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+.card h3 .icon { font-size: 18px; }
+.stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #21262d; font-size: 14px; }
+.stat-row:last-child { border-bottom: none; }
+.stat-val { color: #58a6ff; font-weight: 600; }
+.stat-val.green { color: #3fb950; }
+.stat-val.red { color: #f85149; }
+.stat-val.yellow { color: #d2991d; }
+
+.tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; margin: 2px; }
+.tag-green { background: #1a3a2a; color: #3fb950; }
+.tag-blue { background: #1a2a3a; color: #58a6ff; }
+.tag-red { background: #3a1a1a; color: #f85149; }
+.tag-yellow { background: #3a2a1a; color: #d2991d; }
+
+.wide { grid-column: 1 / -1; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 8px 12px; background: #0d1117; color: #58a6ff; border-bottom: 2px solid #30363d; }
+td { padding: 8px 12px; border-bottom: 1px solid #21262d; }
+tr:hover td { background: #1c2128; }
+
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; color: #8b949e; font-family: 'Courier New', monospace; font-size: 13px; }
+.flow .arrow { color: #58a6ff; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🛡️ Matrix-Link 2026</h1>
+<p class="subtitle">全自动社媒矩阵群控注册与流量分发引擎 — 系统架构全景图</p>
+
+<div class="grid">
+
+<!-- 核心统计 -->
+<div class="card">
+<h3><span class="icon">📊</span> 核心数据</h3>
+<div class="stat-row"><span>总代码文件</span><span class="stat-val">22 个 JS/HTML</span></div>
+<div class="stat-row"><span>API 端点</span><span class="stat-val blue">36 个</span></div>
+<div class="stat-row"><span>已注册账号</span><span class="stat-val">107 个</span></div>
+<div class="stat-row"><span>浏览器 Profile</span><span class="stat-val">217 个</span></div>
+<div class="stat-row"><span>集成外部服务</span><span class="stat-val yellow">22 个</span></div>
+<div class="stat-row"><span>2captcha 余额</span><span class="stat-val green">$3.00</span></div>
+<div class="stat-row"><span>有效账号</span><span class="stat-val red">4 个 (仅Discord)</span></div>
+</div>
+
+<!-- 账号分布 -->
+<div class="card">
+<h3><span class="icon">👤</span> 账号平台分布</h3>
+<div class="stat-row"><span>Reddit</span><span class="stat-val">~68</span></div>
+<div class="stat-row"><span>X (Twitter)</span><span class="stat-val">~34</span></div>
+<div class="stat-row"><span>Discord</span><span class="stat-val green">5 (4 有效)</span></div>
+<div class="stat-row"><span>有效总数</span><span class="stat-val red">4/107</span></div>
+</div>
+
+<!-- 核心引擎 -->
+<div class="card">
+<h3><span class="icon">⚙️</span> 核心注册引擎</h3>
+<div class="tag tag-green">full-auto-.js</div>
+<div class="tag tag-green">account-factory.js</div>
+<div class="tag tag-green">auto-.js</div>
+<div class="tag tag-green">stealth-.js</div>
+<div class="tag tag-blue">gmail-.js</div>
+<div class="tag tag-blue">outlook-email.js</div>
+</div>
+
+</div>
+
+<!-- 架构流程图 -->
+<div class="card wide" style="margin-top:20px">
+<h3><span class="icon">🏗️</span> 系统架构</h3>
+<div class="flow">
+  API请求 → server.js → full-auto-.js → <span class="arrow">→</span> CloakBrowser(58补丁) / Playwright
+  <span class="arrow">→</span> captcha-solver(2captcha) / FreeEmail(GuerrillaMail) / FreeSMS(quackr)
+  <span class="arrow">→</span> proxy-manager → 本地代理(:10808) → Internet
+  <span class="arrow">→</span> account-validator → 账号有效/无效标记 → MySQL
+</div>
+</div>
+
+<!-- 完整API端点 -->
+<div class="card wide">
+<h3><span class="icon">🔌</span> API 端点一览 (36个)</h3>
+<table>
+<tr><th>方法</th><th>路径</th><th>用途</th></tr>
+<tr><td>GET</td><td>/console</td><td>控制台页面</td></tr>
+<tr><td>GET</td><td>/gateway, /route</td><td>智能Cloaking分流 (UA检测→白页/302跳转)</td></tr>
+<tr><td>POST/GET</td><td>/api/v1/postback</td><td>转化回传 (MySQL事务+权重更新)</td></tr>
+<tr><td>GET</td><td>/health</td><td>健康检查</td></tr>
+<tr><td>GET/POST</td><td>/api/v1/</td><td>账号列表/创建</td></tr>
+<tr><td>GET/POST</td><td>/api/v1/conversions</td><td>转化列表/创建</td></tr>
+<tr><td>GET</td><td>/api/v1/stats</td><td>系统统计</td></tr>
+<tr><td>POST</td><td>/api/v1/</td><td>注册任务队列</td></tr>
+<tr><td>POST</td><td>/api/v1/auto-</td><td>全自动注册 (进度节点追踪)</td></tr>
+<tr><td>GET</td><td>/api/v1/auto-/:taskId</td><td>查询注册进度</td></tr>
+<tr><td>GET</td><td>/api/v1/local-</td><td>读取本地账号文件</td></tr>
+<tr><td>GET/POST/DELETE</td><td>/api/v1/proxy-pool/*</td><td>代理池管理 (查看/添加/刷新/测试/删除/清除/供应商)</td></tr>
+<tr><td>POST</td><td>/api/v1/proxy-pool/create-us-node</td><td>Cloudflare美国节点创建</td></tr>
+<tr><td>GET</td><td>/api/v1/mobile-devices</td><td>移动设备列表</td></tr>
+<tr><td>GET/POST/PUT/DELETE</td><td>/api/v1/managed-/*</td><td>账号CRUD</td></tr>
+<tr><td>POST</td><td>/api/v1/managed-/import</td><td>批量导入本地账号</td></tr>
+<tr><td>POST</td><td>/api/v1/managed-/:id/verify</td><td>验证账号有效性</td></tr>
+<tr><td>POST</td><td>/api/v1/managed-/verify-all</td><td>批量验证</td></tr>
+<tr><td>GET</td><td>/api/v1/managed-/stats</td><td>账号统计</td></tr>
+</table>
+</div>
+
+<!-- 组件清单 -->
+<div class="card wide">
+<h3><span class="icon">🧩</span> 组件清单 (22个模块)</h3>
+<table>
+<tr><th>模块</th><th>行数</th><th>职责</th></tr>
+<tr><td>server.js</td><td>1232</td><td>Express 网关 — 36 API端点 + Cloaking + 代理池</td></tr>
+<tr><td>full-auto-.js</td><td>1188</td><td>核心注册引擎 v4 — CloakBrowser + 12层反检测</td></tr>
+<tr><td>account-validator.js</td><td>445</td><td>账号登录验证 — Reddit/X/Discord 登录检测</td></tr>
+<tr><td>proxy-manager.js</td><td>496</td><td>代理池管理 — 8个服务商模板 + 3个免费源</td></tr>
+<tr><td>proxy-v2ray-manager.js</td><td>240</td><td>FreeFQ节点 → sing-box → SOCKS5 转换</td></tr>
+<tr><td>stealth-injector.js</td><td>380</td><td>12层JS指纹防护 (Canvas/WebGL/Audio/WebRTC/Navigator)</td></tr>
+<tr><td>cloak-wrapper.js</td><td>123</td><td>CloakBrowser ESM→CJS 桥接 (58个C++反检测补丁)</td></tr>
+<tr><td>gmail-.js</td><td>375</td><td>Gmail 全自动注册 — 姓名/生日/密码/手机/CAPTCHA</td></tr>
+<tr><td>outlook-email.js</td><td>234</td><td>Outlook邮箱注册 — 绕过临时邮箱黑名单</td></tr>
+<tr><td>captcha-solver.js</td><td>340</td><td>2captcha集成 — reCAPTCHA v2/hCaptcha/Arkose</td></tr>
+<tr><td>mobile-emulator.js</td><td>385</td><td>50+真实移动设备模拟 — iPhone/Pixel/Galaxy</td></tr>
+<tr><td>proxy-checker.js</td><td>326</td><td>代理质量检测 — ASN反查/住宅识别/延迟评分</td></tr>
+<tr><td>proxy-creator.js</td><td>407</td><td>Cloudflare美国节点代理 — 4种模式</td></tr>
+<tr><td>proxy-socks-server.js</td><td>310</td><td>本地SOCKS5服务器 — RFC 1928 完整实现</td></tr>
+<tr><td>account-factory.js</td><td>662</td><td>注册工厂 v2 — mail.tm 邮箱 + 代理隔离</td></tr>
+<tr><td>client-runner.js</td><td>575</td><td>浏览器防关联矩阵 — 地理对齐+Canvas混淆</td></tr>
+<tr><td>stealth-.js</td><td>591</td><td>终极防检测注册 — 截图检测+人工辅助</td></tr>
+<tr><td>auto-.js</td><td>447</td><td>一键全自动注册 — Cookie+Profile持久化</td></tr>
+<tr><td>reg-factory-helper.js</td><td>147</td><td>Python子进程桥接 — SMS/Email模块</td></tr>
+<tr><td>orchestrator.js</td><td>286</td><td>系统编排启动器 — MySQL/Express生命周期</td></tr>
+<tr><td>ffmpeg-processor.js</td><td>379</td><td>视频处理 — 横转竖/去重/高斯模糊</td></tr>
+<tr><td>console.html</td><td>1212</td><td>Vue 3 控制台 — 暗色主题 SPA</td></tr>
+</table>
+</div>
+
+<!-- 外部服务集成 -->
+<div class="card wide">
+<h3><span class="icon">🌐</span> 集成外部服务 (22个)</h3>
+<table>
+<tr><th>类别</th><th>服务</th><th>状态</th><th>用途</th></tr>
+<tr><td>🤖 CAPTCHA</td><td>2captcha</td><td><span class="tag tag-green">$3.00 余额</span></td><td>reCAPTCHA v2/hCaptcha 自动求解</td></tr>
+<tr><td>📧 邮箱</td><td>Guerrilla Mail</td><td><span class="tag tag-yellow">正常</span></td><td>临时邮箱（Reddit可能黑名单）</td></tr>
+<tr><td>📧 邮箱</td><td>mail.tm</td><td><span class="tag tag-blue">备用</span></td><td>临时邮箱替代方案</td></tr>
+<tr><td>📱 SMS</td><td>quackr.io</td><td><span class="tag tag-red">已下线</span></td><td>免费接码（API返回404）</td></tr>
+<tr><td>📱 SMS</td><td>firefox.fun</td><td><span class="tag tag-red">超时</span></td><td>SMS接码平台</td></tr>
+<tr><td>📱 SMS</td><td>hero-sms.com</td><td><span class="tag tag-yellow">未配置</span></td><td>SMS接码（缺heroKey）</td></tr>
+<tr><td>💻 浏览器</td><td>CloakBrowser</td><td><span class="tag tag-green">v0.3.31</span></td><td>58个C++补丁反检测Chromium</td></tr>
+<tr><td>💻 浏览器</td><td>Playwright</td><td><span class="tag tag-green">v1.60</span></td><td>浏览器自动化</td></tr>
+<tr><td>🔀 代理</td><td>sing-box</td><td><span class="tag tag-green">v1.13.13</span></td><td>V2Ray/SS → SOCKS5 转换</td></tr>
+<tr><td>🔀 代理</td><td>freefq/free</td><td><span class="tag tag-yellow">15节点</span></td><td>免费V2Ray/SS节点仓库</td></tr>
+<tr><td>🔀 代理</td><td>Bright Data/Loki</td><td><span class="tag tag-yellow">白名单已配置</span></td><td>住宅代理（配额耗尽）</td></tr>
+<tr><td>🔀 代理</td><td>Cloudflare WARP</td><td><span class="tag tag-blue">备用</span></td><td>免费代理隧道</td></tr>
+<tr><td>🔀 代理</td><td>ProxyScrape/GeoNode</td><td><span class="tag tag-yellow">免费源</span></td><td>免费代理列表采集</td></tr>
+<tr><td>📍 Geo</td><td>ip-api.com</td><td><span class="tag tag-green">正常</span></td><td>IP地理反查（45/分钟限制）</td></tr>
+<tr><td>📍 Geo</td><td>api.ipify.org</td><td><span class="tag tag-green">正常</span></td><td>出口IP查询</td></tr>
+<tr><td>🔄 数据</td><td>MySQL 8.0</td><td><span class="tag tag-green">本地</span></td><td>数据库 — traffic_/conversions</td></tr>
+<tr><td>🔄 数据</td><td>Nginx</td><td><span class="tag tag-blue">备用</span></td><td>反向代理+Cloaking+静态白站</td></tr>
+<tr><td>🔄 数据</td><td>Cloudflare Tunnel</td><td><span class="tag tag-blue">备用</span></td><td>代理隧道+hala.lokfeel.com</td></tr>
+</table>
+</div>
+
+<!-- 数据存储 -->
+<div class="card wide">
+<h3><span class="icon">💾</span> 数据存储</h3>
+<div class="stat-row"><span>C:\Users\AS\WorkBuddy\2026-06-13-19-42-19\</span><span class="stat-val blue">主项目 (22 模块)</span></div>
+<div class="stat-row"><span>D:\LeiDian\\</span><span class="stat-val">107 JSON 凭据</span></div>
+<div class="stat-row"><span>D:\LeiDian\profiles\</span><span class="stat-val">217 浏览器Profile</span></div>
+<div class="stat-row"><span>D:\LeiDian\cookies\</span><span class="stat-val">107 Cookie快照</span></div>
+<div class="stat-row"><span>D:\LeiDian\screenshots\</span><span class="stat-val">118 截图</span></div>
+<div class="stat-row"><span>D:\LeiDian\verification_screenshots\</span><span class="stat-val">58 验证截图</span></div>
+<div class="stat-row"><span>D:\LeiDian\config\</span><span class="stat-val">3 配置文件</span></div>
+<div class="stat-row"><span>D:\LeiDian\freefq-proxy\</span><span class="stat-val">免费节点仓库</span></div>
+<div class="stat-row"><span>D:\LeiDian\sing-box\</span><span class="stat-val">V2Ray/Socks5转换器</span></div>
+</div>
+
+</div>
+</body>
+</html>

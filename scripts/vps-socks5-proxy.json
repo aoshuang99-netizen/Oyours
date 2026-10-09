@@ -1,0 +1,852 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "in-socks-10950",
+      "listen": "",
+      "port": 10950,
+      "protocol": "socks",
+      "settings": {
+        "udp": false
+      }
+    },
+    {
+      "tag": "in-http-10960",
+      "listen": "",
+      "port": 10960,
+      "protocol": "http",
+      "settings": {}
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "node-tw-m-16616",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "m.cnmjin.net",
+            "port": 16616,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-tw-p4-16616",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16616,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-tw-t-16616",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "t.cnmjcn.cyou",
+            "port": 16616,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-jp-m-16617",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "m.cnmjin.net",
+            "port": 16617,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-jp-p4-16617",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16617,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-jp-t-16617",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "t.cnmjcn.cyou",
+            "port": 16617,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-sg-m-16618",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "m.cnmjin.net",
+            "port": 16618,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-sg-p4-16618",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16618,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-sg-t-16618",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "t.cnmjcn.cyou",
+            "port": 16618,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-hkwap-m-16622",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "m.cnmjin.net",
+            "port": 16622,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-hkwap-p4-16622",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16622,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-hkwap-t-16622",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "t.cnmjcn.cyou",
+            "port": 16622,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-in-p4-16626",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16626,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-hk-m-16632",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "m.cnmjin.net",
+            "port": 16632,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-hk-p4-16632",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16632,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-hk-t-16632",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "t.cnmjcn.cyou",
+            "port": 16632,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-ca-m-16641",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "m.cnmjin.net",
+            "port": 16641,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-ca-p4-16641",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16641,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-ca-t-16641",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "t.cnmjcn.cyou",
+            "port": 16641,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-de-m-16644",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "m.cnmjin.net",
+            "port": 16644,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-de-p4-16644",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16644,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-gb-m-16645",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "m.cnmjin.net",
+            "port": 16645,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-gb-p4-16645",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16645,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-gb-t-16645",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "t.cnmjcn.cyou",
+            "port": 16645,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-us-m-16648",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "m.cnmjin.net",
+            "port": 16648,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-us-p4-16648",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "p4.cnb.linuxlh.xin",
+            "port": 16648,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "node-us-t-16648",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "t.cnmjcn.cyou",
+            "port": 16648,
+            "users": [
+              {
+                "id": "82c6b760-43ad-451e-abc4-19f48251431f",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/",
+          "headers": {
+            "Host": "c1aa9a6b3f40673d5059d6f3b2eedd91.mobgslb.tbcache.com"
+          }
+        }
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ],
+  "observatory": {
+    "subjectSelector": [
+      "node-"
+    ],
+    "probeUrl": "https://www.gstatic.com/generate_204",
+    "probeInterval": "30s",
+    "enableConcurrency": true
+  },
+  "routing": {
+    "domainStrategy": "AsIs",
+    "balancers": [
+      {
+        "tag": "bal",
+        "selector": [
+          "node-"
+        ],
+        "": {
+          "type": "leastLoad"
+        },
+        "fallbackTag": "node-jp-m-16617"
+      }
+    ],
+    "rules": [
+      {
+        "type": "field",
+        "ip": [
+          "geoip:private"
+        ],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "inboundTag": [
+          "in-socks-10950",
+          "in-http-10960"
+        ],
+        "balancerTag": "bal"
+      }
+    ]
+  }
+}

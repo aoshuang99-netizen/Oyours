@@ -1,0 +1,3304 @@
+{
+  "generatedAt": "2026-09-02T06:05:06.908Z",
+  "source": "server.js (static analysis)",
+  "summary": {
+    "total": 423,
+    "byMethod": {
+      "get": 211,
+      "post": 188,
+      "put": 8,
+      "delete": 16,
+      "patch": 0
+    },
+    "byModule": {
+      "mixpost": 43,
+      "tumblr": 29,
+      "traffic": 20,
+      "": 17,
+      "managed-": 14,
+      "content": 11,
+      "analytics": 10,
+      "proxy-pool": 9,
+      "devices": 9,
+      "dag": 9,
+      "social": 9,
+      "marketing": 9,
+      "data": 9,
+      "conversion": 8,
+      "experiments": 8,
+      "agnes": 8,
+      "proxy": 7,
+      "trending": 7,
+      "tumblr-nurture": 7,
+      "session": 7,
+      "scrm": 7,
+      "dau": 7,
+      "aigc": 7,
+      "message-inbox": 7,
+      "": 6,
+      "attribution": 6,
+      "channel": 6,
+      "tasks": 6,
+      "lok-dialogue": 6,
+      "postback": 5,
+      "gps": 5,
+      "cloaking": 5,
+      "alerts": 5,
+      "account": 5,
+      "publish": 4,
+      "sensor": 4,
+      "eventbus": 4,
+      "heal": 4,
+      "causal-chain": 4,
+      "content-pipeline": 4,
+      "cloud-publish": 4,
+      "tracking": 3,
+      "decision": 3,
+      "fingerprint": 3,
+      "cloud-phones": 3,
+      "": 3,
+      "conversions": 2,
+      "auto-": 2,
+      "viral": 2,
+      "evolution": 2,
+      "ab-test": 2,
+      "nurturing": 2,
+      "datastore": 2,
+      "pipeline": 2,
+      "nurturing-rules": 2,
+      "content-rules": 2,
+      "deai": 2,
+      "console": 1,
+      "v14": 1,
+      "preview": 1,
+      "gateway": 1,
+      "route": 1,
+      "health": 1,
+      "stats": 1,
+      "local-": 1,
+      "mobile-devices": 1,
+      "": 1,
+      "account-loop": 1,
+      "real-": 1,
+      "video-render": 1,
+      "media": 1,
+      "feed": 1,
+      "visitor-behavior": 1,
+      "r": 1,
+      "system": 1,
+      "dashboard": 1,
+      "module": 1,
+      "modules": 1,
+      "decisions": 1,
+      "ai": 1,
+      "notifications": 1,
+      "agnes-file": 1
+    },
+    "duplicates": [],
+    "dynamicCount": 0
+  },
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/v14/ab-test/create",
+      "module": "ab-test",
+      "params": [],
+      "line": 5542
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/ab-test/record",
+      "module": "ab-test",
+      "params": [],
+      "line": 5552
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/:id/causal",
+      "module": "account",
+      "params": [
+        "id"
+      ],
+      "line": 8871
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/:id/decisions",
+      "module": "account",
+      "params": [
+        "id"
+      ],
+      "line": 8881
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/:id/timeline",
+      "module": "account",
+      "params": [
+        "id"
+      ],
+      "line": 8841
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/stats",
+      "module": "account",
+      "params": [],
+      "line": 8833
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/account/login-verify",
+      "module": "account",
+      "params": [],
+      "line": 8810
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/account-loop/-summary",
+      "module": "account-loop",
+      "params": [],
+      "line": 4172
+    },
+    {
+      "method": "GET",
+      "path": "/api/",
+      "module": "",
+      "params": [],
+      "line": 8707
+    },
+    {
+      "method": "GET",
+      "path": "/api//:id",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 8719
+    },
+    {
+      "method": "POST",
+      "path": "/api//:id/assign-device",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 8757
+    },
+    {
+      "method": "POST",
+      "path": "/api//:id/login",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 8796
+    },
+    {
+      "method": "GET",
+      "path": "/api//:id/publish-device",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 8788
+    },
+    {
+      "method": "POST",
+      "path": "/api//:id/release-device",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 8770
+    },
+    {
+      "method": "POST",
+      "path": "/api//:id/set-publish-device",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 8778
+    },
+    {
+      "method": "POST",
+      "path": "/api//:id/status",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 8851
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/",
+      "module": "",
+      "params": [],
+      "line": 510
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/",
+      "module": "",
+      "params": [],
+      "line": 522
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/",
+      "module": "",
+      "params": [],
+      "line": 4247
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/",
+      "module": "",
+      "params": [],
+      "line": 4341
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14//:id/action",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 4373
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14//:id/auto-login",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 6646
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14//:id/login-link",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 6553
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14//:id/plan",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 4362
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14//:id/warming",
+      "module": "",
+      "params": [
+        "id"
+      ],
+      "line": 4352
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/agnes/health",
+      "module": "agnes",
+      "params": [],
+      "line": 10007
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/agnes/image",
+      "module": "agnes",
+      "params": [],
+      "line": 10016
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/agnes/list",
+      "module": "agnes",
+      "params": [],
+      "line": 10104
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/agnes/options",
+      "module": "agnes",
+      "params": [],
+      "line": 9987
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/agnes/status/:id",
+      "module": "agnes",
+      "params": [
+        "id"
+      ],
+      "line": 10094
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/agnes/video",
+      "module": "agnes",
+      "params": [],
+      "line": 10036
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/agnes/video/status/:id",
+      "module": "agnes",
+      "params": [
+        "id"
+      ],
+      "line": 10082
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/agnes/video/sync",
+      "module": "agnes",
+      "params": [],
+      "line": 10059
+    },
+    {
+      "method": "GET",
+      "path": "/agnes-file",
+      "module": "agnes-file",
+      "params": [],
+      "line": 10116
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/ai/chat",
+      "module": "ai",
+      "params": [],
+      "line": 9509
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/aigc/batch",
+      "module": "aigc",
+      "params": [],
+      "line": 6887
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/aigc/calendar",
+      "module": "aigc",
+      "params": [],
+      "line": 6923
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/aigc/generate",
+      "module": "aigc",
+      "params": [],
+      "line": 6874
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/aigc/history",
+      "module": "aigc",
+      "params": [],
+      "line": 6896
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/aigc/queue",
+      "module": "aigc",
+      "params": [],
+      "line": 6916
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/aigc/stats",
+      "module": "aigc",
+      "params": [],
+      "line": 6867
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/aigc/variants",
+      "module": "aigc",
+      "params": [],
+      "line": 6930
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/alerts",
+      "module": "alerts",
+      "params": [],
+      "line": 7785
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/alerts/:id/acknowledge",
+      "module": "alerts",
+      "params": [
+        "id"
+      ],
+      "line": 7794
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/alerts/:id/resolve",
+      "module": "alerts",
+      "params": [
+        "id"
+      ],
+      "line": 7803
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/alerts/rules",
+      "module": "alerts",
+      "params": [],
+      "line": 7812
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/alerts/stats",
+      "module": "alerts",
+      "params": [],
+      "line": 7819
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/analytics/conversion",
+      "module": "analytics",
+      "params": [],
+      "line": 6962
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/analytics/dashboard",
+      "module": "analytics",
+      "params": [],
+      "line": 6940
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/analytics/dau",
+      "module": "analytics",
+      "params": [],
+      "line": 6970
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/analytics/funnel",
+      "module": "analytics",
+      "params": [],
+      "line": 6994
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/analytics/realtime",
+      "module": "analytics",
+      "params": [],
+      "line": 6979
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/analytics/sdk",
+      "module": "analytics",
+      "params": [],
+      "line": 7001
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/analytics/simulate",
+      "module": "analytics",
+      "params": [],
+      "line": 7008
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/analytics/stats",
+      "module": "analytics",
+      "params": [],
+      "line": 6947
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/analytics/track",
+      "module": "analytics",
+      "params": [],
+      "line": 6954
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/analytics/trend",
+      "module": "analytics",
+      "params": [],
+      "line": 6986
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/attribution/models",
+      "module": "attribution",
+      "params": [],
+      "line": 7632
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/attribution/overview",
+      "module": "attribution",
+      "params": [],
+      "line": 7612
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/attribution/path/:visitorId",
+      "module": "attribution",
+      "params": [
+        "visitorId"
+      ],
+      "line": 7637
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/attribution/roi",
+      "module": "attribution",
+      "params": [],
+      "line": 7622
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/attribution/stats",
+      "module": "attribution",
+      "params": [],
+      "line": 7645
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/attribution/touch",
+      "module": "attribution",
+      "params": [],
+      "line": 7602
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auto-",
+      "module": "auto-",
+      "params": [],
+      "line": 676
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auto-/:taskId",
+      "module": "auto-",
+      "params": [
+        "taskId"
+      ],
+      "line": 770
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14//start",
+      "module": "",
+      "params": [],
+      "line": 1913
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/causal-chain/push",
+      "module": "causal-chain",
+      "params": [],
+      "line": 9619
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/causal-chain/push",
+      "module": "causal-chain",
+      "params": [],
+      "line": 9637
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/causal-chain/status",
+      "module": "causal-chain",
+      "params": [],
+      "line": 9594
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/causal-chain/trigger",
+      "module": "causal-chain",
+      "params": [],
+      "line": 9657
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/channel/budget",
+      "module": "channel",
+      "params": [],
+      "line": 7854
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v14/channel/config/:channelId",
+      "module": "channel",
+      "params": [
+        "channelId"
+      ],
+      "line": 7869
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/channel/global",
+      "module": "channel",
+      "params": [],
+      "line": 7862
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/channel/health",
+      "module": "channel",
+      "params": [],
+      "line": 7830
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/channel/health/:channelId",
+      "module": "channel",
+      "params": [
+        "channelId"
+      ],
+      "line": 7838
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/channel/ranking",
+      "module": "channel",
+      "params": [],
+      "line": 7847
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/cloaking/preview/:id",
+      "module": "cloaking",
+      "params": [
+        "id"
+      ],
+      "line": 7675
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/cloaking/stats",
+      "module": "cloaking",
+      "params": [],
+      "line": 7696
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/cloaking/templates",
+      "module": "cloaking",
+      "params": [],
+      "line": 7657
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/cloaking/templates/:id",
+      "module": "cloaking",
+      "params": [
+        "id"
+      ],
+      "line": 7665
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/cloaking/test",
+      "module": "cloaking",
+      "params": [],
+      "line": 7685
+    },
+    {
+      "method": "GET",
+      "path": "/api/cloud-phones",
+      "module": "cloud-phones",
+      "params": [],
+      "line": 8729
+    },
+    {
+      "method": "GET",
+      "path": "/api/cloud-phones/:id",
+      "module": "cloud-phones",
+      "params": [
+        "id"
+      ],
+      "line": 8747
+    },
+    {
+      "method": "POST",
+      "path": "/api/cloud-phones/sync",
+      "module": "cloud-phones",
+      "params": [],
+      "line": 8738
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/cloud-publish/config/:",
+      "module": "cloud-publish",
+      "params": [
+        ""
+      ],
+      "line": 9922
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/cloud-publish/enqueue",
+      "module": "cloud-publish",
+      "params": [],
+      "line": 9895
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/cloud-publish/report",
+      "module": "cloud-publish",
+      "params": [],
+      "line": 9913
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/cloud-publish/status/:taskId",
+      "module": "cloud-publish",
+      "params": [
+        "taskId"
+      ],
+      "line": 9904
+    },
+    {
+      "method": "GET",
+      "path": "/console",
+      "module": "console",
+      "params": [],
+      "line": 258
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content",
+      "module": "content",
+      "params": [],
+      "line": 9295
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content/:id/render",
+      "module": "content",
+      "params": [
+        "id"
+      ],
+      "line": 4462
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/content/:id/render",
+      "module": "content",
+      "params": [
+        "id"
+      ],
+      "line": 4490
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content/compare",
+      "module": "content",
+      "params": [],
+      "line": 5989
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content/dedup-check",
+      "module": "content",
+      "params": [],
+      "line": 5981
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content/exif-clean",
+      "module": "content",
+      "params": [],
+      "line": 5997
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/content/mix",
+      "module": "content",
+      "params": [],
+      "line": 9396
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content/reencode",
+      "module": "content",
+      "params": [],
+      "line": 6006
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content/rewrite",
+      "module": "content",
+      "params": [],
+      "line": 6017
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content/",
+      "module": "content",
+      "params": [],
+      "line": 5405
+    },
+    {
+      "method": "GET",
+      "path": "/content/:/:id",
+      "module": "content",
+      "params": [
+        "",
+        "id"
+      ],
+      "line": 7297
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content-pipeline/batch",
+      "module": "content-pipeline",
+      "params": [],
+      "line": 9869
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content-pipeline/generate",
+      "module": "content-pipeline",
+      "params": [],
+      "line": 9860
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content-pipeline/performance",
+      "module": "content-pipeline",
+      "params": [],
+      "line": 9885
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/content-pipeline/report",
+      "module": "content-pipeline",
+      "params": [],
+      "line": 9878
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/content-rules/:",
+      "module": "content-rules",
+      "params": [
+        ""
+      ],
+      "line": 9821
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/content-rules/check",
+      "module": "content-rules",
+      "params": [],
+      "line": 9829
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/conversion/attribution",
+      "module": "conversion",
+      "params": [],
+      "line": 7467
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/conversion/batch",
+      "module": "conversion",
+      "params": [],
+      "line": 7432
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/conversion/event",
+      "module": "conversion",
+      "params": [],
+      "line": 7422
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/conversion/events",
+      "module": "conversion",
+      "params": [],
+      "line": 7442
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/conversion/export",
+      "module": "conversion",
+      "params": [],
+      "line": 7498
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/conversion/funnel",
+      "module": "conversion",
+      "params": [],
+      "line": 7458
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/conversion/overview",
+      "module": "conversion",
+      "params": [],
+      "line": 7487
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/conversion/stats",
+      "module": "conversion",
+      "params": [],
+      "line": 7478
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversions",
+      "module": "conversions",
+      "params": [],
+      "line": 539
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversions",
+      "module": "conversions",
+      "params": [],
+      "line": 551
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dag/create",
+      "module": "dag",
+      "params": [],
+      "line": 5847
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dag/edge",
+      "module": "dag",
+      "params": [],
+      "line": 5867
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dag/execute",
+      "module": "dag",
+      "params": [],
+      "line": 5883
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dag/node",
+      "module": "dag",
+      "params": [],
+      "line": 5859
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dag/restore",
+      "module": "dag",
+      "params": [],
+      "line": 5899
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dag/snapshot",
+      "module": "dag",
+      "params": [],
+      "line": 5891
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dag/validate",
+      "module": "dag",
+      "params": [],
+      "line": 5875
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/dag/workflow/:dagId",
+      "module": "dag",
+      "params": [
+        "dagId"
+      ],
+      "line": 5838
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/dag/workflows",
+      "module": "dag",
+      "params": [],
+      "line": 5831
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/dashboard",
+      "module": "dashboard",
+      "params": [],
+      "line": 8103
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/data/:module",
+      "module": "data",
+      "params": [
+        "module"
+      ],
+      "line": 9195
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/data/:module",
+      "module": "data",
+      "params": [
+        "module"
+      ],
+      "line": 9254
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/data/:module/:id",
+      "module": "data",
+      "params": [
+        "module",
+        "id"
+      ],
+      "line": 9243
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v14/data/:module/:id",
+      "module": "data",
+      "params": [
+        "module",
+        "id"
+      ],
+      "line": 9264
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/data/:module/:id",
+      "module": "data",
+      "params": [
+        "module",
+        "id"
+      ],
+      "line": 9275
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/data/:module/:id/history",
+      "module": "data",
+      "params": [
+        "module",
+        "id"
+      ],
+      "line": 9232
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/data/:module/export",
+      "module": "data",
+      "params": [
+        "module"
+      ],
+      "line": 9215
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/data/overview",
+      "module": "data",
+      "params": [],
+      "line": 9024
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/data/trace/:id",
+      "module": "data",
+      "params": [
+        "id"
+      ],
+      "line": 9078
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/datastore/flush",
+      "module": "datastore",
+      "params": [],
+      "line": 9500
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/datastore/modules",
+      "module": "datastore",
+      "params": [],
+      "line": 9492
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dau/inject",
+      "module": "dau",
+      "params": [],
+      "line": 6151
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/dau/log",
+      "module": "dau",
+      "params": [],
+      "line": 6137
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/dau/qtable",
+      "module": "dau",
+      "params": [],
+      "line": 6144
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dau/start",
+      "module": "dau",
+      "params": [],
+      "line": 6121
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/dau/status",
+      "module": "dau",
+      "params": [],
+      "line": 6106
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dau/stop",
+      "module": "dau",
+      "params": [],
+      "line": 6129
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/dau/target",
+      "module": "dau",
+      "params": [],
+      "line": 6113
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/deai/detect",
+      "module": "deai",
+      "params": [],
+      "line": 9850
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/deai/process",
+      "module": "deai",
+      "params": [],
+      "line": 9841
+    },
+    {
+      "method": "POST",
+      "path": "/api/decision/simulate",
+      "module": "decision",
+      "params": [],
+      "line": 8901
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/decision/action",
+      "module": "decision",
+      "params": [],
+      "line": 5505
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/decision/status",
+      "module": "decision",
+      "params": [],
+      "line": 5497
+    },
+    {
+      "method": "GET",
+      "path": "/api/decisions/summary",
+      "module": "decisions",
+      "params": [],
+      "line": 8893
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/devices",
+      "module": "devices",
+      "params": [],
+      "line": 4151
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/devices/:id/screenshot",
+      "module": "devices",
+      "params": [
+        "id"
+      ],
+      "line": 4236
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/devices/adb-pipeline",
+      "module": "devices",
+      "params": [],
+      "line": 5948
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/devices/avd-health",
+      "module": "devices",
+      "params": [],
+      "line": 5939
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/devices/health",
+      "module": "devices",
+      "params": [],
+      "line": 4199
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/devices/keep-alive",
+      "module": "devices",
+      "params": [],
+      "line": 4209
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/devices/recover",
+      "module": "devices",
+      "params": [],
+      "line": 4227
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/devices/start-all",
+      "module": "devices",
+      "params": [],
+      "line": 4180
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/devices/stop-all",
+      "module": "devices",
+      "params": [],
+      "line": 4190
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/eventbus/emit",
+      "module": "eventbus",
+      "params": [],
+      "line": 9450
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/eventbus/events",
+      "module": "eventbus",
+      "params": [],
+      "line": 9443
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/eventbus/log",
+      "module": "eventbus",
+      "params": [],
+      "line": 9435
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/eventbus/stats",
+      "module": "eventbus",
+      "params": [],
+      "line": 9428
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/evolution/report",
+      "module": "evolution",
+      "params": [],
+      "line": 5516
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/evolution/strategies",
+      "module": "evolution",
+      "params": [],
+      "line": 5525
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/experiments",
+      "module": "experiments",
+      "params": [],
+      "line": 7708
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/experiments",
+      "module": "experiments",
+      "params": [],
+      "line": 7717
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/experiments/:id",
+      "module": "experiments",
+      "params": [
+        "id"
+      ],
+      "line": 7726
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/experiments/:id/conversion",
+      "module": "experiments",
+      "params": [
+        "id"
+      ],
+      "line": 7772
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/experiments/:id/impression",
+      "module": "experiments",
+      "params": [
+        "id"
+      ],
+      "line": 7764
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/experiments/:id/pause",
+      "module": "experiments",
+      "params": [
+        "id"
+      ],
+      "line": 7746
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/experiments/:id/start",
+      "module": "experiments",
+      "params": [
+        "id"
+      ],
+      "line": 7736
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/experiments/:id/stop",
+      "module": "experiments",
+      "params": [
+        "id"
+      ],
+      "line": 7755
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/feed/rss",
+      "module": "feed",
+      "params": [],
+      "line": 5129
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/fingerprint/generate",
+      "module": "fingerprint",
+      "params": [],
+      "line": 5910
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/fingerprint/jitter",
+      "module": "fingerprint",
+      "params": [],
+      "line": 5919
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/fingerprint/versions/:deviceId",
+      "module": "fingerprint",
+      "params": [
+        "deviceId"
+      ],
+      "line": 5927
+    },
+    {
+      "method": "GET",
+      "path": "/gateway",
+      "module": "gateway",
+      "params": [],
+      "line": 385
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/gps/create",
+      "module": "gps",
+      "params": [],
+      "line": 5573
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/gps/paths",
+      "module": "gps",
+      "params": [],
+      "line": 5566
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/gps/position/:deviceId",
+      "module": "gps",
+      "params": [
+        "deviceId"
+      ],
+      "line": 5599
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/gps/start",
+      "module": "gps",
+      "params": [],
+      "line": 5586
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/gps/status",
+      "module": "gps",
+      "params": [],
+      "line": 5607
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/heal/execute",
+      "module": "heal",
+      "params": [],
+      "line": 9482
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/heal/log",
+      "module": "heal",
+      "params": [],
+      "line": 9467
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/heal/patterns",
+      "module": "heal",
+      "params": [],
+      "line": 9475
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/heal/stats",
+      "module": "heal",
+      "params": [],
+      "line": 9460
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "module": "health",
+      "params": [],
+      "line": 498
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/local-",
+      "module": "local-",
+      "params": [],
+      "line": 1024
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/lok-dialogue/batch-reply",
+      "module": "lok-dialogue",
+      "params": [],
+      "line": 9939
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/lok-dialogue/history/:accountId/:",
+      "module": "lok-dialogue",
+      "params": [
+        "accountId",
+        ""
+      ],
+      "line": 9957
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/lok-dialogue/models",
+      "module": "lok-dialogue",
+      "params": [],
+      "line": 9965
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/lok-dialogue/persona",
+      "module": "lok-dialogue",
+      "params": [],
+      "line": 9948
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/lok-dialogue/personas",
+      "module": "lok-dialogue",
+      "params": [],
+      "line": 9973
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/lok-dialogue/reply",
+      "module": "lok-dialogue",
+      "params": [],
+      "line": 9930
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/managed-",
+      "module": "managed-",
+      "params": [],
+      "line": 1467
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/managed-",
+      "module": "managed-",
+      "params": [],
+      "line": 1511
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/managed-/:id",
+      "module": "managed-",
+      "params": [
+        "id"
+      ],
+      "line": 1705
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/managed-/:id",
+      "module": "managed-",
+      "params": [
+        "id"
+      ],
+      "line": 1744
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/managed-/:id/tags",
+      "module": "managed-",
+      "params": [
+        "id"
+      ],
+      "line": 1895
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/managed-/:id/verify",
+      "module": "managed-",
+      "params": [
+        "id"
+      ],
+      "line": 1819
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/managed-/import",
+      "module": "managed-",
+      "params": [],
+      "line": 1760
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/managed-/stats",
+      "module": "managed-",
+      "params": [],
+      "line": 1979
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/managed-/update-valid",
+      "module": "managed-",
+      "params": [],
+      "line": 1803
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/managed-/verify-all",
+      "module": "managed-",
+      "params": [],
+      "line": 1856
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/managed-",
+      "module": "managed-",
+      "params": [],
+      "line": 1560
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v14/managed-/:id",
+      "module": "managed-",
+      "params": [
+        "id"
+      ],
+      "line": 1631
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/managed-/:id/plan",
+      "module": "managed-",
+      "params": [
+        "id"
+      ],
+      "line": 1613
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/managed-/:id/warming",
+      "module": "managed-",
+      "params": [
+        "id"
+      ],
+      "line": 1600
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/marketing/campaigns",
+      "module": "marketing",
+      "params": [],
+      "line": 6163
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/marketing/campaigns",
+      "module": "marketing",
+      "params": [],
+      "line": 6170
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/marketing/campaigns/:id",
+      "module": "marketing",
+      "params": [
+        "id"
+      ],
+      "line": 6178
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/marketing/campaigns/:id/pause",
+      "module": "marketing",
+      "params": [
+        "id"
+      ],
+      "line": 6195
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/marketing/campaigns/:id/start",
+      "module": "marketing",
+      "params": [
+        "id"
+      ],
+      "line": 6187
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/marketing/quick-dm",
+      "module": "marketing",
+      "params": [],
+      "line": 6212
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/marketing/quick-follow",
+      "module": "marketing",
+      "params": [],
+      "line": 6203
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/marketing/quick-intercept",
+      "module": "marketing",
+      "params": [],
+      "line": 6221
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/marketing/stats",
+      "module": "marketing",
+      "params": [],
+      "line": 6156
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/media/video/:id",
+      "module": "media",
+      "params": [
+        "id"
+      ],
+      "line": 4510
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-inbox/:id",
+      "module": "message-inbox",
+      "params": [
+        "id"
+      ],
+      "line": 8926
+    },
+    {
+      "method": "POST",
+      "path": "/api/message-inbox/:id/command",
+      "module": "message-inbox",
+      "params": [
+        "id"
+      ],
+      "line": 8988
+    },
+    {
+      "method": "POST",
+      "path": "/api/message-inbox/:id/mark-all-read",
+      "module": "message-inbox",
+      "params": [
+        "id"
+      ],
+      "line": 8958
+    },
+    {
+      "method": "POST",
+      "path": "/api/message-inbox/:id/mark-read",
+      "module": "message-inbox",
+      "params": [
+        "id"
+      ],
+      "line": 8948
+    },
+    {
+      "method": "POST",
+      "path": "/api/message-inbox/:id/sync",
+      "module": "message-inbox",
+      "params": [
+        "id"
+      ],
+      "line": 8966
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-inbox/:id/unread",
+      "module": "message-inbox",
+      "params": [
+        "id"
+      ],
+      "line": 8940
+    },
+    {
+      "method": "GET",
+      "path": "/api/message-inbox/summary",
+      "module": "message-inbox",
+      "params": [],
+      "line": 8918
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/hashtag-groups",
+      "module": "mixpost",
+      "params": [],
+      "line": 5379
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/hashtag-groups",
+      "module": "mixpost",
+      "params": [],
+      "line": 5387
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/hashtag-groups/:id",
+      "module": "mixpost",
+      "params": [
+        "id"
+      ],
+      "line": 5396
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/posts",
+      "module": "mixpost",
+      "params": [],
+      "line": 5273
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/posts",
+      "module": "mixpost",
+      "params": [],
+      "line": 5298
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/posts/:id",
+      "module": "mixpost",
+      "params": [
+        "id"
+      ],
+      "line": 5288
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v14/mixpost/posts/:id",
+      "module": "mixpost",
+      "params": [
+        "id"
+      ],
+      "line": 5342
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/posts/:id",
+      "module": "mixpost",
+      "params": [
+        "id"
+      ],
+      "line": 5352
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/posts/:id/publish",
+      "module": "mixpost",
+      "params": [
+        "id"
+      ],
+      "line": 5361
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider/:name/auth-url",
+      "module": "mixpost",
+      "params": [
+        "name"
+      ],
+      "line": 5085
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider/:name/test-publish",
+      "module": "mixpost",
+      "params": [
+        "name"
+      ],
+      "line": 5107
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider/:name/token",
+      "module": "mixpost",
+      "params": [
+        "name"
+      ],
+      "line": 5095
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/provider/bluesky/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4792
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider/bluesky/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4803
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/provider/bluesky/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4823
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/provider/devto/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4940
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider/devto/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4950
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/provider/devto/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4962
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/provider/discord/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4908
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider/discord/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4918
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/provider/discord/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4930
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/provider/github/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 5054
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider/github/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 5064
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/provider/github/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 5076
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/provider//config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4972
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider//config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4982
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/provider//config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4994
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/provider//config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4833
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider//config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4844
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/provider//config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4864
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/provider/nostr/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 5004
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider/nostr/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 5032
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/provider/nostr/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 5044
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider/nostr/generate",
+      "module": "mixpost",
+      "params": [],
+      "line": 5019
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/provider//config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4876
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/provider//config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4886
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/provider//config",
+      "module": "mixpost",
+      "params": [],
+      "line": 4898
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/providers",
+      "module": "mixpost",
+      "params": [],
+      "line": 4782
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v14/mixpost/versions/:id",
+      "module": "mixpost",
+      "params": [
+        "id"
+      ],
+      "line": 5370
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/mixpost/webhook/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 5218
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/webhook/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 5225
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/mixpost/webhook/config",
+      "module": "mixpost",
+      "params": [],
+      "line": 5242
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/mixpost/webhook/test",
+      "module": "mixpost",
+      "params": [],
+      "line": 5251
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/mobile-devices",
+      "module": "mobile-devices",
+      "params": [],
+      "line": 1293
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/module/:name/detail",
+      "module": "module",
+      "params": [
+        "name"
+      ],
+      "line": 8147
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/modules/summary",
+      "module": "modules",
+      "params": [],
+      "line": 8252
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/notifications",
+      "module": "notifications",
+      "params": [],
+      "line": 9743
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/nurturing/fatigue-check",
+      "module": "nurturing",
+      "params": [],
+      "line": 5969
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/nurturing/mistouch",
+      "module": "nurturing",
+      "params": [],
+      "line": 5959
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/nurturing-rules/:",
+      "module": "nurturing-rules",
+      "params": [
+        ""
+      ],
+      "line": 9793
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/nurturing-rules/check",
+      "module": "nurturing-rules",
+      "params": [],
+      "line": 9809
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/pipeline/start",
+      "module": "pipeline",
+      "params": [],
+      "line": 9680
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/pipeline/stop",
+      "module": "pipeline",
+      "params": [],
+      "line": 9693
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/postback",
+      "module": "postback",
+      "params": [],
+      "line": 491
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/postback",
+      "module": "postback",
+      "params": [],
+      "line": 494
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/postback/event",
+      "module": "postback",
+      "params": [],
+      "line": 7513
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/postback/event",
+      "module": "postback",
+      "params": [],
+      "line": 7558
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/postback/pixel/:campaignId",
+      "module": "postback",
+      "params": [
+        "campaignId"
+      ],
+      "line": 7575
+    },
+    {
+      "method": "GET",
+      "path": "/preview/:contentId",
+      "module": "preview",
+      "params": [
+        "contentId"
+      ],
+      "line": 266
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/proxy/next",
+      "module": "proxy",
+      "params": [],
+      "line": 1102
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/proxy/add",
+      "module": "proxy",
+      "params": [],
+      "line": 5743
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/proxy/bind",
+      "module": "proxy",
+      "params": [],
+      "line": 5755
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/proxy/health-all",
+      "module": "proxy",
+      "params": [],
+      "line": 5779
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/proxy/health/:proxyId",
+      "module": "proxy",
+      "params": [
+        "proxyId"
+      ],
+      "line": 5771
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/proxy/list",
+      "module": "proxy",
+      "params": [],
+      "line": 5764
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/proxy/stats",
+      "module": "proxy",
+      "params": [],
+      "line": 5787
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/proxy-pool",
+      "module": "proxy-pool",
+      "params": [],
+      "line": 1075
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/proxy-pool/:index",
+      "module": "proxy-pool",
+      "params": [
+        "index"
+      ],
+      "line": 1182
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/proxy-pool/add",
+      "module": "proxy-pool",
+      "params": [],
+      "line": 1128
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/proxy-pool/cf-status",
+      "module": "proxy-pool",
+      "params": [],
+      "line": 1251
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/proxy-pool/clear",
+      "module": "proxy-pool",
+      "params": [],
+      "line": 1197
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/proxy-pool/create-us-node",
+      "module": "proxy-pool",
+      "params": [],
+      "line": 1226
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/proxy-pool/providers",
+      "module": "proxy-pool",
+      "params": [],
+      "line": 1210
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/proxy-pool/refresh",
+      "module": "proxy-pool",
+      "params": [],
+      "line": 1150
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/proxy-pool/test-all",
+      "module": "proxy-pool",
+      "params": [],
+      "line": 1165
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/publish/execute",
+      "module": "publish",
+      "params": [],
+      "line": 5427
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/publish/history",
+      "module": "publish",
+      "params": [],
+      "line": 6709
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/publish/optimal-time",
+      "module": "publish",
+      "params": [],
+      "line": 5437
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/publish/schedule",
+      "module": "publish",
+      "params": [],
+      "line": 5416
+    },
+    {
+      "method": "GET",
+      "path": "/r/:code",
+      "module": "r",
+      "params": [
+        "code"
+      ],
+      "line": 7252
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/real-",
+      "module": "real-",
+      "params": [],
+      "line": 4283
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/",
+      "module": "",
+      "params": [],
+      "line": 583
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1//status",
+      "module": "",
+      "params": [],
+      "line": 602
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14//progress",
+      "module": "",
+      "params": [],
+      "line": 862
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14//start",
+      "module": "",
+      "params": [],
+      "line": 783
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14//stats",
+      "module": "",
+      "params": [],
+      "line": 887
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14//stop",
+      "module": "",
+      "params": [],
+      "line": 900
+    },
+    {
+      "method": "GET",
+      "path": "/route",
+      "module": "route",
+      "params": [],
+      "line": 388
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/scrm/approve",
+      "module": "scrm",
+      "params": [],
+      "line": 5709
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/scrm/intercept",
+      "module": "scrm",
+      "params": [],
+      "line": 5683
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/scrm/keywords",
+      "module": "scrm",
+      "params": [],
+      "line": 5725
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/scrm/keywords",
+      "module": "scrm",
+      "params": [],
+      "line": 5732
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/scrm/reject",
+      "module": "scrm",
+      "params": [],
+      "line": 5717
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/scrm/review-queue",
+      "module": "scrm",
+      "params": [],
+      "line": 5702
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/scrm/stats",
+      "module": "scrm",
+      "params": [],
+      "line": 5695
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/sensor/all",
+      "module": "sensor",
+      "params": [],
+      "line": 5805
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/sensor/dashboard",
+      "module": "sensor",
+      "params": [],
+      "line": 5812
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/sensor/history/:deviceId/:sensorId",
+      "module": "sensor",
+      "params": [
+        "deviceId",
+        "sensorId"
+      ],
+      "line": 5819
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/sensor/readings/:deviceId",
+      "module": "sensor",
+      "params": [
+        "deviceId"
+      ],
+      "line": 5797
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/session/active",
+      "module": "session",
+      "params": [],
+      "line": 5673
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/session/backup",
+      "module": "session",
+      "params": [],
+      "line": 5626
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/session/create",
+      "module": "session",
+      "params": [],
+      "line": 5617
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/session/migrate",
+      "module": "session",
+      "params": [],
+      "line": 5653
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/session/restore",
+      "module": "session",
+      "params": [],
+      "line": 5644
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/session/stats",
+      "module": "session",
+      "params": [],
+      "line": 5666
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/session/verify",
+      "module": "session",
+      "params": [],
+      "line": 5635
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/social/batch-post",
+      "module": "social",
+      "params": [],
+      "line": 6096
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/social/comment",
+      "module": "social",
+      "params": [],
+      "line": 6078
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/social/dm",
+      "module": "social",
+      "params": [],
+      "line": 6069
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/social/follow",
+      "module": "social",
+      "params": [],
+      "line": 6060
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/social/history",
+      "module": "social",
+      "params": [],
+      "line": 6044
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/social/like",
+      "module": "social",
+      "params": [],
+      "line": 6087
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/social/post",
+      "module": "social",
+      "params": [],
+      "line": 6051
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/social/queue",
+      "module": "social",
+      "params": [],
+      "line": 6037
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/social/stats",
+      "module": "social",
+      "params": [],
+      "line": 6030
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stats",
+      "module": "stats",
+      "params": [],
+      "line": 568
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/",
+      "module": "",
+      "params": [],
+      "line": 9707
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14//allocation",
+      "module": "",
+      "params": [],
+      "line": 9719
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14//debug",
+      "module": "",
+      "params": [],
+      "line": 9731
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/system/status",
+      "module": "system",
+      "params": [],
+      "line": 8083
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tasks",
+      "module": "tasks",
+      "params": [],
+      "line": 8568
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tasks",
+      "module": "tasks",
+      "params": [],
+      "line": 8577
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tasks/:taskId",
+      "module": "tasks",
+      "params": [
+        "taskId"
+      ],
+      "line": 8584
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tasks/:taskId/cancel",
+      "module": "tasks",
+      "params": [
+        "taskId"
+      ],
+      "line": 8592
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tasks/batch",
+      "module": "tasks",
+      "params": [],
+      "line": 8599
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v14/tasks/config/max-concurrency",
+      "module": "tasks",
+      "params": [],
+      "line": 8610
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tracking/:variantId",
+      "module": "tracking",
+      "params": [
+        "variantId"
+      ],
+      "line": 5467
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tracking/start",
+      "module": "tracking",
+      "params": [],
+      "line": 5447
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tracking/update",
+      "module": "tracking",
+      "params": [],
+      "line": 5457
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/config",
+      "module": "traffic",
+      "params": [],
+      "line": 7958
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/conversions",
+      "module": "traffic",
+      "params": [],
+      "line": 7244
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/link-summary",
+      "module": "traffic",
+      "params": [],
+      "line": 7407
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/link/:linkId",
+      "module": "traffic",
+      "params": [
+        "linkId"
+      ],
+      "line": 7398
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/traffic/links",
+      "module": "traffic",
+      "params": [],
+      "line": 7151
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/links",
+      "module": "traffic",
+      "params": [],
+      "line": 7168
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/links/:code",
+      "module": "traffic",
+      "params": [
+        "code"
+      ],
+      "line": 7211
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v14/traffic/links/:code",
+      "module": "traffic",
+      "params": [
+        "code"
+      ],
+      "line": 7882
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/traffic/links/:code",
+      "module": "traffic",
+      "params": [
+        "code"
+      ],
+      "line": 7915
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/traffic/links/:code/activate",
+      "module": "traffic",
+      "params": [
+        "code"
+      ],
+      "line": 7236
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/links/:code/analytics",
+      "module": "traffic",
+      "params": [
+        "code"
+      ],
+      "line": 7926
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/links/:code/clicks",
+      "module": "traffic",
+      "params": [
+        "code"
+      ],
+      "line": 7220
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/traffic/links/:code/deactivate",
+      "module": "traffic",
+      "params": [
+        "code"
+      ],
+      "line": 7228
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/traffic/links/:code/rotate",
+      "module": "traffic",
+      "params": [
+        "code"
+      ],
+      "line": 7905
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/traffic/links/batch",
+      "module": "traffic",
+      "params": [],
+      "line": 7159
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/monitor-timeseries",
+      "module": "traffic",
+      "params": [],
+      "line": 7276
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/traffic/record-visit",
+      "module": "traffic",
+      "params": [],
+      "line": 7981
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/traffic/simulate",
+      "module": "traffic",
+      "params": [],
+      "line": 7265
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/stats",
+      "module": "traffic",
+      "params": [],
+      "line": 7099
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/traffic/top-creator-links",
+      "module": "traffic",
+      "params": [],
+      "line": 7141
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/trending",
+      "module": "trending",
+      "params": [],
+      "line": 4384
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/trending/intel",
+      "module": "trending",
+      "params": [],
+      "line": 4406
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/trending/intel/:id",
+      "module": "trending",
+      "params": [
+        "id"
+      ],
+      "line": 4419
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/trending/intel/:id/script",
+      "module": "trending",
+      "params": [
+        "id"
+      ],
+      "line": 4450
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/trending/intel/refresh",
+      "module": "trending",
+      "params": [],
+      "line": 4429
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/trending/intel/seed",
+      "module": "trending",
+      "params": [],
+      "line": 4438
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/trending/search",
+      "module": "trending",
+      "params": [],
+      "line": 4394
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr/",
+      "module": "tumblr",
+      "params": [],
+      "line": 4530
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr//:accountId/audit",
+      "module": "tumblr",
+      "params": [
+        "accountId"
+      ],
+      "line": 6478
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr//:accountId/drafts",
+      "module": "tumblr",
+      "params": [
+        "accountId"
+      ],
+      "line": 6418
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr//:accountId/drafts",
+      "module": "tumblr",
+      "params": [
+        "accountId"
+      ],
+      "line": 6426
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr//:accountId/drafts/:draftId/approve",
+      "module": "tumblr",
+      "params": [
+        "accountId",
+        "draftId"
+      ],
+      "line": 6449
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr//:accountId/drafts/:draftId/open-web",
+      "module": "tumblr",
+      "params": [
+        "accountId",
+        "draftId"
+      ],
+      "line": 6465
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr//:accountId/inbox",
+      "module": "tumblr",
+      "params": [
+        "accountId"
+      ],
+      "line": 6365
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr//:accountId/login-intent",
+      "module": "tumblr",
+      "params": [
+        "accountId"
+      ],
+      "line": 6332
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr//:accountId/notes/:postId",
+      "module": "tumblr",
+      "params": [
+        "accountId",
+        "postId"
+      ],
+      "line": 6407
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr/apps",
+      "module": "tumblr",
+      "params": [],
+      "line": 6505
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/apps",
+      "module": "tumblr",
+      "params": [],
+      "line": 6511
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v14/tumblr/apps/:label",
+      "module": "tumblr",
+      "params": [
+        "label"
+      ],
+      "line": 6522
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/apps/rebalance",
+      "module": "tumblr",
+      "params": [],
+      "line": 6533
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/batch-publish",
+      "module": "tumblr",
+      "params": [],
+      "line": 4590
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr/batch-publish",
+      "module": "tumblr",
+      "params": [],
+      "line": 4619
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr/batch-publish/:id",
+      "module": "tumblr",
+      "params": [
+        "id"
+      ],
+      "line": 4604
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr/batch-publish/:id/excel",
+      "module": "tumblr",
+      "params": [
+        "id"
+      ],
+      "line": 4639
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/batch-publish/:id/resend",
+      "module": "tumblr",
+      "params": [
+        "id"
+      ],
+      "line": 4628
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr/batch-publish/:id/zip",
+      "module": "tumblr",
+      "params": [
+        "id"
+      ],
+      "line": 4650
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/consumer",
+      "module": "tumblr",
+      "params": [],
+      "line": 4546
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/engagement/harvest",
+      "module": "tumblr",
+      "params": [],
+      "line": 4661
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr/engagement/positive",
+      "module": "tumblr",
+      "params": [],
+      "line": 4672
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/login-intents/:intentId/launch",
+      "module": "tumblr",
+      "params": [
+        "intentId"
+      ],
+      "line": 6351
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/oauth/begin",
+      "module": "tumblr",
+      "params": [],
+      "line": 4556
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/oauth/complete",
+      "module": "tumblr",
+      "params": [],
+      "line": 4565
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/photo-batch",
+      "module": "tumblr",
+      "params": [],
+      "line": 4701
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/publish",
+      "module": "tumblr",
+      "params": [],
+      "line": 4577
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr/remix",
+      "module": "tumblr",
+      "params": [],
+      "line": 4685
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr/status",
+      "module": "tumblr",
+      "params": [],
+      "line": 4521
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr-nurture/",
+      "module": "tumblr-nurture",
+      "params": [],
+      "line": 4765
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr-nurture/run-one",
+      "module": "tumblr-nurture",
+      "params": [],
+      "line": 4752
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr-nurture/start",
+      "module": "tumblr-nurture",
+      "params": [],
+      "line": 4731
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/tumblr-nurture/status",
+      "module": "tumblr-nurture",
+      "params": [],
+      "line": 4717
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/tumblr-nurture/stop",
+      "module": "tumblr-nurture",
+      "params": [],
+      "line": 4742
+    },
+    {
+      "method": "GET",
+      "path": "/tumblr-nurture/console",
+      "module": "tumblr-nurture",
+      "params": [],
+      "line": 8684
+    },
+    {
+      "method": "GET",
+      "path": "/tumblr-nurture/logs",
+      "module": "tumblr-nurture",
+      "params": [],
+      "line": 8691
+    },
+    {
+      "method": "GET",
+      "path": "/v14",
+      "module": "v14",
+      "params": [],
+      "line": 261
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/video-render/list",
+      "module": "video-render",
+      "params": [],
+      "line": 4500
+    },
+    {
+      "method": "POST",
+      "path": "/api/v14/viral/detect",
+      "module": "viral",
+      "params": [],
+      "line": 5487
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/viral/scan",
+      "module": "viral",
+      "params": [],
+      "line": 5478
+    },
+    {
+      "method": "GET",
+      "path": "/api/v14/visitor-behavior/:contentId",
+      "module": "visitor-behavior",
+      "params": [
+        "contentId"
+      ],
+      "line": 7013
+    }
+  ],
+  "dynamicUnresolved": []
+}

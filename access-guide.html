@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MSCMS v14 — 访问指南</title>
+<style>
+:root {
+  --bg: #0f1117; --bg2: #1a1d27; --bg3: #242836; --border: #2e3344;
+  --text: #c9d1d9; --muted: #6e7681; --accent: #58a6ff; --green: #3fb950;
+  --orange: #d29922; --purple: #a371f7; --red: #f85149; --radius: 10px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.7; padding: 2rem;
+}
+.container { max-width: 900px; margin: 0 auto; }
+h1 { font-size: 1.8rem; color: var(--accent); margin-bottom: 0.5rem; }
+h2 { font-size: 1.3rem; margin: 2rem 0 1rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.05rem; margin: 1.2rem 0 0.5rem; }
+p { margin-bottom: 0.6rem; color: #b0b8c4; }
+code {
+  background: var(--bg3); color: var(--green); padding: 0.15rem 0.5rem;
+  border-radius: 4px; font-size: 0.85rem; font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+pre {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; margin: 0.8rem 0;
+}
+pre code { background: none; padding: 0; color: var(--text); }
+.card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1.2rem 1.5rem; margin: 1rem 0;
+}
+.card h3 { margin-top: 0; }
+.tag {
+  display: inline-block; padding: 0.15rem 0.6rem; border-radius: 20px;
+  font-size: 0.7rem; font-weight: 600; margin-right: 0.4rem;
+}
+.tag-web { background: rgba(88,166,255,0.15); color: var(--accent); }
+.tag-desktop { background: rgba(163,113,247,0.15); color: var(--purple); }
+.tag-install { background: rgba(63,185,80,0.15); color: var(--green); }
+.tag-package { background: rgba(210,153,34,0.15); color: var(--orange); }
+.badge { 
+  display: inline-block; padding: 0.2rem 0.7rem; border-radius: 4px;
+  font-size: 0.72rem; font-weight: 500;
+}
+.badge-rec { background: var(--green); color: #000; }
+.badge-opt { background: var(--bg3); color: var(--muted); }
+.step { 
+  display: flex; gap: 0.8rem; align-items: flex-start; margin: 0.6rem 0; padding: 0.5rem 0;
+}
+.step-num {
+  background: var(--accent); color: #fff; width: 24px; height: 24px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+}
+.divider { height: 1px; background: var(--border); margin: 2rem 0; }
+.file-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.5rem; margin: 0.8rem 0;
+}
+.file-item {
+  background: var(--bg3); padding: 0.4rem 0.7rem; border-radius: 4px;
+  font-size: 0.78rem; font-family: monospace; color: var(--text);
+}
+.file-item .ext { color: var(--muted); font-size: 0.7rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🚀 MSCMS v14 访问指南</h1>
+<p>综合精细化管理系统 — 四种访问方式，按需选择</p>
+
+<!-- 方式 1 -->
+<h2>1. 浏览器直接访问 <span class="tag tag-web">浏览器</span> <span class="badge badge-rec">推荐</span></h2>
+<div class="card">
+  <h3>📡 在线访问</h3>
+  <p>服务器启动后，通过浏览器直接打开控制台。</p>
+  <p>控制台地址: <code>http://localhost:3002/v14</code></p>
+  <p>API 基础路径: <code>http://localhost:3002/api/v14/</code></p>
+
+  <h3>启动步骤</h3>
+  <div class="step"><span class="step-num">1</span><span>双击 <code>start-mscms.bat</code> 启动服务器</span></div>
+  <div class="step"><span class="step-num">2</span><span>打开浏览器访问 <code>http://localhost:3002/v14</code></span></div>
+  <div class="step"><span class="step-num">3</span><span>开始使用 8 大功能模块</span></div>
+</div>
+
+<!-- 方式 2 -->
+<h2>2. Electron 桌面应用 <span class="tag tag-desktop">桌面应用</span></h2>
+<div class="card">
+  <h3>🖥️ 原生桌面体验</h3>
+  <p>独立窗口、系统托盘、无需打开浏览器。关闭窗口后最小化到托盘继续运行。</p>
+
+  <h3>快速启动</h3>
+  <div class="step"><span class="step-num">1</span><span>双击 <code>start-desktop.bat</code> 一键启动</span></div>
+  <div class="step"><span class="step-num">2</span><span>首次运行自动安装 Electron（约2分钟）</span></div>
+  <div class="step"><span class="step-num">3</span><span>应用窗口自动打开，服务器随应用启停</span></div>
+
+  <h3>手动启动</h3>
+  <pre><code>cd electron
+npm install    # 首次需要
+npm start</code></pre>
+
+  <h3>桌面特性</h3>
+  <ul style="color:#b0b8c4;padding-left:1.2rem;">
+    <li>🪟 独立原生窗口 (1400x900, 可调整)</li>
+    <li>📌 系统托盘常驻 (最小化到托盘, 右键菜单)</li>
+    <li>🔁 托盘内一键重启服务器</li>
+    <li>🌐 支持外部浏览器打开</li>
+    <li>🚫 关闭窗口不退出 (托盘继续运行)</li>
+  </ul>
+</div>
+
+<!-- 方式 3 -->
+<h2>3. 本地安装包 <span class="tag tag-install">安装器</span></h2>
+<div class="card">
+  <h3>💿 一键安装到系统</h3>
+  <p>运行安装器，自动配置所有环境，创建快捷方式。</p>
+
+  <h3>安装步骤</h3>
+  <div class="step"><span class="step-num">1</span><span>双击 <code>install.bat</code> 运行安装程序</span></div>
+  <div class="step"><span class="step-num">2</span><span>自动检查 Node.js、安装依赖</span></div>
+  <div class="step"><span class="step-num">3</span><span>创建桌面快捷方式和开始菜单</span></div>
+  <div class="step"><span class="step-num">4</span><span>可选: 添加开机自启动</span></div>
+
+  <h3>安装成果</h3>
+  <table style=";font-size:0.82rem;color:#b0b8c4;border-collapse:collapse;margin-top:0.5rem;">
+    <tr><td style="padding:0.3rem 0;">🖥️ 桌面</td><td>启动 MSCMS v14.lnk / MSCMS v14 控制台.url</td></tr>
+    <tr><td style="padding:0.3rem 0;">📂 开始菜单</td><td>MSCMS v14 → 启动/控制台/卸载</td></tr>
+    <tr><td style="padding:0.3rem 0;">⚡ 开机自启</td><td>可选，安装时选择 Y 启用</td></tr>
+  </table>
+
+  <h3>卸载</h3>
+  <p>运行 <code>uninstall.bat</code> 或从开始菜单选择"卸载 MSCMS v14"</p>
+</div>
+
+<!-- 方式 4 -->
+<h2>4. 桌面应用打包 <span class="tag tag-package">安装包</span></h2>
+<div class="card">
+  <h3>📦 生成独立安装程序</h3>
+  <p>将整个系统打包为 .exe 安装程序或便携版，可分发到其他电脑。</p>
+
+  <h3>打包步骤</h3>
+  <div class="step"><span class="step-num">1</span><span>双击 <code>build-desktop.bat</code> 启动构建工具</span></div>
+  <div class="step"><span class="step-num">2</span><span>选择打包方式:
+    <ul style="margin-top:0.3rem;padding-left:1rem;">
+      <li><strong>选项 2</strong>: Windows 安装程序 (.exe 安装包)</li>
+      <li><strong>选项 3</strong>: 便携版 (免安装, 单文件运行)</li>
+    </ul>
+  </span></div>
+  <div class="step"><span class="step-num">3</span><span>构建产物位于 <code>dist-desktop/</code> 目录</span></div>
+
+  <h3>产物说明</h3>
+  <table style=";font-size:0.82rem;color:#b0b8c4;border-collapse:collapse;">
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:0.5rem 0;"><strong>MSCMS v14-Setup-3.0.0.exe</strong></td>
+      <td style="padding:0.5rem 0;color:var(--muted);">NSIS 安装程序，带安装向导</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:0.5rem 0;"><strong>MSCMS v14-Portable-3.0.0.exe</strong></td>
+      <td style="padding:0.5rem 0;color:var(--muted);">便携版，无需安装直接运行</td>
+    </tr>
+  </table>
+</div>
+
+<div class="divider"></div>
+
+<!-- 快速参考 -->
+<h2>⚡ 快速参考</h2>
+<div class="card">
+  <table style=";font-size:0.85rem;border-collapse:collapse;">
+    <tr style="border-bottom:1px solid var(--border);">
+      <th style="text-align:left;padding:0.5rem;color:var(--muted);">场景</th>
+      <th style="text-align:left;padding:0.5rem;color:var(--muted);">使用方式</th>
+      <th style="text-align:left;padding:0.5rem;color:var(--muted);">启动命令/文件</th>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:0.5rem;">快速开发调试</td>
+      <td style="padding:0.5rem;">浏览器</td>
+      <td style="padding:0.5rem;"><code>node server.js</code> + 浏览器打开 localhost:3002/v14</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:0.5rem;">日常使用 (Web)</td>
+      <td style="padding:0.5rem;">浏览器 + 启动脚本</td>
+      <td style="padding:0.5rem;">双击 <code>start-mscms.bat</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:0.5rem;">日常使用 (桌面)</td>
+      <td style="padding:0.5rem;">Electron 桌面应用</td>
+      <td style="padding:0.5rem;">双击 <code>start-desktop.bat</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:0.5rem;">新电脑部署</td>
+      <td style="padding:0.5rem;">本地安装包</td>
+      <td style="padding:0.5rem;">运行 <code>install.bat</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:0.5rem;">分发给他人</td>
+      <td style="padding:0.5rem;">打包安装程序</td>
+      <td style="padding:0.5rem;">运行 <code>build-desktop.bat</code> → 选2</td>
+    </tr>
+    <tr>
+      <td style="padding:0.5rem;">U盘携带免安装</td>
+      <td style="padding:0.5rem;">便携版</td>
+      <td style="padding:0.5rem;">运行 <code>build-desktop.bat</code> → 选3</td>
+    </tr>
+  </table>
+</div>
+
+<!-- 文件清单 -->
+<h2>📁 项目文件清单</h2>
+<div class="file-list">
+  <div class="file-item">server.js <span class="ext">Express 网关</span></div>
+  <div class="file-item">v14-console.html <span class="ext">Vue3 控制台</span></div>
+  <div class="file-item">device-manager.js <span class="ext">云手机引擎</span></div>
+  <div class="file-item">account-nurturing.js <span class="ext">养号引擎</span></div>
+  <div class="file-item">content-intelligence.js <span class="ext">内容情报</span></div>
+  <div class="file-item">smart-publisher.js <span class="ext">智能发布</span></div>
+  <div class="file-item">decision-engine.js <span class="ext">决策进化</span></div>
+  <div class="file-item">schema-v14.sql <span class="ext">数据库表</span></div>
+  <div class="file-item">install.bat <span class="ext">一键安装</span></div>
+  <div class="file-item">uninstall.bat <span class="ext">卸载程序</span></div>
+  <div class="file-item">start-mscms.bat <span class="ext">启动服务器</span></div>
+  <div class="file-item">start-desktop.bat <span class="ext">启动桌面应用</span></div>
+  <div class="file-item">build-desktop.bat <span class="ext">打包工具</span></div>
+  <div class="file-item">electron/main.js <span class="ext">Electron 主进程</span></div>
+  <div class="file-item">electron/preload.js <span class="ext">安全预加载</span></div>
+  <div class="file-item">electron/package.json <span class="ext">桌面应用配置</span></div>
+</div>
+
+<div class="divider"></div>
+<p style="text-align:center;color:var(--muted);font-size:0.8rem;">
+  MSCMS v14 — 智能养号 · AI内容 · 自主进化 | 2026-07-03
+</p>
+
+</div>
+</body>
+</html>

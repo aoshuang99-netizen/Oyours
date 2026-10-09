@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Northlight Architecture — Design & Living</title>
+<meta name="description" content="Northlight Architecture specializes in modern residential design, sustainable materials, and thoughtful urban planning.">
+<meta name="robots" content="index,follow">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#f7f6f3;color:#3a3a3a;line-height:1.7}
+  .topbar{background:#fff;border-bottom:1px solid #e5e2da;padding:1rem 2.5rem;display:flex;justify-content:space-between;align-items:center}
+  .topbar .brand{font-size:1.25rem;font-weight:600;letter-spacing:0.06em;color:#2c2c2c;text-transform:uppercase}
+  .topbar nav a{color:#6b6b6b;text-decoration:none;margin-left:2rem;font-size:0.92rem;letter-spacing:0.04em}
+  .topbar nav a:hover{color:#2c2c2c}
+  .hero{padding:5rem 2.5rem;text-align:center;max-width:720px;margin:0 auto}
+  .hero h1{font-size:2.5rem;font-weight:300;color:#2c2c2c;margin-bottom:1.2rem}
+  .hero p{font-size:1.1rem;color:#6b6b6b;line-height:1.9}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:2rem;padding:2rem 2.5rem 4rem;max-width:1200px;margin:0 auto}
+  .card{background:#fff;border:1px solid #eae6dd;border-radius:8px;overflow:hidden;transition:box-shadow 0.25s,transform 0.25s}
+  .card:hover{box-shadow:0 8px 30px rgba(0,0,0,0.06);transform:translateY(-2px)}
+  .card-image{height:200px;background:linear-gradient(135deg,#e8e4d8 0%,#d5cfc0 100%);display:flex;align-items:center;justify-content:center;font-size:0.85rem;color:#999;text-transform:uppercase;letter-spacing:0.1em}
+  .card-content{padding:1.5rem}
+  .card-content h3{font-size:1.15rem;font-weight:500;color:#2c2c2c;margin-bottom:0.5rem}
+  .card-content p{font-size:0.9rem;color:#888}
+  .card-content .tag{display:inline-block;background:#f0ede5;color:#8b8b7e;font-size:0.75rem;padding:0.25rem 0.7rem;border-radius:12px;margin-top:0.8rem}
+  footer{text-align:center;padding:2.5rem;border-top:1px solid #e5e2da;color:#b5b5b5;font-size:0.82rem}
+  footer a{color:#9b9b9b;text-decoration:none}
+  @media(max-width:768px){.topbar{flex-direction:column;gap:0.8rem;padding:1rem}.topbar nav a{margin:0 0.8rem}.hero{padding:3rem 1.5rem}.hero h1{font-size:2rem}.grid{padding:1rem 1.5rem}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Northlight Architecture</div>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/projects">Projects</a>
+    <a href="/journal">Journal</a>
+    <a href="/studio">Studio</a>
+    <a href="/contact">Contact</a>
+  </nav>
+</header>
+<section class="hero">
+  <h1>Where Structure Meets Serenity</h1>
+  <p>We design spaces that breathe — blending natural light, clean geometry, and sustainable materials to create homes that feel both timeless and alive.</p>
+</section>
+<section class="grid">
+  <article class="card">
+    <div class="card-image">Riverside Residence</div>
+    <div class="card-content">
+      <h3>Riverside Residence</h3>
+      <p>A minimalist retreat along the Willamette River, featuring floor-to-ceiling glass and passive solar design.</p>
+      <span class="tag">Residential</span>
+    </div>
+  </article>
+  <article class="card">
+    <div class="card-image">The Grove Office Park</div>
+    <div class="card-content">
+      <h3>The Grove Office Park</h3>
+      <p>Biophilic workspace design integrating indoor gardens, natural ventilation, and modular floor plans.</p>
+      <span class="tag">Commercial</span>
+    </div>
+  </article>
+  <article class="card">
+    <div class="card-image">Cedar Canyon Home</div>
+    <div class="card-content">
+      <h3>Cedar Canyon Home</h3>
+      <p>Warm timber and weathered steel define this desert-adjacent home, built for thermal efficiency.</p>
+      <span class="tag">Residential</span>
+    </div>
+  </article>
+</section>
+<footer>
+  <p>&copy; 2026 Northlight Architecture Studio. All rights reserved.</p>
+  <p><a href="/privacy">Privacy Policy</a> &middot; <a href="/terms">Terms of Service</a></p>
+</footer>
+</body>
+</html>

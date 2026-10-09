@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>首页重构原型 · MSCMS v14</title>
+<style>
+:root{
+  --bg:#0b0e14; --bg2:#12161f; --bg3:#1a1f2b; --bg4:#232936;
+  --border:#252b38; --border2:#323a4b;
+  --text:#e6edf3; --text2:#9aa4b2; --text3:#6b7684;
+  --accent:#4c8dff; --green:#3fb950; --red:#f85149; --orange:#d29922;
+  --purple:#a371f7; --teal:#39c5cf;
+
+  --fs-h1:22px; --fs-h2:15px; --fs-h3:13px; --fs-body:12.5px; --fs-cap:11.5px;
+  --fs-num-xl:30px; --fs-num:19px;
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
+  --r-sm:5px; --r-md:9px; --r-lg:13px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font:400 var(--fs-body)/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.94em;background:var(--bg3);padding:1px 5px;border-radius:var(--r-sm);color:var(--text2)}
+
+.topbar{
+  position:sticky; top:0; z-index:30; height:52px;
+  display:flex; align-items:center; gap:var(--sp2);
+  padding:0 var(--sp5);
+  background:rgba(11,14,20,.86); backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.brand{font-size:var(--fs-h3);font-weight:500;letter-spacing:.2px}
+.brand span{color:var(--text3);font-weight:400;margin-left:7px;font-size:var(--fs-cap)}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;
+  height:26px;padding:0 10px;border-radius:13px;
+  background:var(--bg2);border:1px solid var(--border);
+  font-size:var(--fs-cap);color:var(--text2);cursor:pointer;
+}
+.pill:hover{border-color:var(--border2);color:var(--text)}
+.dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.dot.ok{background:var(--green)} .dot.warn{background:var(--orange)} .dot.bad{background:var(--red)} .dot.idle{background:var(--text3)}
+.spacer{flex:1}
+
+.wrap{max-width:1340px;margin:0 auto;padding:var(--sp5) var(--sp5) 60px}
+
+h1{font-size:var(--fs-h1);font-weight:500;line-height:1.25;letter-spacing:-.2px}
+.lede{color:var(--text2);font-size:var(--fs-body);margin-top:5px}
+h2.sec{
+  font-size:var(--fs-h2); font-weight:500; color:var(--text);
+  margin:var(--sp6) 0 var(--sp3); display:flex; align-items:center; gap:var(--sp2);
+}
+h2.sec .hint{font-weight:400;font-size:var(--fs-cap);color:var(--text3)}
+h2.sec::after{content:"";flex:1;height:1px;background:var(--border)}
+h3.card-t{font-size:var(--fs-h3);font-weight:500;color:var(--text)}
+
+.hero{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:var(--sp3);
+  margin-top:var(--sp5);
+}
+.hero-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:var(--sp4) var(--sp4) var(--sp3);
+  display:flex;flex-direction:column;gap:2px;position:relative;overflow:hidden;
+}
+.hero-card.lead{border-color:#2d4470;background:linear-gradient(180deg,rgba(76,141,255,.07),transparent 60%),var(--bg2)}
+.hero-card .k{font-size:var(--fs-cap);color:var(--text2);display:flex;align-items:center;gap:6px}
+.hero-card .n{font-size:var(--fs-num-xl);font-weight:500;line-height:1.15;letter-spacing:-.5px;margin-top:6px}
+.hero-card .n small{font-size:14px;color:var(--text3);font-weight:400;letter-spacing:0}
+.hero-card .s{font-size:var(--fs-cap);color:var(--text3);margin-top:3px}
+.hero-card .bar{height:3px;border-radius:2px;background:var(--bg4);overflow:hidden}
+.hero-card .bar i{display:block;height:100%;border-radius:2px}
+.n-blue{color:#6ea8ff} .n-green{color:var(--green)} .n-orange{color:var(--orange)} .n-teal{color:var(--teal)} .n-purple{color:var(--purple)}
+
+.truth{
+  display:flex;align-items:center;gap:var(--sp3);flex-wrap:wrap;
+  margin-top:var(--sp3);padding:10px var(--sp4);
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-md);
+  font-size:var(--fs-cap);color:var(--text2);
+}
+.truth b{font-weight:500;color:var(--text);font-size:var(--fs-body)}
+.truth .sep{width:1px;height:14px;background:var(--border2)}
+
+.chain{
+  display:flex;align-items:stretch;gap:0;
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:var(--sp4);overflow-x:auto;
+}
+.chain-step{flex:1;min-width:88px;display:flex;flex-direction:column;gap:7px;position:relative;padding-right:10px}
+.chain-step:last-child{padding-right:0}
+.chain-step .lbl{font-size:var(--fs-cap);color:var(--text2);white-space:nowrap}
+.chain-step .st{display:flex;align-items:center;gap:6px;font-size:var(--fs-cap);color:var(--text3)}
+.chain-step .st .dot{width:8px;height:8px}
+.chain-step .track{height:3px;background:var(--bg4);border-radius:2px;overflow:hidden}
+.chain-step .track i{display:block;height:100%;border-radius:2px}
+.chain-step.run .lbl{color:var(--text);font-weight:500}
+.verdict{
+  margin-top:var(--sp3);padding:11px var(--sp4);border-radius:var(--r-md);
+  background:rgba(210,153,34,.07);border:1px solid rgba(210,153,34,.28);
+  font-size:var(--fs-body);color:var(--text);
+}
+.verdict b{color:var(--orange);font-weight:500}
+
+.domains{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--sp2)}
+.dom{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:11px 12px;cursor:pointer;transition:.13s;display:flex;flex-direction:column;gap:5px;
+}
+.dom:hover{border-color:var(--border2);background:var(--bg3);transform:translateY(-1px)}
+.dom .dt{font-size:var(--fs-h3);font-weight:500;display:flex;align-items:center;gap:6px}
+.dom .dn{font-size:var(--fs-cap);color:var(--text3);display:flex;gap:9px;flex-wrap:wrap}
+.dom .dn b{color:var(--text2);font-weight:500}
+.dom .dt .cnt{margin-left:auto;font-size:11px;color:var(--text3);font-weight:400}
+
+details.fold{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-md);
+  margin-bottom:var(--sp2);overflow:hidden;
+}
+details.fold>summary{
+  list-style:none;cursor:pointer;padding:13px var(--sp4);
+  display:flex;align-items:center;gap:var(--sp2);
+  font-size:var(--fs-h3);font-weight:500;
+}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary::before{
+  content:"";width:0;height:0;border-left:5px solid var(--text3);
+  border-top:4px solid transparent;border-bottom:4px solid transparent;transition:.15s;
+}
+details.fold[open]>summary::before{transform:rotate(90deg)}
+details.fold>summary .meta{font-size:var(--fs-cap);color:var(--text3);font-weight:400;margin-left:auto}
+.fold-body{padding:0 var(--sp4) var(--sp4);border-top:1px solid var(--border);padding-top:var(--sp4)}
+
+.quad{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp3)}
+.mini{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp3)}
+.kv{display:flex;justify-content:space-between;font-size:var(--fs-cap);padding:3px 0;color:var(--text2)}
+.kv b{color:var(--text);font-weight:500}
+
+.log{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--text2);max-height:220px;overflow:auto}
+.log div{padding:2px 0;display:flex;gap:10px;border-bottom:1px solid rgba(255,255,255,.025)}
+.log .t{color:var(--text3);flex:0 0 auto}
+
+.spec{margin-top:var(--sp5);border:1px dashed var(--border2);border-radius:var(--r-md);padding:var(--sp4)}
+.spec table{;border-collapse:collapse;font-size:var(--fs-cap)}
+.spec th,.spec td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)}
+.spec th{color:var(--text3);font-weight:500}
+.spec td b{font-weight:500}
+.spec .swatch{display:inline-block;background:var(--bg3);border-radius:3px;padding:0 6px}
+
+.footnote{margin-top:var(--sp5);font-size:var(--fs-cap);color:var(--text3);line-height:1.7}
+.loading{color:var(--text3);font-size:var(--fs-body);padding:var(--sp5);text-align:center}
+
+@media(max-width:1100px){
+  .hero{grid-template-columns:repeat(2,1fr)}
+  .domains{grid-template-columns:repeat(3,1fr)}
+  .quad{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .wrap{padding:var(--sp4) var(--sp3) 40px}
+  .hero{grid-template-columns:1fr}
+  .domains{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">MSCMS v14<span>全域监控</span></div>
+  <div class="spacer"></div>
+  <span class="pill" id="svcPill" title="点击查看 11 项服务明细"><i class="dot idle"></i><span id="svcTxt">服务探测中</span></span>
+  <span class="pill" id="phasePill"><i class="dot idle"></i><span id="phaseTxt">链路</span></span>
+  <span class="pill" onclick="load(true)">刷新数据</span>
+</div>
+
+<div class="wrap" id="root">
+  <div class="loading">正在读取真实数据 /api/v14/data/overview …</div>
+</div>
+
+<script>
+const $ = (s, r) => (r || document).querySelector(s);
+const n = (v, d) => (v === null || v === undefined || Number.isNaN(Number(v)) ? (d === undefined ? 0 : d) : Number(v));
+const pct = (a, b) => (b > 0 ? Math.min(100, Math.round((a / b) * 100)) : 0);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let RAW = null;
+
+async  load(force) {
+  try {
+    const r = await fetch('/api/v14/data/overview', { cache: '' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    RAW = await r.json();
+    render();
+  } catch (e) {
+    const root = $('#root');
+    if (root) root.innerHTML = '<div class="loading">读取失败：' + esc(e.message) +
+      '<br><span style="font-size:11.5px">本页是设计原型，需通过控制台服务访问才能取到真实数据（同源 /api/v14/data/overview）。</span></div>';
+  }
+}
+
+ render() {
+  const cs = RAW.coreStats || {};
+  const nut = cs.nurturing || {};
+  const gen = cs.contentGenerator || {};
+  const pub = cs.cloudPublisher || {};
+  const dau = cs.dauController || {};
+  const tr = cs.trafficRouter || {};
+  const wa = cs.websiteAnalytics || {};
+  const dev = cs.devices || {};
+  const phases = (RAW.causalChain && RAW.causalChain.phases) || [];
+  const sum = RAW.summary || {};
+
+  const mature = (nut.byState && (n(nut.byState.S3_MATURE) + n(nut.byState.S4_ENGAGED))) || 0;
+  const pubOk = n(pub.totalSuccess);
+  const pubTry = n(pub.totalAttempts);
+  const queue = n(gen.queueLength);
+  const dauCur = n(dau.currentDAU), dauTgt = n(dau.dailyTarget);
+  const uV = n(wa.userVisits), sV = n(wa.systemVisits);
+
+  // 顶栏
+  const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  $('#svcTxt').textContent = '刷新于 ' + now;
+
+  // 统一口径：按 order 取第一个未完成环，作为全页唯一的「链路进度」来源。
+  // 不要直接用服务端逐环 status（同一轮可能出现中间环未完成、后续环已完成）。
+  let blockIdx = -1;
+  phases.forEach((p, i) => { if (blockIdx < 0 && p.status !== 'completed') blockIdx = i; });
+  const chainDone = blockIdx < 0 ? phases.length : blockIdx;
+
+  const runPhase = phases.find((p) => p.status === 'running');
+  $('#phaseTxt').textContent = '链路 ' + chainDone + '/' + phases.length;
+  $('#phasePill').querySelector('.dot').className = 'dot ' + (blockIdx < 0 ? 'ok' : (runPhase ? 'warn' : 'idle'));
+
+  // L2 链路（blockIdx / chainDone 已在顶部统一计算，此处不再重复定义）
+  const stMap = { completed: ['ok', '已完成'], running: ['warn', '进行中'], idle: ['idle', '未开始'], error: ['bad', '异常'] };
+
+  const chainHtml = phases.map((p, i) => {
+    let st, col;
+    if (blockIdx < 0 || i < blockIdx) { st = ['ok', '已完成']; col = 'var(--green)'; }
+    else if (i === blockIdx) {
+      const m = stMap[p.status] || stMap.idle;
+      st = m; col = m[0] === 'warn' ? 'var(--orange)' : m[0] === 'bad' ? 'var(--red)' : 'var(--text3)';
+    } else { st = ['idle', '待前序']; col = 'var(--bg4)'; }
+    return '<div class="chain-step ' + (i === blockIdx && blockIdx >= 0 ? 'run' : '') + '">' +
+      '<div class="lbl">' + esc(p.order) + '. ' + esc(p.label || p.name) + '</div>' +
+      '<div class="st"><i class="dot ' + st[0] + '"></i>' + esc(st[1]) + '</div>' +
+      '<div class="track"><i style="width:' + (blockIdx < 0 || i < blockIdx ? 100 : (i === blockIdx ? n(p.progress) : 0)) + '%;background:' + col + '"></i></div>' +
+      '</div>';
+  }).join('');
+
+  const blockPhase = blockIdx >= 0 ? phases[blockIdx] : null;
+  const verdict = blockPhase
+    ? '当前链路停在 <b>' + esc(blockPhase.order) + '. ' + esc(blockPhase.label || blockPhase.name) + '</b> —— 前 ' +
+      blockIdx + ' 环已完成，其后 ' + (phases.length - blockIdx - 1) + ' 环待前序。'
+    : '链路 ' + phases.length + ' 环已全部完成，当前无堵点。';
+
+  // L3 域入口
+  const domains = [
+    { t: '账号管理', c: 5, d: ['养号 ' + n(nut.total), '成熟 ' + mature], go: 1 },
+    { t: '设备与基础设施', c: 3, d: ['在线 ' + n(dev.online) + '/' + n(dev.total)], go: 1 },
+    { t: '内容运营', c: 3, d: ['已生成 ' + n(gen.totalGenerated), '待发 ' + queue], go: 0 },
+    { t: '营销引流', c: 3, d: ['DAU ' + dauCur + '/' + dauTgt], go: 1 },
+    { t: '转化与增长', c: 3, d: ['链接 ' + n(tr.totalLinks), '点击 ' + n(tr.totalClicks)], go: 0 },
+    { t: '数据分析', c: 4, d: ['访问 ' + n(wa.totalVisits)], go: 1 },
+    { t: '系统编排', c: 2, d: ['模块 ' + n(sum.totalModules)], go: 1 },
+  ];
+  const domHtml = domains.map((d) =>
+    '<div class="dom">' +
+      '<div class="dt">' + esc(d.t) + '<span class="cnt">' + d.c + ' 项</span></div>' +
+      '<div class="dn">' + d.d.map((x) => '<b>' + esc(x) + '</b>').join('') + '</div>' +
+    '</div>').join('');
+
+  $('#root').innerHTML = `
+  <h1>全域监控</h1>
+  <div class="lede">一处看总量，一处看链路堵点。明细都在各自的业务域里，不在这页堆叠。</div>
+
+  <div class="hero">
+    <div class="hero-card lead">
+      <div class="k">账号池</div>
+      <div class="n n-blue">${n(nut.total)}<small> 个</small></div>
+      <div class="s">成熟 ${mature} · 健康均分 ${n(nut.avgHealthScore).toFixed(1)}</div>
+      <div class="bar"><i style="width:${pct(mature, n(nut.total))}%;background:var(--accent)"></i></div>
+    </div>
+    <div class="hero-card">
+      <div class="k">内容储备</div>
+      <div class="n n-purple">${n(gen.totalGenerated)}<small> 条</small></div>
+      <div class="s">待发队列 ${queue} · 均质 ${esc(gen.avgQualityScore || '—')}</div>
+      <div class="bar"><i style="width:${pct(queue, n(gen.totalGenerated))}%;background:var(--purple)"></i></div>
+    </div>
+    <div class="hero-card">
+      <div class="k">真实发布成功</div>
+      <div class="n ${pubOk > 0 ? 'n-green' : 'n-orange'}">${pubOk}<small> / 试发 ${pubTry}</small></div>
+      <div class="s">${pubTry > 0 ? '成功率 ' + pct(pubOk, pubTry) + '%' : '尚无发布尝试'}</div>
+      <div class="bar"><i style="width:${pct(pubOk, pubTry)}%;background:${pubOk > 0 ? 'var(--green)' : 'var(--orange)'}"></i></div>
+    </div>
+    <div class="hero-card">
+      <div class="k">DAU 进度</div>
+      <div class="n n-teal">${dauCur}<small> / ${dauTgt}</small></div>
+      <div class="s">达成 ${pct(dauCur, dauTgt)}% · 缺口 ${n(dau.gap)}</div>
+      <div class="bar"><i style="width:${pct(dauCur, dauTgt)}%;background:var(--teal)"></i></div>
+    </div>
+  </div>
+
+  <div class="truth">
+    <span>访问构成 —— 真实访客 <b>${uV}</b></span>
+    <span class="sep"></span>
+    <span>系统自检 <b>${sV}</b></span>
+    <span class="sep"></span>
+    <span>未归类 <b>${n(wa.unknownVisits)}</b></span>
+    <span class="sep"></span>
+    <span style="color:var(--text3)">总量 ${n(wa.totalVisits)} · 在线 ${n(wa.currentOnline)}</span>
+  </div>
+
+  <h2 class="sec">闭环链路<span class="hint">只看状态与堵点，不重复上面的数字</span></h2>
+  <div class="chain">${chainHtml}</div>
+  <div class="verdict">${verdict}</div>
+
+  <h2 class="sec">业务域<span class="hint">点击进入，明细在域内</span></h2>
+  <div class="domains">${domHtml}</div>
+
+  <h2 class="sec">按需展开<span class="hint">低频模块默认收起，不占首屏</span></h2>
+  <details class="fold">
+    <summary>服务与编排状态<span class="meta">11 项服务 · 编排 ${n(RAW.causalChain && RAW.causalChain.stats && RAW.causalChain.stats.totalCycles)} 轮</span></summary>
+    <div class="fold-body">
+      <div class="quad">
+        <div class="mini">
+          <h3 class="card-t" style="margin-bottom:8px">发布器</h3>
+          <div class="kv"><span>尝试</span><b>${n(pub.totalAttempts)}</b></div>
+          <div class="kv"><span>成功</span><b>${n(pub.totalSuccess)}</b></div>
+          <div class="kv"><span>失败</span><b>${n(pub.totalFailed)}</b></div>
+          <div class="kv"><span>跳过失效 token</span><b>${n(pub.skippedDeadToken)}</b></div>
+        </div>
+        <div class="mini">
+          <h3 class="card-t" style="margin-bottom:8px">自愈引擎</h3>
+          <div class="kv"><span>触发</span><b>${n((cs.healEngine || {}).totalHeals)}</b></div>
+          <div class="kv"><span>恢复</span><b>${n((cs.healEngine || {}).recovered)}</b></div>
+          <div class="kv"><span>成功率</span><b>${n((cs.healEngine || {}).successRate)}%</b></div>
+          <div class="kv"><span>待处理</span><b>${n((cs.healEngine || {}).pending)}</b></div>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <details class="fold">
+    <summary>数据罗盘<span class="meta">决策 / 漏斗 / EventBus / 自愈</span></summary>
+    <div class="fold-body">
+      <div class="quad">
+        <div class="mini">
+          <h3 class="card-t" style="margin-bottom:8px">EventBus</h3>
+          <div class="kv"><span>发出事件</span><b>${n((RAW.eventBus || {}).totalEmitted)}</b></div>
+          <div class="kv"><span>处理次数</span><b>${n((RAW.eventBus || {}).totalHandled)}</b></div>
+          <div class="kv"><span>监听器</span><b>${n((RAW.eventBus || {}).listeners)}</b></div>
+          <div class="kv"><span>错误</span><b>${n((RAW.eventBus || {}).totalErrors)}</b></div>
+        </div>
+        <div class="mini">
+          <h3 class="card-t" style="margin-bottom:8px">因果链统计</h3>
+          <div class="kv"><span>总轮次</span><b>${n((RAW.causalChain.stats || {}).totalCycles)}</b></div>
+          <div class="kv"><span>推进次数</span><b>${n((RAW.causalChain.stats || {}).totalAdvancements)}</b></div>
+          <div class="kv"><span>阻塞</span><b>${n((RAW.causalChain.stats || {}).totalBlocks)}</b></div>
+          <div class="kv"><span>跳过</span><b>${n((RAW.causalChain.stats || {}).totalSkips)}</b></div>
+        </div>
+      </div>
+      <p style="font-size:var(--fs-cap);color:var(--text3);margin-top:10px">
+        罗盘按「日 / 周 / 月 / 年」切换的完整图表仍在「数据分析」域内，此处只保留计数概览 —— 图表需要横向空间，塞进首屏会把主次压平。
+      </p>
+    </div>
+  </details>
+
+  <div class="spec">
+    <h3 class="card-t" style="margin-bottom:10px">本页层级规范（重构后实际生效的值）</h3>
+    <table>
+      <thead><tr><th>层级</th><th>字号</th><th>用途</th><th>示例</th></tr></thead>
+      <tbody>
+        <tr><td>H1</td><td><span class="swatch">22px</span></td><td>页面标题，全页唯一</td><td>全域监控</td></tr>
+        <tr><td>H2</td><td><span class="swatch">15px</span></td><td>分组标题，带分隔线</td><td>闭环链路 / 业务域</td></tr>
+        <tr><td>H3</td><td><span class="swatch">13px</span></td><td>卡片标题</td><td>账号池 / 发布器</td></tr>
+        <tr><td>正文</td><td><span class="swatch">12.5px</span></td><td>说明文字、结论句</td><td>链路堵点结论</td></tr>
+        <tr><td>辅助</td><td><span class="swatch">11.5px</span></td><td>标签、单位、时间戳</td><td>成熟 73 · 健康均分 63.3</td></tr>
+        <tr><td>数字 XL</td><td><span class="swatch">30px</span></td><td>仅 L1 主指标</td><td>123 / 210 / 0 / 12</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:var(--fs-cap);color:var(--text3);margin-top:10px">
+      相邻层级差 ≥2.5px，形成可辨认的视觉阶梯。重构前分组标题为 12.48px 而卡内标题为 13.12px，出现层级倒挂。
+    </p>
+  </div>
+
+  <div class="footnote">
+    数据源：<code>/api/v14/data/overview</code>（coreStats + causalChain + eventBus + summary），全部为服务端实时值，无占位数字。<br>
+    本页是<b>设计原型</b>，不替换线上 <code>/v14</code>；确认后再落地到 <code>v14-console.html</code> 的 dashboard 区块。
+  </div>
+  `;
+}
+
+load();
+setInterval(() => load(true), 60000);
+</script>
+</body>
+</html>

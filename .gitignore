@@ -1,0 +1,148 @@
+# ============================================================================
+#  OYours / MSCMS v14 — .gitignore  (P0.0 安全基线 + 资产收敛)
+#  生成日期: 2026-10-09
+#  目标: 仓库只保留「活跃源码」， secrets / 运行时数据 / 构建产物 /
+#        浏览器 profile / 数据库引擎 / 死代码 / 灰产代码 一律排除。
+#
+#  ⚠️ 注意: gitignore 不支持行内注释！每行要么是被注释(#开头)，要么是纯 pattern。
+#           本文件所有说明均放在独立 # 行，严禁在 pattern 后追加 # 注释。
+#
+#  ⚠️ 安全门: 本仓库活跃源码中仍含「内联密钥」(见 ops/security-audit-*.json)。
+#     推送远程/GitHub 前必须先把内联密钥外置到 .env (已 gitignore)。
+#     严禁把含明文密钥的提交 push 到公共仓库。
+# ============================================================================
+
+# ---------- 构建 / 打包产物 ----------
+# MSCMS-v14-Desktop 是 Electron 打包物，含 node_modules + server.js 副本，不可改也不可入库
+MSCMS-v14-Desktop/
+# electron/ 是桌面端源码，但其 node_modules 必须排除
+electron/node_modules/
+# mscms-desktop/ 是桌面端分发副本，重复且不入库
+mscms-desktop/
+node_modules/
+
+# ---------- 运行时数据 (DataStore 内存优先, flush 覆盖磁盘, 不可版本化) ----------
+data/
+
+# ---------- 浏览器 / 账号自动化 profile (含 cookie/会话, 敏感且巨大) ----------
+chrome_profiles/
+gmail-data/
+reddit-data/
+.pw_tumblr_profile/
+*.profile/
+
+# ---------- 数据库 / 运行时引擎二进制 ----------
+mysql-8.0.41-winx64/
+mysql-data/
+nginx-runtime/
+nginx/
+
+# ---------- 密钥 / 凭证 (绝不可提交) ----------
+
+credentials-input.json
+proxy-pool.json
+
+.proxy-v2ray-pids.json
+.sb-*.json
+.env
+.env.local
+*.local
+# 根目录遗留的明文凭据/令牌
+_shardx_token.txt
+_logintest.out
+wire-credentials.js
+
+# ---------- 根目录运行时数据 / 快照 / 凭证(json, 非源码) ----------
+# 内容库与发布数据 (DataStore 实时 flush, 非源码)
+content.json
+pub_all.json
+pub_recent.json
+pub_tmp.json
+# 下划线前缀的草稿/快照/分析产物
+_*.json
+# 各平台凭据文件
+*.creds.json
+-creds.json
+telegraph-creds.json
+# Tumblr 应用凭据 / 邮箱策略 (含  与 PII)
+tumblr_apps.json
+tumblr_email.json
+.json
+# n8n 工作流导出 (可能内嵌凭据)
+n8n-*.json
+# 单测/探针配置
+test-singbox.json
+
+# ---------- 备份 / 归档副本 ----------
+*.bak
+*.bak*
+archive/
+quarantine/
+.tmp/
+data_c_backup/
+data-backup/
+logs_c_backup/
+*_backup/
+backup/
+
+# ---------- 生成物 / 输出 ----------
+reports/
+outputs/
+generated-videos/
+exports/
+exports*/
+__pycache__/
+
+# ---------- 工具 / 会话缓存 (非 MSCMS 源码) ----------
+/
+.learnings/
+.playwright-cli/
+C:UsersASWorkBuddy*
+
+# ---------- 运维运行时日志 / 生成报告 ----------
+logs/
+ops/incidents.jsonl
+ops/security-audit-*.json
+*.log
+scan_*.txt
+*.tmp.*
+
+# ---------- 浏览器 cookie / 会话 (敏感) ----------
+cookies/
+*Cookies*
+*Login*Data*
+
+# ---------- 临时 / 探针文件 ----------
+_tmp_*
+*.tmp*
+# n8n / shardx 临时凭据与原始导出 (含 apikey/jwt/token)
+n8n_*.txt
+_*.txt
+*_raw.txt
+
+# ---------- 二进制归档 / 可执行 ----------
+*.zip
+*.rar
+*.7z
+*.tar.gz
+*.exe
+*.dll
+*.so
+*.dmg
+*.pkg
+
+# ---------- 私钥 / 证书 / 数据库文件 (绝不可提交) ----------
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_dsa
+*.sqlite
+*.sqlite3
+*.db
+
+# ---------- 操作系统 / 编辑器 ----------
+.DS_Store
+Thumbs.db
+desktop.ini

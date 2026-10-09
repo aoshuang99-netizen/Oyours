@@ -1,0 +1,35 @@
+{
+  "name": "affiliate-distribution-engine",
+  "version": "1.0.0",
+  "description": "多渠道音视频分发引擎 — Express 网关 + FFmpeg 处理 + MySQL 追踪",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "desktop": "cd electron && npx electron .",
+    "desktop:build": "cd electron && npx electron-builder --win",
+    "desktop:build:portable": "cd electron && npx electron-builder --win portable",
+    "install:app": "install.bat"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.20.30",
+    "@noble/curves": "^1.4.0",
+    "axios": "^1.18.0",
+    "bcryptjs": "^2.4.3",
+    "docx": "^9.7.1",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0",
+    "playwright-core": "^1.60.0",
+    "undici": "^8.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "wrangler": "^4.129.1"
+  }
+}
