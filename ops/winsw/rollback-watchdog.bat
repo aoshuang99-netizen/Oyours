@@ -18,6 +18,9 @@ echo [*] 恢复 MSCMS_Autostart 计划任务...
 schtasks /Change /TN "MSCMS_Autostart" /ENABLE >nul 2>&1
 if not errorlevel 1 ( echo [ok] 已启用 MSCMS_Autostart ) else ( echo [i] 无 MSCMS_Autostart 或恢复失败 )
 
-echo [!] 记得恢复 _autostart_mscms.bat 中被注释掉的看门狗启动块。
+echo [*] 恢复 _autostart_mscms.bat 的看门狗启动块（从备份）...
+set "NODEEXE=C:\Users\AS\.workbuddy\binaries\node\versions\22.22.2-6\node.exe"
+if exist "%NODEEXE%" ( "%NODEEXE%" "%~dp0patch-autostart.js" --restore ) else ( echo [i] 无 node，跳过自动恢复 )
+
 echo [完成] 已回滚。
 pause

@@ -42,12 +42,17 @@ if not errorlevel 1 (
   echo [i] 未找到 MSCMS_Autostart 计划任务，跳过
 )
 
-REM 5) 手动收尾提醒
+REM 5) 自动注释 _autostart_mscms.bat 的看门狗块（step4+5），使 WinSW 成为唯一父级
+REM    避免与看门狗 :3011 单实例锁冲突。脚本自带备份 + 幂等（见 patch-autostart.js）。
+echo [*] 自动跳过 _autostart_mscms.bat 的看门狗启动块...
+set "NODEEXE=C:\Users\AS\.workbuddy\binaries\node\versions\22.22.2-6\node.exe"
+if exist "%NODEEXE%" (
+  "%NODEEXE%" "%~dp0patch-autostart.js"
+) else (
+  echo [!] 未找到固定 node 路径，跳过自动注释；请手动按 README 注释 _autostart 第4~5步
+)
+
 echo.
-echo [!] 还需手动处理 _autostart_mscms.bat：
-echo     用记事本打开 C:\Users\AS\WorkBuddy\2026-06-13-19-42-19\_autostart_mscms.bat
-echo     把"看门狗启动块"（约第 4~5 步）整段加 rem 注释掉，只保留 MySQL 启动兜底。
-echo     否则开机可能双启动、抢 :3011 单实例锁。
-echo.
-echo [完成] 看门狗服务已安装并启动。日志见 D:\mscms-ws\logs\winsw\
+echo [完成] 看门狗服务已安装并启动；旧自启计划任务已停用；_autostart 看门狗块已跳过。
+echo 日志见 D:\mscms-ws\logs\winsw\
 pause
