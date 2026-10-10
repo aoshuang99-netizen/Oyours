@@ -29,7 +29,7 @@
  *   ② 若你日后接入任何免费/试用住宅源，把它加进 FREE_SOURCES 或手动
  *      写一条到 pool，本脚本会自动校验并纳入轮换。
  *   它【不】能凭空变出住宅 IP——那是付费生意。真正绕过住宅墙的免费杠杆
- *   见 tools/free--publisher.js（Bluesky / Mastodon）。
+ *   见 tools/free-platform-publisher.js（Bluesky / Mastodon）。
  */
 
 const fs = require('fs');
@@ -195,7 +195,7 @@ async function run(opts) {
 
   if (tumblrOk === 0) {
     console.log('\n⚠️ 诚实结论：本次通过的免费代理【无一】能触达 Tumblr（数据中心 IP 被重置）。');
-    console.log('   免费公开代理救不了住宅墙。真实免费 DAU 杠杆请走 tools/free--publisher.js');
+    console.log('   免费公开代理救不了住宅墙。真实免费 DAU 杠杆请走 tools/free-platform-publisher.js');
     console.log('   （Bluesky / Mastodon，不网关住宅 IP），或接入任何住宅源后重跑本脚本自动纳入。');
   } else {
     console.log(`\n✅ 发现 ${tumblrOk} 个可触达 Tumblr 的免费出口，已写入 pool 并纳入发布轮换。`);
