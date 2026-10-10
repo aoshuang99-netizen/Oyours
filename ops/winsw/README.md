@@ -45,14 +45,14 @@
 
 ---
 
-## 2. 获取 WinSW v3（离线说明）
+## 2. WinSW 二进制（已内嵌 v2.12.0 自包含版）
 
-当前环境无外网，无法现场下载。上线/联网后：
+`mscms-watchdog.exe` 已随本目录提交，为 **WinSW v2.12.0 自包含单文件版（内嵌 .NET 运行时，无需再装 .NET）**。
+> 注：v3.0.0 目前仅 alpha 发布，`/releases/latest` 指向 v2.12.0 稳定版；自包含 `WinSW-x64.exe` 约 3.9MB。
 
-- 下载 **WinSW v3** 的 64 位二进制 `WinSW-x64.exe`
-  （官方：https://github.com/winsw/winsw/releases ，文件名如 `WinSW-x64-v3.x.x.0.exe`）
-- 将二进制**重命名**为服务 id 同名：`mscms-watchdog.exe`，放在本目录 `ops/winsw/` 下，
-  与 `mscms-watchdog.xml` 同目录（WinSW 按同名匹配 config）。
+- 官方发布：https://github.com/winsw/winsw/releases/tag/v2.12.0 （资产 `WinSW-x64.exe`）
+- 二进制与 `mscms-watchdog.xml` 同目录、同名（WinSW 按同名匹配 config），无需重命名。
+- 如需更新：下载同名的 `WinSW-x64.exe` 覆盖即可（注意保持同名）。
 
 ---
 
