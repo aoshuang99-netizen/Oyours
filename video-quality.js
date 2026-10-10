@@ -40,7 +40,7 @@ const DEFAULT_LIMITS = Object.freeze({
   minYmax: 100,            // 0~255，用于「首帧非黑」（画面必须有亮部）
 });
 
- findFfmpeg() {
+ function findFfmpeg() {
   const candidates = [
     path.join(process.env.NODE_PATH || '', 'ffmpeg-static', 'ffmpeg.exe'),
     'C:/Users/AS//binaries/node/workspace/node_modules/ffmpeg-static/ffmpeg.exe',
@@ -56,7 +56,7 @@ const DEFAULT_LIMITS = Object.freeze({
 }
 
 /** 从 `ffmpeg -i` 的 stderr 解析元信息 */
- probeMeta(file, ffmpegPath) {
+ function probeMeta(file, ffmpegPath) {
   let stderr = '';
   try {
     execFileSync(ffmpegPath, ['-hide_banner', '-i', file], { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -84,7 +84,7 @@ const DEFAULT_LIMITS = Object.freeze({
  * 比 `scale=1:1` 取平均值可靠得多（平均值会被画面明暗比例稀释，见 DEFAULT_LIMITS 标定说明）。
  * 判定「非黑」一律用 **YMAX**。
  */
- firstFrameStats(file, ffmpegPath) {
+ function firstFrameStats(file, ffmpegPath) {
   const args = [
     '-hide_banner', '-loglevel', 'error',
     '-i', file,
@@ -113,7 +113,7 @@ const DEFAULT_LIMITS = Object.freeze({
  * @param {object} [opts] 覆盖 limits / ffmpegPath
  * @returns {{ok:boolean, reason:string, checks:Array, meta:object, luma:?number, degraded:boolean}}
  */
- checkVideo(file, opts = {}) {
+ function checkVideo(file, opts = {}) {
   const limits = Object.assign({}, DEFAULT_LIMITS, opts.limits || {});
   const ff = opts.ffmpegPath || findFfmpeg();
 

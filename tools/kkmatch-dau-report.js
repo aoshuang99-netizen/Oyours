@@ -21,7 +21,7 @@ const DATA_DIR = 'D:/mscms-ws/data';
 const DAU_LOG = path.join(DATA_DIR, 'dau_log.json');
 const ANALYTICS = path.join(DATA_DIR, 'analytics.json');
 
- loadJson(p) {
+ function loadJson(p) {
   try {
     const d = JSON.parse(fs.readFileSync(p, 'utf8'));
     return Array.isArray(d) ? d : (d.items || d.data || []);
@@ -29,11 +29,11 @@ const ANALYTICS = path.join(DATA_DIR, 'analytics.json');
 }
 
 // GMT+8 日切（源为 UTC，slice(0,10) 会错一天）
- gmt8Day(ts) {
+ function gmt8Day(ts) {
   return new Date(Date.parse(ts) + 8 * 3600e3).toISOString().slice(0, 10);
 }
 
- main() {
+ function main() {
   const days = parseInt(process.argv[2] === '--days' ? process.argv[3] : process.argv[3] || '14', 10) || 14;
   const logs = loadJson(DAU_LOG);
   if (!logs.length) { console.log('dau_log.json 为空'); return; }

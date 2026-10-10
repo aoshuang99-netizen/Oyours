@@ -31,9 +31,9 @@ const LONG_LIT = /['"`]([A-Za-z0-9+/_=-]{32,})['"`]/g;
 
 const findings = [];
 
- redact(s) { return s.length > 0 ? `[REDACTED len=${s.length}]` : s; }
+ function redact(s) { return s.length > 0 ? `[REDACTED len=${s.length}]` : s; }
 
- scanFile(file) {
+ function scanFile(file) {
   let text;
   try {
     const st = fs.statSync(file);
@@ -67,7 +67,7 @@ const findings = [];
   });
 }
 
- walk(dir) {
+ function walk(dir) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
   for (const e of entries) {

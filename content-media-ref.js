@@ -31,7 +31,7 @@ const ARCHIVE_JSON_RE = /\.json(?:[?#]|$)/i;
  * @param {*} v 待判定字段值
  * @returns {boolean}
  */
- isRealMediaRef(v) {
+ function isRealMediaRef(v) {
   if (!v) return false;
   if (typeof v === 'object') return false;
   const s = String(v).trim();
@@ -58,7 +58,7 @@ const MEDIA_FIELDS = [
  * @param {object} c 内容对象（content 记录 / 事件载荷 / 生成产物）
  * @returns {boolean}
  */
- contentHasRealMedia(c) {
+ function contentHasRealMedia(c) {
   if (!c || typeof c !== 'object') return false;
   for (let i = 0; i < MEDIA_FIELDS.length; i++) {
     if (isRealMediaRef(c[MEDIA_FIELDS[i]])) return true;
@@ -71,7 +71,7 @@ const MEDIA_FIELDS = [
  * @param {object} src
  * @returns {object} 仅包含有值的媒体字段
  */
- pickMediaFields(src) {
+ function pickMediaFields(src) {
   const out = {};
   if (!src || typeof src !== 'object') return out;
   for (let i = 0; i < MEDIA_FIELDS.length; i++) {
@@ -97,7 +97,7 @@ const MEDIA_FIELDS = [
  * @param {object} c 内容对象
  * @returns {0|1|2}
  */
- mediaTypeRank(c) {
+ function mediaTypeRank(c) {
   if (!contentHasRealMedia(c)) return 2;
   return String((c && c.content_type) || '').toLowerCase() === 'video' ? 0 : 1;
 }

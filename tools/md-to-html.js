@@ -13,7 +13,7 @@ const inline = (s) => esc(s)
   .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 
- convert(md) {
+ function convert(md) {
   const lines = md.split(/\r?\n/);
   const out = [];
   let i = 0;

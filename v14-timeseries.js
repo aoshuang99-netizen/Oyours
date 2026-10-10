@@ -72,11 +72,11 @@ let _tzOffsetMin = Number.isFinite(Number(process.env.MSCMS_TZ_OFFSET_MIN))
 let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
   ? Number(process.env.MSCMS_TS_MAX_BUCKETS) : 1200;
 
- setTzOffset(min) { _tzOffsetMin = Number(min); return _tzOffsetMin; }
- getTzOffset() { return _tzOffsetMin; }
- setMaxBuckets(n) { _maxBuckets = Number(n) > 0 ? Number(n) : 1200; return _maxBuckets; }
- getMaxBuckets() { return _maxBuckets; }
- timezoneLabel() {
+ function setTzOffset(min) { _tzOffsetMin = Number(min); return _tzOffsetMin; }
+ function getTzOffset() { return _tzOffsetMin; }
+ function setMaxBuckets(n) { _maxBuckets = Number(n) > 0 ? Number(n) : 1200; return _maxBuckets; }
+ function getMaxBuckets() { return _maxBuckets; }
+ function timezoneLabel() {
   const h = _tzOffsetMin / 60;
   return 'UTC' + (h >= 0 ? '+' : '') + (Number.isInteger(h) ? h : h.toFixed(2));
 }
@@ -94,7 +94,7 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
  * 被误判为「字段存在」→ 字段普查与自动选字段双双出错。
  * @returns {*} 值；不存在或为 null/undefined/空串时返回 undefined
  */
- pickOwn(rec, field) {
+ function pickOwn(rec, field) {
   if (!rec || typeof rec !== 'object') return undefined;
   if (!Object.prototype.hasOwnProperty.call(rec, field)) return undefined;
   const v = rec[field];
@@ -116,7 +116,7 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
  * @param {*} v
  * @returns {number|null}
  */
- parseTime(v) {
+ function parseTime(v) {
   if (v === null || v === undefined) return null;
   if (v instanceof Date) { const t = v.getTime(); return isNaN(t) ? null : t; }
   if (typeof v === 'number') {
@@ -145,11 +145,11 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
 // 本地日历切桶
 // ─────────────────────────────────────────────────────────────────────────
 
- toLocal(ms) { return ms + _tzOffsetMin * 60000; }
- fromLocal(ms) { return ms - _tzOffsetMin * 60000; }
+ function toLocal(ms) { return ms + _tzOffsetMin * 60000; }
+ function fromLocal(ms) { return ms - _tzOffsetMin * 60000; }
 
 /** 取所在桶的起点（本地日历） */
- floorBucket(ms, gran) {
+ function floorBucket(ms, gran) {
   const d = new Date(toLocal(ms));
   const y = d.getUTCFullYear(), mo = d.getUTCMonth(), da = d.getUTCDate(), h = d.getUTCHours();
   if (gran === 'hour') return fromLocal(Date.UTC(y, mo, da, h));
@@ -162,7 +162,7 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
 }
 
 /** 下一个桶起点（Date.UTC 自动进位，跨月/跨年/闰年安全） */
- nextBucket(ms, gran) {
+ function nextBucket(ms, gran) {
   const d = new Date(toLocal(ms));
   const y = d.getUTCFullYear(), mo = d.getUTCMonth(), da = d.getUTCDate(), h = d.getUTCHours();
   if (gran === 'hour') return fromLocal(Date.UTC(y, mo, da, h + 1));
@@ -174,7 +174,7 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
 }
 
 /** 桶标签（本地时间） */
- labelFor(ms, gran) {
+ function labelFor(ms, gran) {
   const d = new Date(toLocal(ms));
   const p2 = (n) => String(n).padStart(2, '0');
   const Y = d.getUTCFullYear(), M = p2(d.getUTCMonth() + 1), D = p2(d.getUTCDate()), H = p2(d.getUTCHours());
@@ -194,7 +194,7 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
  * range → { from, to, gran }，失败返回 { error }
  * @param {{range:string, from?:string, to?:string, now:number}} q
  */
- resolveRange(q) {
+ function resolveRange(q) {
   const range = q.range || 'week';
   const now = q.now;
   if (range === 'custom') {
@@ -217,7 +217,7 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
 }
 
 /** 逐级粗化：hour→day→week→month；已到 month 返回 null */
- coarsen(gran) {
+ function coarsen(gran) {
   if (gran === 'hour') return 'day';
   if (gran === 'day') return 'week';
   if (gran === 'week') return 'month';
@@ -233,7 +233,7 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
  * 优先级：显式覆盖 > 模块覆盖（两者都只取单字段，不归并）> 候选链归并。
  * @returns {{field:string, chain:string[], fieldAuto:boolean, candidates:Object}}
  */
- resolveField(records, moduleName, fieldOverride, sampleSize) {
+ function resolveField(records, moduleName, fieldOverride, sampleSize) {
   const n = Number(sampleSize) > 0 ? Number(sampleSize) : 400;
   const candidates = {};
   const sample = records.slice(0, n);
@@ -255,7 +255,7 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
  * 统计字段链在真实记录上的可解析覆盖率（不建桶，供「模块体检」用）。
  * @returns {{scanned:number, resolved:number, dropped:number, coverage:number|null, fieldsUsed:Object}}
  */
- resolveCoverage(records, chain) {
+ function resolveCoverage(records, chain) {
   const ch = (Array.isArray(chain) && chain.length) ? chain : ['createdAt'];
   let scanned = 0, resolved = 0;
   const fieldsUsed = {};
@@ -289,7 +289,7 @@ let _maxBuckets = Number(process.env.MSCMS_TS_MAX_BUCKETS) > 0
  *          from:number, to:number, gran:string}} opts
  * @returns {{buckets:Array, labels:string[], series:Object, total:number, meta:Object}}
  */
- aggregate(records, opts) {
+ function aggregate(records, opts) {
   const { field, fieldAuto, metricMode, metricField, from, to } = opts;
   // 字段链：按语义优先级逐条尝试，取第一个「存在且可解析」的值。
   // 语义同类字段的归并 ≠ 猜测：每个值都真实存在，且用哪个字段会被如实计入 fieldsUsed。

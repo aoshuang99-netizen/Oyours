@@ -18,7 +18,7 @@ if (!inFile || !outFile) {
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
- inline(s) {
+ function inline(s) {
   let t = esc(s);
   t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
   t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
@@ -26,7 +26,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
   return t;
 }
 
- convert(md) {
+ function convert(md) {
   const lines = md.split(/\r?\n/);
   const out = [];
   let i = 0;

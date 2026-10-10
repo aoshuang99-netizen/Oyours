@@ -100,20 +100,20 @@ const TUNNEL_EXIT_PORT_RANGE = { from: 20201, to: 20209 };
 const byId = new Map(SERVICES.map((s) => [s.id, s]));
 
 /** 按 id / 端口查询 */
- getService(idOrPort) {
+ function getService(idOrPort) {
   if (byId.has(idOrPort)) return byId.get(idOrPort);
   const p = Number(idOrPort);
   return SERVICES.find((s) => s.port === p) || null;
 }
 
 /** 受管服务（看门狗职责范围） */
- managedServices() { return SERVICES.filter((s) => s.managed); }
+ function managedServices() { return SERVICES.filter((s) => s.managed); }
 
 /** 非受管服务（大盘仍展示，但不属看门狗） */
- unmanagedServices() { return SERVICES.filter((s) => !s.managed); }
+ function unmanagedServices() { return SERVICES.filter((s) => !s.managed); }
 
 /** 计算健康汇总（纯函数，可单测） */
- summarize(results) {
+ function summarize(results) {
   const list = Array.isArray(results) ? results : [];
   const up = list.filter((r) => r && r.up === true);
   const down = list.filter((r) => r && r.up !== true);

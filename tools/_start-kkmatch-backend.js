@@ -18,7 +18,7 @@ const ENTRY = path.join(BASE, 'backend', 'main.py');
 const LOG = 'D:\\_kkmatch_backend.log';
 const PORT = 8001;
 
- probe(port, timeout = 1500) {
+ function probe(port, timeout = 1500) {
   return new Promise((resolve) => {
     const s = net.connect({ host: '', port }, () => { s.destroy(); resolve(true); });
     s.on('error', () => resolve(false));

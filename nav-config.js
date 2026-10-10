@@ -184,31 +184,31 @@ const GROUPS = [
 ];
 
 /** 全部主项（不含子页） */
- allItems() {
+ function allItems() {
   const out = [];
   for (const g of GROUPS) for (const it of g.items) out.push({ ...it, group: g.id, groupLabel: g.label });
   return out;
 }
 
 /** 主项计数（B4 验收判据：必须 = 24） */
- countMainItems() {
+ function countMainItems() {
   return GROUPS.reduce((n, g) => n + g.items.length, 0);
 }
 
 /** 子页计数 */
- countSubItems() {
+ function countSubItems() {
   return GROUPS.reduce((n, g) => n + g.items.reduce((m, it) => m + (it.subs ? it.subs.length : 0), 0), 0);
 }
 
 /** 统计各四态数量（按主项） */
- tallyStates() {
+ function tallyStates() {
   const t = { live: 0, degraded: 0, dormant: 0, unsupported: 0 };
   for (const it of allItems()) if (t[it.state] != null) t[it.state]++;
   return t;
 }
 
 /** 按 nav id 查主项 */
- findItem(nav) {
+ function findItem(nav) {
   return allItems().find((i) => i.nav === nav) || null;
 }
 
