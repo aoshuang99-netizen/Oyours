@@ -87,6 +87,7 @@ if errorlevel 1 (
 ) else (
   call :log "3307 already LISTENING -> skip mysqld"
 )
+goto :skip_winsw_wd
 
 REM ---------------------------------------------------------------
 REM  4) watchdog - the single owner of every other service
@@ -162,3 +163,4 @@ REM  ~0,10 keeps just the numeric date, which is pure ASCII.
 set "DT=%date%"
 >> "%LOG%" echo [%DT:~0,10% %time%] %~1
 exit /b 0
+:skip_winsw_wd
