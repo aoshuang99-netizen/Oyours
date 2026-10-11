@@ -54,11 +54,19 @@ const LOG = (process.env.LOG_DIR || 'D:/mscms-ws/logs') + '/watchdog.log';
 //   （实测 HTTP_PROXY=http://127.0.0.1:41502）。该代理随会话结束即消失，
 //   且对 *.tumblr.com 全部 fetch failed ⇒ post-metrics/互动回收全线瘫痪，
 //   而日志只写一句 "posts fetch failed"，极难归因（我为此排查了 1 小时+）。
-// 修法：显式覆盖为本机常驻代理 10808（Clash/PID 21912），
-//   与交互会话的沙箱代理完全解耦；找不到 10808 时清空代理走直连，
-//   宁可直连失败也要留下可归因的真实错误，不引入了就消失的临时代理。
+// 修法：显式覆盖为本机常驻代理，与交互会话的沙箱代理完全解耦；
+//   找不到代理时清空走直连，宁可直连失败也要留下可归因的真实错误。
+//
+// ── 2026-10-11 P0-1 出口切换到 Bright Data TLS 转发器 ──────────────────
+// 背景：本机整套隧道（10808/10950 xray、mihomo 20101-20150、CF worker 20201-20240）
+//   全部失效；且 GFW 会识别【明文 HTTP CONNECT 里的目标主机名】并 RST
+//   （实测经 BD 明文口 44445 连 tumblr → exit 56 秒断；连 github/microsoft → 200）。
+// 解法：改用 tools/bd-tls-forwarder.js —— 本机 10809 与 BD 走 TLS(33335)，
+//   CONNECT 目标进入密文，GFW 不可见；BD isp_proxy1(185.97.0.157, 美国 LA)
+//   出口实测可正常访问 api.tumblr.com（401）、支持 POST 中继。
+//   ⇒ 出网从此不依赖已失效的 VPS/机场隧道。
 const _LOCAL_PROXY = (() => {
-  const port = Number(process.env.MSCMS_OUTBOUND_PROXY_PORT || 10808);
+  const port = Number(process.env.MSCMS_OUTBOUND_PROXY_PORT || 10809);
   const p = `http://127.0.0.1:${port}`;
   try {
     const net = require('net');
@@ -108,6 +116,23 @@ const WRITE_MODULES_NURTURE = [
 const WRITE_MODULES_VISITOR = ['tumblr_config', 'tumblr_token', 'tumblr_reqtoken'].join(',');
 
 const SERVICES = [
+  {
+    // 2026-10-11 P0-1：Bright Data TLS 转发器（关键前置）。
+    //   所有子服务的 HTTPS_PROXY/HTTP_PROXY 都指向它(127.0.0.1:10809)，所以必须最先拉起。
+    //   原理：与 BD 走 TLS(33335)，CONNECT 目标主机名进入密文 → 绕过 GFW 明文 CONNECT 识别。
+    //   自清代理 env：Node 的 tls/net 本就不读代理 env，这里是双保险防自环。
+    name: 'bd-relay:10809', port: 10809, tcpOnly: true,
+    bootGraceMs: 20 * 1000, maxFailStreak: 5,
+    cmd: NODE, args: ['tools/bd-tls-forwarder.js'], cwd: WS,
+    env: {
+      HTTPS_PROXY: '', HTTP_PROXY: '', https_proxy: '', http_proxy: '',
+      BD_ZONE: 'isp_proxy1', BD_CUSTOMER: 'hl_ac0f9818', BD_PASSWORD: 'd2ream9zn4am',
+      BD_TLS_PORT: '33335',
+      // 不设 BD_RELAY_PORTS ⇒ 用 bd-tls-forwarder.js 自带的兼容超集
+      // (10808,10809,20101-20150,20201-20240)，覆盖发布器永久缓存里的旧端口。
+    },
+    logName: 'bd-relay',
+  },
   {
     // 2026-09-15 新增：MySQL(3307) 纳入看门狗。
     //   背景：它是 Tumblr 24h「(账号,内容)」去重闸门的数据源，却不在任何自启/守护清单里。
