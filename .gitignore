@@ -119,6 +119,9 @@ cookies/
 # ---------- 临时 / 探针文件 ----------
 _tmp_*
 *.tmp*
+# 看门狗单实例守卫的运行时通知（被误提交，实为运行时产物，非源码）
+skip
+skip*
 # n8n / shardx 临时凭据与原始导出 (含 apikey/jwt/token)
 n8n_*.txt
 _*.txt
