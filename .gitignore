@@ -150,3 +150,7 @@ id_dsa
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ---------- Windows 保留设备名（Git Bash 里 `>nul` 会生成同名的真实文件）----------
+nul
+nul.*

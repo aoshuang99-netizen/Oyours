@@ -3,4 +3,11 @@
 # 修复根因：本仓库 core.autocrlf=true 会把 .gitignore 检出为 CRLF，
 # 导致每条规则末尾带 \r 而静默失效（所有文件都未被忽略，.env 也会泄露）。
 # 此文件随仓库提交，确保任何机器 / GitHub(Linux) 上规则都正常工作。
+#
+# 例外：Windows 脚本必须 CRLF。若被统一成 LF，cmd.exe 无法解析
+# if(...) / else(...) 多行块，会报 “'xxx' 不是内部或外部命令”。
+# （2026-10-11 实测根因：install-watchdog.bat 等被检出为 LF-only）
 * text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
