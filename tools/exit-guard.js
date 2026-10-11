@@ -38,13 +38,23 @@ const RELAY_SCRIPT = path.join(ROOT, 'tools', 'bd-tls-forwarder.js');
 // 仅在显式指定时才覆盖转发器端口（否则用 bd-tls-forwarder.js 自带的兼容超集）
 const RELAY_PORTS_ENV = process.env.BD_RELAY_PORTS ? String(process.env.BD_RELAY_PORTS) : null;
 const RELAY_PRIMARY = Number(process.env.MSCMS_OUTBOUND_PROXY_PORT || 10809);
-// ⚠️ 探活目标必须是【不受出网闸门管控】的主机。
-//   出网闸门（bd-tls-forwarder 的 bd-relay-control.json）会对 api.tumblr.com
-//   在冷却期返回"200 后立刻关闭"：用它做探活既会掩盖真实故障，一旦闸门改为
-//   回 429 还会让 exit-guard 连续判"转发器假死"→ 无限重启（而重启后的转发器
-//   仍被闸门拦）。故探活改用恒可达且非闸门管控的 example.com；
-//   转发器进程本身的存活另由 portOpen 判定。
-const PROBE_HOST = process.env.EXIT_PROBE_HOST || 'example.com';
+// ⚠️ 探活目标必须同时满足两个条件，否则会制造【重启死循环】：
+//
+//  (1) 不受出网闸门管控。闸门（bd-tls-forwarder 的 bd-relay-control.json）对
+//      api.tumblr.com 在冷却期回"200 后立刻关闭"：用它探活既会掩盖真实故障，
+//      一旦闸门改为回 429，exit-guard 会连续判"转发器假死"→ 无限重启
+//      （而重启后的转发器仍被闸门拦，死循环）。
+//
+//  (2) 走转发器的【直连白名单】，不经 BD 上游。BD TLS 33335 是共享出口，
+//      实测会不定时出现 `BD 上游超时(>12s)`。若探活目标走 BD，BD 一抖动就会
+//      把"上游慢"误判成"转发器死"→ 杀掉健康的转发器 → 重启 → 仍然慢 → 死循环。
+//      直连目标只检验**转发器本机链路**（监听 + 本地出网），这才是 exit-guard
+//      该管的事；BD 上游健康另由转发器内建的配额看护（10min 直连探测）负责。
+//
+//  ⇒ 故取 `www.qq.com`：命中 bd-tls-forwarder 的 DIRECT_SUFFIX('.qq.com')，
+//     实测 200 / 53ms，与 BD 健康完全解耦。（历史值 example.com 走 BD，已废弃。）
+//  转发器进程本身的存活另由 portOpen 判定。
+const PROBE_HOST = process.env.EXIT_PROBE_HOST || 'www.qq.com';
 const PROBE_PORT = Number(process.env.EXIT_PROBE_PORT || 443);
 const PROBE_TIMEOUT_MS = Number(process.env.EXIT_PROBE_TIMEOUT_MS || 8000);
 const HEALTH_PORT = Number(process.env.EXIT_GUARD_HEALTH_PORT || 20779);

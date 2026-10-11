@@ -359,6 +359,7 @@ async function check(svc) {
     st.failStreak = 0;
     st.startingUntil = 0;
     st.lastOk = Date.now();
+    st.unresponsiveSince = 0;   // P0-4：响应恢复即清空「僵尸起点」
   } else {
     st.failStreak = (st.failStreak || 0) + 1;
     log(`⚠️ ${svc.name} 探活失败 ${st.failStreak}/${svc.maxFailStreak} (HTTP ${r.status})`);
@@ -368,9 +369,29 @@ async function check(svc) {
     const _lf = lastLog.get(svc.name);
     let _silentMs = Infinity;
     try { if (_lf && fs.existsSync(_lf)) _silentMs = Date.now() - fs.statSync(_lf).mtimeMs; } catch (_) {}
-    const _canRestart = st.failStreak >= RESTART_MIN_FAIL && _silentMs >= RESTART_LOG_SILENT_MS && Date.now() >= st.startingUntil;
+    // ── P0-4 追加（2026-10-11）：僵尸态绝对上限 ──────────────────────────
+    // 事故：3002 被 visit.recorded 模拟流量刷屏 + RSS 2.7GB 长 GC 拖成「HTTP 完全不响应
+    //   但日志每秒仍在写」的僵尸态。而上面的防误杀闸门在 failStreak>=3 时把计数重置为 0
+    //   ⇒ 计数永远到不了 maxFailStreak，_canRestart 永远为假 ⇒ 服务永不恢复。
+    //   （实测：连续 6/6 探活超时、日志持续刷新，看门狗每轮都判定「暂不重启」。）
+    // 修法：另记「连续不响应起点」，超过 ZOMBIE_FORCE_MS 一律强制重启 ——
+    //   「日志还在写」不是健康证据；刷屏日志恰恰是事件循环被拖死的伴生现象。
+    //   该判据与 _silentMs 完全解耦，不受防误杀闸门的计数重置影响。
+    //   重启后由 startingUntil（bootGraceMs）兜住，不会连续误杀。
+    if (!st.unresponsiveSince) st.unresponsiveSince = Date.now();
+    const _zombieMs = Date.now() - st.unresponsiveSince;
+    const ZOMBIE_FORCE_MS = Number(process.env.MSCMS_ZOMBIE_FORCE_MS || 10 * 60 * 1000);
+    const _canRestart =
+      (st.failStreak >= RESTART_MIN_FAIL && _silentMs >= RESTART_LOG_SILENT_MS && Date.now() >= st.startingUntil)
+      || (_zombieMs >= ZOMBIE_FORCE_MS && Date.now() >= st.startingUntil);
+    if (_zombieMs >= ZOMBIE_FORCE_MS && Date.now() >= st.startingUntil) {
+      log(`🧟 ${svc.name} 连续不响应 ${(_zombieMs / 60000).toFixed(1)}min（日志仍在写但 HTTP 全灭）→ 判僵尸态，强制重启`);
+    }
     if (_canRestart) {
-      log(`🔄 ${svc.name} 判定假死（失败${st.failStreak}次 + 日志静默${(_silentMs / 1000) | 0}s）→ 强制重启`);
+      const _why = (_zombieMs >= ZOMBIE_FORCE_MS && Date.now() >= st.startingUntil)
+        ? `僵尸态 ${(_zombieMs / 60000).toFixed(1)}min 无响应（日志仍在写，非真死）`
+        : `失败${st.failStreak}次 + 日志静默${(_silentMs / 1000) | 0}s`;
+      log(`🔄 ${svc.name} 判定假死（${_why}）→ 强制重启`);
       try {
         // 按端口找 PID 并杀掉整棵树（Windows 下 kill 单个进程会留下子进程）
         const { execSync } = require('child_process');
@@ -382,6 +403,7 @@ async function check(svc) {
         }
       } catch (e) { log(`   终止进程失败（可忽略）: ${e.message.split('\n')[0]}`); }
       st.failStreak = 0;
+      st.unresponsiveSince = 0;   // P0-4：清空僵尸起点，避免 bootGrace 结束后被立即二次强杀
       setTimeout(() => {
         launch(svc);
         const s2 = state.get(svc.name) || {};
