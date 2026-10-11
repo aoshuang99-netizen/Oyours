@@ -270,6 +270,66 @@ const state = new Map();
 // 记录每个服务最近一次 launch 的子进程日志路径，供「日志静默」判断使用
 const lastLog = new Map();
 
+// ── P0 ②（2026-10-11）：启动前语法自检 ──────────────────────────────────
+// 事故：10-10 全天宕机 10.3h —— D 盘 server.js 被同步进一个 SyntaxError，
+//   node 启动即「秒退」；而看门狗每轮无条件 spawn，形成纯粹的进程风暴（当日 38 次），
+//   真正的报错（server.js:61 SyntaxError）反而被刷屏日志淹没，长时间无人定位。
+// 修法：spawn 之前先对入口脚本跑一次 `node --check`（按 mtime 缓存，文件没改就不重检）。
+//   语法不过 ⇒ 拒绝 spawn（不再制造进程风暴）+ 输出**明确的**文件绝对路径与错误首行；
+//   文件修好后，下一轮探活自动恢复正常启动，无需人工干预。
+//
+// 安全边界（fail-safe，必须有）：仅当「命令是 node + 首参是 .js/.mjs/.cjs + 文件存在」
+//   时才检查；检查进程超时 / 被信号杀 / 任何异常 ⇒ 一律视为「通过」，
+//   退化为原有行为。绝不因本检查而少拉起一个本该健康的服务。
+const SYNTAX_TIMEOUT_MS = Number(process.env.MSCMS_WD_SYNTAX_TIMEOUT_MS || 20000);
+const _syntaxCache = new Map();   // abs path → { mtimeMs, ok, err }
+const _syntaxWarned = new Map();  // abs path → mtimeMs（同一版本只输出一次完整告警）
+
+function entryScript(svc) {
+  try {
+    if (!svc || !Array.isArray(svc.args) || !svc.args.length) return null;
+    const a0 = String(svc.args[0]);
+    if (!/\.(js|mjs|cjs)$/i.test(a0)) return null;
+    const abs = path.isAbsolute(a0) ? a0 : path.join(svc.cwd || WS, a0);
+    return fs.existsSync(abs) ? abs : null;
+  } catch (_) { return null; }
+}
+
+function syntaxCheck(svc) {
+  const abs = entryScript(svc);
+  if (!abs) return { ok: true, skipped: true, abs: null };
+  let mt = 0;
+  try { mt = fs.statSync(abs).mtimeMs; } catch (_) { return { ok: true, skipped: true, abs }; }
+  const hit = _syntaxCache.get(abs);
+  if (hit && hit.mtimeMs === mt) return Object.assign({ abs }, hit);
+  let verdict = { mtimeMs: mt, ok: true };
+  try {
+    // execFileSync：不经 shell，路径含空格/中文也不会被引号规则破坏
+    const { execFileSync } = require('child_process');
+    execFileSync(process.execPath, ['--check', abs], { timeout: SYNTAX_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    // e.status 为数字且非 0 ⇒ 真的语法错；为 null ⇒ 超时/被信号杀 ⇒ 保持 ok:true（放行）
+    if (e && typeof e.status === 'number' && e.status !== 0) {
+      // node --check 的 stderr 形如：
+      //   <文件>:<行>
+      //   <源码行>
+      //        ^^^^^^^^
+      //
+      //   SyntaxError: Unexpected token '{'
+      // 对运维最有价值的是最后那句「原因」，其次是「文件:行」。故先挑含 Error 的行，
+      // 再拼上首行 —— 无脑取前 3 行只会拿到箭头行，等于没告诉人坏在哪。
+      const lines = String(e.stderr || e.stdout || e.message || '')
+        .split('\n').map((s) => s.trim()).filter(Boolean);
+      const errLine = lines.find((l) => /Error/i.test(l)) || '';
+      const where = lines[0] || '';
+      const msg = [errLine || where, errLine ? where : ''].filter(Boolean).join(' | ');
+      verdict = { mtimeMs: mt, ok: false, err: msg || ('node --check 退出码 ' + e.status) };
+    }
+  }
+  _syntaxCache.set(abs, verdict);
+  return Object.assign({ abs }, verdict);
+}
+
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`;
   try { fs.appendFileSync(LOG, line + '\n'); } catch (_) {}
@@ -305,6 +365,22 @@ function httpOk(port, pathName, timeout = 25000) {
 }
 
 function launch(svc) {
+  // ── P0 ② 启动前语法自检（详见上方 syntaxCheck 注释）──
+  // 目的：把「文件坏了 → 每 60s 无脑重启一次、永远起不来」变成
+  //       「文件坏了 → 明确告警一次、不制造进程风暴、修好即自动恢复」。
+  const sc = syntaxCheck(svc);
+  if (!sc.ok) {
+    if (_syntaxWarned.get(sc.abs) !== sc.mtimeMs) {
+      _syntaxWarned.set(sc.abs, sc.mtimeMs);
+      log(`⛔ ${svc.name} 入口脚本语法自检失败，拒绝拉起（避免进程风暴）`);
+      log(`   文件：${sc.abs}`);
+      log(`   错误：${sc.err}`);
+      log(`   → 修正该文件后，下一轮探活会自动恢复启动（无需重启看门狗）。`);
+    } else {
+      log(`⛔ ${svc.name} 仍被语法自检拦下（${path.basename(sc.abs)} 未变动）`);
+    }
+    return null;
+  }
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outPath = path.join(LOG, '..', `${svc.logName}-${stamp}.log`);
   lastLog.set(svc.name, outPath);
@@ -334,7 +410,10 @@ async function check(svc) {
       return;
     }
     log(`❌ ${svc.name} 端口未监听 → 拉起`);
-    launch(svc);
+    // P0 ②：launch() 返回 null = 被语法自检拦下。此时**不能**进入 bootGrace，
+    //   否则要等满 bootGraceMs（3002 是 15min）才重试。跳过 bootGrace，
+    //   下一轮 60s 后重新自检 —— 文件一修好就立刻拉起。
+    if (launch(svc) === null) { st.failStreak = 0; state.set(svc.name, st); return; }
     st.startingUntil = Date.now() + svc.bootGraceMs;
     st.failStreak = 0;
     state.set(svc.name, st);
@@ -405,7 +484,8 @@ async function check(svc) {
       st.failStreak = 0;
       st.unresponsiveSince = 0;   // P0-4：清空僵尸起点，避免 bootGrace 结束后被立即二次强杀
       setTimeout(() => {
-        launch(svc);
+        // P0 ②：语法自检拦下时不进入 bootGrace，下一轮立刻重检（文件修好即拉起）
+        if (launch(svc) === null) return;
         const s2 = state.get(svc.name) || {};
         s2.startingUntil = Date.now() + svc.bootGraceMs;
         state.set(svc.name, s2);
