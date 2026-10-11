@@ -46,17 +46,44 @@ class HashnodeProvider extends SocialProvider {
     };
   }
 
+  /**
+   * 凭据**格式**校验（同步、零网络）。
+   * ⚠️ Hashnode 未公开 Token 的固定格式（实际存在 UUID / JWT 两种形态），故此处用**保守判据**：
+   *    只拦「明显占位 / 截断值」，**不编造官方格式**；publicationId 同为保守长度闸门。
+   *
+   * 【2026-09-20 F3 延伸】原 `configStatus()` 里 `authorized: hasCreds` 与 `configured` 完全冗余，
+   *   占位值会直接假绿。此处补格式闸门，**仅收紧 `authorized`**。
+   */
+  _checkCredFormat(c) {
+    const tk = String(c.token || '');
+    if (!/^[A-Za-z0-9_.-]{16,}$/.test(tk)) {
+      return {
+        ok: false,
+        reason: `HASHNODE_TOKEN 格式可疑（当前 ${tk.length} 字符）⇒ 应为 16 位以上的 UUID 或 JWT 串；当前值过短或含非法字符，疑似占位/截断值，请到 Dashboard → Settings → Developer 重新生成`,
+      };
+    }
+    const pid = String(c.publicationId || '');
+    if (!/^[A-Za-z0-9_-]{8,}$/.test(pid)) {
+      return { ok: false, reason: `HASHNODE_PUBLICATION_ID 格式可疑（当前 ${pid.length} 字符，应为 8 位以上的字母数字串）` };
+    }
+    return { ok: true };
+  }
+
   configStatus() {
     const c = this._config();
     // Hashnode 文章必须归属某个 publication，故需 token + publicationId
     const hasCreds = !!(c.token && c.publicationId);
+    const fmt = hasCreds ? this._checkCredFormat(c) : { ok: false, reason: null };
     return {
       identifier: 'hashnode',
       configured: hasCreds,
-      authorized: hasCreds,
-      reason: hasCreds
-        ? null
-        : '尚未配置 HASHNODE_TOKEN / HASHNODE_PUBLICATION_ID。免费获取：Hashnode → Dashboard → Settings → Developer → Generate Token；Publication ID 见 出版物设置 URL',
+      format: fmt.ok ? 'ok' : 'invalid',
+      authorized: hasCreds && fmt.ok,
+      reachable: 'unknown',
+      probeAt: null,
+      reason: !hasCreds
+        ? '尚未配置 HASHNODE_TOKEN / HASHNODE_PUBLICATION_ID。免费获取：Hashnode → Dashboard → Settings → Developer → Generate Token；Publication ID 见 出版物设置 URL'
+        : (fmt.ok ? null : fmt.reason),
     };
   }
 

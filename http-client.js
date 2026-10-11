@@ -225,7 +225,39 @@ async function _viaUnlocker(url, opts, bdUrl) {
   }
 }
 
+// ── 死出口熔断（2026-10-09）─────────────────────────────────────────────
+// 背景：出口代理池可能只剩少数几条，且其中一条已死（如36.137.204.11:8002
+//   实测 http=000 / 超时 20s）。而 fetchExt 的单代理路径是「失败即抛」，
+//   于是这一个死代理会让**所有**经它出网的请求全灭 —— post-metrics 互动回收
+//   表现为 "fetch failed"，看起来像网络故障，实际是单点代理死亡。
+// 修法：给每个显式 proxyUrl 记失败账；连续失败达阈值即对该出口熔断，
+//   后续请求直接改走全局代理（HTTP(S)_PROXY，通常是本机常驻出口），
+//   并在日志里显式告警 —— 保证「单点故障不扩散」且错误可归因。
+const _DEAD_PROXY_FAILS = new Map();   // proxyUrl -> 连续失败次数
+const _DEAD_PROXY_UNTIL = new Map();  // proxyUrl -> 熔断截止时间戳
+const PROXY_CIRCUIT_THRESHOLD = Number(process.env.MSCMS_PROXY_CIRCUIT_THRESHOLD || 2);
+const PROXY_CIRCUIT_COOLDOWN_MS = Number(process.env.MSCMS_PROXY_CIRCUIT_COOLDOWN_MS || 5 * 60 * 1000);
+
+function _proxyCircuitOpen(proxyUrl) {
+  const until = _DEAD_PROXY_UNTIL.get(proxyUrl) || 0;
+  return Date.now() < until;
+}
+function _noteProxyFail(proxyUrl) {
+  const n = (_DEAD_PROXY_FAILS.get(proxyUrl) || 0) + 1;
+  _DEAD_PROXY_FAILS.set(proxyUrl, n);
+  if (n >= PROXY_CIRCUIT_THRESHOLD && !_proxyCircuitOpen(proxyUrl)) {
+    _DEAD_PROXY_UNTIL.set(proxyUrl, Date.now() + PROXY_CIRCUIT_COOLDOWN_MS);
+    _DEAD_PROXY_FAILS.set(proxyUrl, 0);
+    console.warn(`[proxy-circuit] ⛔ 出口 ${proxyUrl} 连续失败 ${n} 次 → 熔断 ${Math.round(PROXY_CIRCUIT_COOLDOWN_MS / 60000)} 分钟，改走全局代理`);
+  }
+}
+function _noteProxyOk(proxyUrl) { _DEAD_PROXY_FAILS.set(proxyUrl, 0); }
+
 async function fetchExt(url, opts = {}, proxyUrl) {
+  // ⛔ 熔断中的出口直接跳过，不再浪费 20s 超时
+  if (proxyUrl && !BD_UNLOCKER_RE.test(proxyUrl) && _proxyCircuitOpen(proxyUrl)) {
+    proxyUrl = null;   // 回落全局代理
+  }
   // ① 显式指定 bdunlocker 出口
   if (proxyUrl && BD_UNLOCKER_RE.test(proxyUrl)) {
     return _viaUnlocker(url, opts, proxyUrl);
@@ -247,9 +279,16 @@ async function fetchExt(url, opts = {}, proxyUrl) {
     fetchOpts.signal = controller.signal;
   }
   const timer = setTimeout(() => { if (controller) controller.abort(); }, opts.timeout || DEFAULT_TIMEOUT_MS);
+  const _usedPx = proxyUrl;   // 记录本次真实使用的出口（可能已回落为 null）
   try {
-    if (agent) return await undiciFetch(url, { ...fetchOpts, dispatcher: agent });
-    return await undiciFetch(url, fetchOpts);
+    let _r;
+    if (agent) _r = await undiciFetch(url, { ...fetchOpts, dispatcher: agent });
+    else _r = await undiciFetch(url, fetchOpts);
+    if (_usedPx) _noteProxyOk(_usedPx);
+    return _r;
+  } catch (e) {
+    if (_usedPx) _noteProxyFail(_usedPx);
+    throw e;
   } finally {
     clearTimeout(timer);
   }

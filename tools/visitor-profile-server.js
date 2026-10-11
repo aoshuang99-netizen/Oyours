@@ -33,7 +33,10 @@ const { spawn } = require('child_process');
 
 const PORT = Number(process.env.VISITOR_PROFILE_PORT || 3012);
 const WS = 'C:\\Users\\AS\\WorkBuddy\\2026-06-13-19-42-19';
-const NODE = 'C:\\Users\\AS\\.workbuddy\\binaries\\node\\versions\\22.22.2-2\\node.exe';
+// 【2026-09-14】原为硬编码 `…\node\versions\22.22.2-2\node.exe`（该目录已不存在）。
+// 本文件的 NODE 目前是死代码（声明后未使用），但保留正确语义防止后续被误用：
+// 需要 node 解释器时一律用 process.execPath（正在运行本进程的那个 node），不要硬编码版本号。
+const NODE = process.execPath;
 const DATA_DIR = process.env.VISITOR_PROFILE_DATA || 'D:\\Aliens_eye-mscms';
 const REPORT_DIR = path.join(WS, 'reports');
 const INTERACTIONS = path.join(DATA_DIR, 'interactions.json');

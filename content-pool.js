@@ -923,6 +923,29 @@ const TUMBLR_POOL = [
   }
 ];
 
+// ── 标签归一化（统一字段名差异）────────────────────
+// 背景：TUMBLR_POOL 使用 `tags`，其余 6 个池使用 `hashtags`。
+// 历史缺陷：getContent() 只读 item.hashtags → tumblr 标签被整体丢弃（发布恒空标签）。
+function normalizeTagList(input) {
+  if (!Array.isArray(input)) {
+    if (input && typeof input === 'string') input = input.split(',');
+    else return [];
+  }
+  const out = [];
+  const seen = new Set();
+  for (const raw of input) {
+    if (raw == null) continue;
+    let t = String(raw).trim().toLowerCase().replace(/^#+/, '').replace(/\s+/g, ' ');
+    if (!t) continue;
+    if (t.length > 32) t = t.slice(0, 32).trim();
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= 8) break;   // 上限 8 个
+  }
+  return out;
+}
+
 // ── 内容池管理器 ──────────────────────────────────
 class ContentPool {
   constructor(poolDir = 'D:/MSCMS-Content/pool') {
@@ -1006,13 +1029,21 @@ class ContentPool {
     this.usedIndices[platform].add(idx);
     const item = pool[idx];
 
+    // 兼容 tumblr(`tags`) 与其余池(`hashtags`) 两种字段名
+    const tags = normalizeTagList(item.tags || item.hashtags);
+
     return {
+      // 确定性 id：同一 pool 的同一 index 恒等 → 可复现、非伪造
+      id: item.id || `pool_${platform}_${idx}`,
+      content_type: item.content_type || 'text',
       title: item.title || null,
       body: item.body,
       text: item.body,
       topic: item.topic || 'general',
       tone: item.tone || 'neutral',
-      hashtags: item.hashtags || [],
+      hashtags: tags,
+      tags: tags,
+      target_audience: item.target_audience || null,
       platform,
       source: 'workbuddy-pool',
       pool_index: idx,
@@ -1067,4 +1098,4 @@ class ContentPool {
   }
 }
 
-module.exports = { ContentPool, REDDIT_POOL, INSTAGRAM_POOL, TIKTOK_POOL, X_POOL, DISCORD_POOL, FACEBOOK_POOL };
+module.exports = { ContentPool, REDDIT_POOL, INSTAGRAM_POOL, TIKTOK_POOL, X_POOL, DISCORD_POOL, FACEBOOK_POOL, TUMBLR_POOL, normalizeTagList };

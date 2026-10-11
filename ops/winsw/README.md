@@ -20,7 +20,7 @@
 ## 1. 端口 → 入口脚本 → 环境变量 映射（从看门狗 SERVICES 数组逐字提取）
 
 `WS = C:\Users\AS\WorkBuddy\2026-06-13-19-42-19`
-`NODE = C:\Users\AS\\binaries\node\versions 下最新存在的 node.exe`（看门狗运行时解析）
+`NODE = C:\Users\AS\.workbuddy\binaries\node\versions 下最新存在的 node.exe`（看门狗运行时解析）
 
 所有子进程继承的共享 BASE_ENV：
 `ELECTRON_RUN_AS_NODE=` · `NODE_TLS_REJECT_UNAUTHORIZED=0` · `NODE_PATH=%WS%\node_modules` ·
@@ -37,7 +37,7 @@
 | exitguard | 20779 | `node tools/exit-guard.js` | `WS` | (无) | `/health` |
 | visitor | 3012 | `node tools/visitor-profile-server.js` | `WS` | `MSCMS_DATASTORE_WRITE_MODULES=,,` | `/api/status` |
 | sync | 3013 | `node tools/sync-desktop.js` | `WS` | `MSCMS_SYNC_PORT=3013` | `/health` |
-| mpt | 8080 | `%PY_MPT% -m uvicorn app.asgi:app --app-dir . --host  --port 8080 --log-level warning`（`PY_MPT=C:\Users\AS\\binaries\python\envs\mpt\Scripts\python.exe`） | `D:\MoneyPrinterTurbo` | (无) | `/docs` |
+| mpt | 8080 | `%PY_MPT% -m uvicorn app.asgi:app --app-dir . --host  --port 8080 --log-level warning`（`PY_MPT=C:\Users\AS\.workbuddy\binaries\python\envs\mpt\Scripts\python.exe`） | `D:\MoneyPrinterTurbo` | (无) | `/docs` |
 | kkmatch | 8001 | `D:\kk-match-backend\.venv\Scripts\pythonw.exe _run.py` | `D:\kk-match-backend` | (无) | `/health` |
 
 > 以上映射是**只读参考**。实际启动仍由看门狗完成；改启动参数请改 `tools/mscms-watchdog.js`

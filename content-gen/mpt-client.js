@@ -1,7 +1,28 @@
+/**
+ * ⚠️ [2026-09-17 标注] 本文件**当前零引用**（全仓 grep 仅自身命中）。
+ * 真正在用的 MPT 客户端是 `content-gen/mpt-bridge.js`（被 providers.js:90 引用）。
+ * 保留本文件仅供历史参考；已补齐 voice_name 必填项，避免将来被误用时踩同一个坑：
+ *   MPT 的 TTS 在 voice_name 为空字符串时直接抛 `Invalid voice ''` 并令整单失败
+ *   （2026-09-17 实测，任务在 audio 阶段 state=-1）。
+ * ⚠️ 新增调用请一律使用 mpt-bridge.js。
+ */
 const http = require('http');
 
 const MPT_HOST = '127.0.0.1';
 const MPT_PORT = 8080;
+
+/**
+ * 按语言挑选默认 TTS 语音（与 mpt-bridge.js 保持一致）。
+ * 实测 azure_tts_v1 无需 Azure key 即可合成。
+ */
+function defaultVoiceFor(language) {
+  const lang = String(language || '').toLowerCase();
+  if (lang.startsWith('zh')) return 'zh-CN-XiaoxiaoNeural';
+  if (lang.startsWith('en')) return 'en-US-JennyNeural';
+  if (lang.startsWith('ja')) return 'ja-JP-NanamiNeural';
+  if (lang.startsWith('ko')) return 'ko-KR-SunHiNeural';
+  return 'zh-CN-XiaoxiaoNeural';
+}
 
 /**
  * POST to MPT API
@@ -100,9 +121,11 @@ async function generateVideo(opts = {}) {
     terms: providedTerms,
     aspect = '9:16',
     language = 'zh-CN',
+    voiceName = null,
   } = opts;
 
   if (!subject) throw new Error('subject required');
+  const voice = voiceName || defaultVoiceFor(language);
 
   let script = providedScript;
   if (!script) {
@@ -122,6 +145,7 @@ async function generateVideo(opts = {}) {
     video_aspect: aspect,
     video_source: 'openai_image',
     video_language: language,
+    voice_name: voice,   // 必填：空值 → TTS 阶段 `Invalid voice ''` → 整单失败
     subtitle_enabled: true,
   });
 
@@ -164,8 +188,8 @@ async function generateVideo(opts = {}) {
   throw new Error(`MPT video timeout after ${maxAttempts * 5}s`);
 }
 
-// Test
-(async () => {
+// Test（仅直接运行本文件时执行；被 require 时不触发，避免误跑消耗 LLM 配额）
+if (require.main === module) (async () => {
   try {
     console.log('Testing MPT connectivity...');
     const ping = await mptGet('/ping');

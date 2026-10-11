@@ -8,8 +8,8 @@ $ErrorActionPreference = 'Stop'
 [Environment]::SetEnvironmentVariable("PORT", "3002", "Process")
 
 $workDir = "C:\Users\AS\WorkBuddy\2026-06-13-19-42-19"
-$nodeExe = "C:\Users\AS\\binaries\node\versions\22.22.2\node.exe"
-$nodeModules = "C:\Users\AS\\binaries\node\workspace\node_modules"
+$nodeExe = "C:\Users\AS\.workbuddy\binaries\node\versions\22.22.2-6\node.exe"
+$nodeModules = "C:\Users\AS\.workbuddy\binaries\node\workspace\node_modules"
 
 Push-Location $workDir
 

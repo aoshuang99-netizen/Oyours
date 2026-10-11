@@ -4,7 +4,7 @@
  * ──────────────────────────────────────────────────────────────────
  * 问题背景：MSCMS v14 发布器的真实瓶颈是「没有可用住宅出口」。
  *   proxy-pool.json 里 90 条，0 条可用；唯一启用的是数据中心 IP
- *   ()，被 Tumblr 网络层重置 → 发布零 reach。
+ *   (104.36.71.219)，被 Tumblr 网络层重置 → 发布零 reach。
  *
  * 本脚本是「GitHub 免费方案」的落地：从多个 GitHub 托管的开源免费代理
  * 列表拉取候选，用 curl 实测每条代理的【真实出口 IP】(ipify) 与
@@ -217,7 +217,7 @@ foo 192.168.1.1:1080 bar
   console.assert(ps.length === 4, `期望 4 条去重代理，实际 ${ps.length}`);
   console.assert(ps[0].host === '1.2.3.4' && ps[0].port === 8080, '首条解析错误');
 
-  const existing = [{ url: 'http://:10808', name: 'default-relay', enabled: true }];
+  const existing = [{ url: 'http://127.0.0.1:10808', name: 'default-relay', enabled: true }];
   const validated = [
     { host: '1.2.3.4', port: 8080, exitIp: '1.2.3.4', tumblr: true, ms: 100 },
     { host: '8.8.8.8', port: 3128, exitIp: '8.8.8.8', tumblr: false, ms: 200 },
@@ -226,7 +226,7 @@ foo 192.168.1.1:1080 bar
   console.assert(added === 2, `期望新增 2，实际 ${added}`);
   console.assert(pool.find(e => e.url === 'http://1.2.3.4:8080').tumblr === true, 'tumblr 标记错误');
   console.assert(pool.length === 3, `期望 pool=3，实际 ${pool.length}`);
-  console.assert(pool.find(e => e.url === 'http://:10808'), '不应覆盖既有条目');
+  console.assert(pool.find(e => e.url === 'http://127.0.0.1:10808'), '不应覆盖既有条目');
   console.log('[selfcheck] 全部断言通过 ✅');
   return true;
 }

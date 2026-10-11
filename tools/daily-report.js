@@ -29,7 +29,10 @@ const STATIC_DIRS = [path.join(__dirname, '..', 'reports'), 'D:/MSCMS-Desktop/re
 
 const argv = process.argv.slice(2);
 const dateArg = (() => { const i = argv.indexOf('--date'); return i >= 0 ? argv[i + 1] : null; })();
-const DAY = dateArg || new Date().toISOString().slice(0, 10);
+// 日切必须按业务时区 GMT+8（源时间戳为 UTC，直接 slice(0,10) 会把 00:00~08:00 的业务数据
+// 算到前一天，导致「今日发布」等计数严重偏低 —— 2026-09-26 实测：UTC 口径 7 条 vs GMT+8 口径 143 条）。
+const cnDay = (t) => new Date((t instanceof Date ? t.getTime() : Date.parse(t)) + 8 * 3600e3).toISOString().slice(0, 10);
+const DAY = dateArg || cnDay(new Date());
 
 function readJson(name, fallback) {
   try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, name), 'utf8')); }
@@ -37,7 +40,12 @@ function readJson(name, fallback) {
 }
 const arr = (v) => Array.isArray(v) ? v : (v && Array.isArray(v.items) ? v.items : []);
 const num = (v) => (typeof v === 'number' && isFinite(v)) ? v : (parseFloat(v) || 0);
-const inDay = (iso, d) => { const s = String(iso || ''); return s.slice(0, 10) === d; };
+const inDay = (iso, d) => {
+  const s = String(iso || '');
+  if (!s) return false;
+  const t = Date.parse(s);
+  return isFinite(t) ? cnDay(s) === d : s.slice(0, 10) === d;
+};
 const pct = (a, b) => b > 0 ? Math.round(a / b * 100) : 0;
 
 // ─────────────────────────── 采集 ───────────────────────────
@@ -69,15 +77,25 @@ const quarantined = arr(readJson('content_quarantine.json', []));
 const quarantinedPublished = quarantined.filter(c => c._was_published).length;
 
 // 发布
+// [ACCEL-2026-09-22 · P0-3] 「今日发布」拆成两个可证伪口径：
+//   pToday   = published_at 落在当日的全部记录
+//   pTodayOk = 其中 publish_url 非空的**真实成功**条数（判成败的唯一判据）
+//   二者差值 = 当日失败/无 URL 记录，彻底消除「日报说 2 条、publish.json 有 127 条」式口径分裂。
 const pToday = publish.filter(p => inDay(p.published_at, DAY));
+const pTodayOk = pToday.filter(p => p.publish_url);
 const reachTotal = publish.reduce((s, p) => s + num(p.reach), 0);
 const reachToday = pToday.reduce((s, p) => s + num(p.reach), 0);
 const likesTotal = publish.reduce((s, p) => s + num(p.likes), 0);
 const commentsTotal = publish.reduce((s, p) => s + num(p.comments), 0);
 const pGarbleToday = pToday.filter(p => GARBLE.includes(String(p.content_title || '').trim().toLowerCase())).length;
+// [ACCEL-2026-09-22 · P0-3] 覆盖口径统一为「与当前账号池的交集」。
+//   原 pubAccts = publish 全量去重 account_id ⇒ 混入已删除/历史账号
+//   ⇒ 实测出现「发布覆盖 150/123」这种 >100% 的荒谬值，直接摧毁日报可信度。
+//   现与 neverPub 共用同一集合，保证 pubAccts + neverPub === accTotal（恒等式可自检）。
 const publishedAcctIds = new Set(publish.map(p => p.account_id));
-const pubAccts = publishedAcctIds.size;
-const neverPub = accTotal - accounts.filter(a => publishedAcctIds.has(a.id)).length;
+const pubAccts = accounts.filter(a => publishedAcctIds.has(a.id)).length;
+const pubAcctsAllTime = publishedAcctIds.size;   // 历史口径（含已删除账号），仅供对照
+const neverPub = accTotal - pubAccts;
 
 // ── P1 抓取链路：热点池（trends.json 由 tools/trends-scraper.js 落盘）──
 const trends = arr(readJson('trends.json', []));
@@ -101,8 +119,8 @@ accounts.forEach(a => {
 const alerts = [];
 if (cGarbleNewToday > 0) alerts.push({ level: 'P0', msg: `今日仍生成垃圾内容 ${cGarbleNewToday} 条（标题为 400 Bad Request / Auto-generated content），生成链路存在故障，切勿让它们进入发布队列` });
 if (pGarbleToday > 0) alerts.push({ level: 'P0', msg: `今日把垃圾内容发布到线上 ${pGarbleToday} 条，已污染真实账号的博文历史` });
-if (reachToday === 0 && pToday.length > 0) alerts.push({ level: 'P1', msg: `今日发布 ${pToday.length} 条但 reach=0，内容可能无曝光（限流/内容质量）` });
-if (pToday.length === 0) alerts.push({ level: 'P1', msg: '今日零发布，发布链路未运转' });
+if (reachToday === 0 && pTodayOk.length > 0) alerts.push({ level: 'P1', msg: `今日真实发布 ${pTodayOk.length} 条但 reach=0，内容可能无曝光（限流/内容质量）` });
+if (pTodayOk.length === 0) alerts.push({ level: 'P1', msg: '今日零成功发布，发布链路未运转' });
 if (cNewToday === 0) alerts.push({ level: 'P2', msg: '今日零内容生成，生成链路未运转' });
 if (trendsToday === 0) alerts.push({ level: 'P1', msg: '今日零热点入库，抓取链路未运转（内容将失去真实来源，reach 难以提升）' });
 
@@ -158,7 +176,26 @@ const report = {
     accountsPublished: pubAccts, accountsNeverPublished: neverPub,
   },
   causal: { movesToday: phaseMovesToday, movesDetail: phaseMoveDetail },
-  dau: { entries: dauLog.length, today: dauLog.filter(d => inDay(d.createdAt || d.date || d.at, DAY)).length },
+  // [ACCEL-2026-09-22 · P0-3] DAU 区块补齐「真实 / 自驱 / 目标 / 缺口」四要素。
+  //   原实现只数记录条数（entries / today），**从不显示真实 DAU 值**
+  //   ⇒ 「离目标还差多远」在日报里无从得知，这正是加速失焦的度量根因之一。
+  dau: (() => {
+    const _todayLogs = dauLog.filter(d => inDay(d.createdAt || d.date || d.at || d.timestamp, DAY));
+    const _last = _todayLogs.length ? _todayLogs[_todayLogs.length - 1] : (dauLog[dauLog.length - 1] || {});
+    const _real = num(_last.realDAU !== undefined && _last.realDAU !== null ? _last.realDAU : _last.currentDAU);
+    const _tgt = num(_last.targetDAU);
+    return {
+      entries: dauLog.length,
+      today: _todayLogs.length,
+      realDAU: _real,
+      systemDAU: num(_last.systemDAU),
+      rawTodayDAU: num(_last.rawTodayDAU),
+      targetDAU: _tgt,
+      gap: Math.max(0, _tgt - _real),
+      targetSource: _last.targetSource || 'n/a',
+      lastAt: _last.createdAt || _last.timestamp || null,
+    };
+  })(),
   nurture: { logsToday: nurtureLogs.filter(l => inDay(l.createdAt || l.at || l._ts, DAY)).length },
   alerts,
 };
@@ -219,14 +256,14 @@ ${kv('已隔离垃圾', quarantined.length, quarantinedPublished > 0 ? `${quaran
 <div class="grid">
 ${kv('热点池', trends.length, `今日+${trendsToday} · 业务相关 ${trendsRel} · 来源 ${Object.keys(trendsBySource).join('/') || '无'}`)}
 ${kv('质检单轨 v2', withQ2.length ? `${q2Pass}/${withQ2.length} 通过` : '存量内容无 v2 评分', withQ2.length ? `拦截 ${withQ2.length - q2Pass} 条未达 60 分` : '新生成内容启用')}
-${kv('今日发布', pToday.length, `累计 ${publish.length}`)}
+${kv('今日发布(成功)', pTodayOk.length, `当日记录 ${pToday.length} 条 · 累计 ${publish.length}`)}
 ${kv('发布回采', report.harvest.trackedPosts + ' 帖', report.harvest.trackedPosts
     ? `真实互动 ${report.harvest.totalNotes} · 有互动 ${report.harvest.withNotes} 帖 · 已采 ${report.harvest.blogs}/${report.harvest.totalBlogs} 博客`
     : (report.harvest.updatedAt ? '已执行但 0 条（Tumblr 429 限流 / BD 桥 502）' : '尚未执行'))}
 ${kv('今日 reach', reachToday, `累计 ${reachTotal}`)}
 ${kv('累计 likes', likesTotal, '')}
 ${kv('累计 comments', commentsTotal, '')}
-${kv('已发布账号', pubAccts, `占 ${pct(pubAccts, accTotal)}%`)}
+${kv('已发布账号', pubAccts, `占 ${pct(pubAccts, accTotal)}% · 历史口径(含已删账号) ${pubAcctsAllTime}`)}
 ${kv('从未发布账号', neverPub, `占 ${pct(neverPub, accTotal)}% · 沉睡资产`)}
 </div>
 
@@ -235,7 +272,8 @@ ${kv('从未发布账号', neverPub, `占 ${pct(neverPub, accTotal)}% · 沉睡�
 
 <h2>其他链路</h2>
 <div class="grid">
-${kv('DAU 记录(累计)', report.dau.entries, `今日 ${report.dau.today}`)}
+${kv('真实 DAU', report.dau.realDAU, `目标 ${report.dau.targetDAU}(${report.dau.targetSource}) · 缺口 ${report.dau.gap}`)}
+${kv('DAU 记录(累计)', report.dau.entries, `今日 ${report.dau.today} · 自驱 system=${report.dau.systemDAU} / raw含自驱=${report.dau.rawTodayDAU}`)}
 ${kv('养号日志(今日)', report.nurture.logsToday, '')}
 </div>
 </body></html>`;
@@ -259,8 +297,9 @@ const summary = [
   `账号 ${accTotal}（今日+${accNewToday}，活跃 ${accActiveToday}，健康均分 ${healthAvg}）`,
   `内容 ${content.length}（今日+${cNewToday}，垃圾累计 ${cGarbleTotal}${withQ2.length ? `，质检 v2 通过 ${q2Pass}/${withQ2.length}` : ''}）`,
   `热点池 ${trends.length} 条（今日+${trendsToday}，业务相关 ${trendsRel}）`,
-  `发布 今日 ${pToday.length} 条 / reach +${reachToday}（累计 ${publish.length} / ${reachTotal}，likes ${likesTotal}）`,
+  `发布 今日成功 ${pTodayOk.length} 条（记录 ${pToday.length}）/ reach +${reachToday}（累计 ${publish.length} / ${reachTotal}，likes ${likesTotal}）`,
   `发布覆盖 ${pubAccts}/${accTotal} 账号，${neverPub} 个从未发布`,
+  `真实 DAU ${report.dau.realDAU}/${report.dau.targetDAU}（缺口 ${report.dau.gap}，自驱 system=${report.dau.systemDAU} 不计入）`,
   `因果推进 ${phaseMovesToday} 次`,
   `出口 ${exits.uniqueExitIps} 个独立公网 IP（${exits.cooling} 个冷却中）${exits.atRisk ? ' ⚠️单一出口=429空转风险' : ''}`,
   alerts.length ? `告警 ${alerts.length} 条：` + alerts.slice(0, 3).map(a => `[${a.level}] ${a.msg}`).join(' | ') : '无告警',

@@ -620,6 +620,16 @@ class TumblrPublisher {
     //   既恢复互动回采，又保持「同账号同 IP」的防关联一致性。
     //   仅在确实解析不到出口时（px=null）才退回全局路由。
     const px = (this._proxyResolver && accountId) ? this._proxyResolver(accountId) : null;
+    // ── 出口合法性校验（2026-10-09）────────────────────────────────────
+    // 只做一件事：拦住**协议层面就不是 HTTP 代理**的值。
+    // 已死的代理（如当前全部 20xxx CF 出口实测 http=000）不在这里管 ——
+    // 它们是合法代理，只是不可用，应交给 http-client 的熔断器按失败次数
+    // 自动降级到全局中继；提前一刀切会把"代理类型合法但暂时不通"
+    // 和"压根不是代理"混为一谈，反而掩盖问题。
+    const _globalPx = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || null;
+    let _pxFinal = px;
+    if (_pxFinal && !/^https?:\/\//i.test(String(_pxFinal))) _pxFinal = null;  // 非 http 协议
+    if (_pxFinal && _globalPx && _pxFinal === _globalPx) _pxFinal = null;      // 与全局同源则交回全局
     // 外层：吸收单代理高并发下的偶发隧道重置（fetch failed / conn reset）——重试 2 次，每次间隔 1.5s
     // 内层：429 指数退避（最多 5 次，尊重 Retry-After）
     let netAttempt = 0;
@@ -632,7 +642,7 @@ class TumblrPublisher {
       }
       let r;
       try {
-        r = await fetchExt(fullUrl, { method: opts.method, headers, body }, px);
+        r = await fetchExt(fullUrl, { method: opts.method, headers, body }, _pxFinal);
       } catch (e) {
         // 隧道抖动（fetch failed / ECONNRESET 等）—— 重试一次再放弃
         if (this._proxyReporter && px) this._proxyReporter(px, { ok: false, status: 0, err: String(e.message || e).slice(0, 80) });
@@ -655,7 +665,14 @@ class TumblrPublisher {
       let json = {};
       try { json = JSON.parse(text); } catch (_) {}
       if (!r.ok) {
-        if (this._proxyReporter && px) this._proxyReporter(px, { ok: false, status: r.status, err: 'http_' + r.status });
+        // 【2026-09-15 N2 伴生修复】401/403 是「账号 token / 权限」问题，**与出口 IP 无关**。
+        // 原实现把它一并上报为出口失败 → 白白冷却一条完全健康的出口
+        // （实测：一次 401 让 2 条出口各冷却 60~120s，而出口容量正是本系统最紧张的资源）。
+        // 现在只上报真正的出口相关失败：429（限流）/ 网络错误 / 5xx。
+        const proxyRelated = !(r.status === 401 || r.status === 403);
+        if (this._proxyReporter && px && proxyRelated) {
+          this._proxyReporter(px, { ok: false, status: r.status, err: 'http_' + r.status });
+        }
         const err = new Error(`Tumblr ${opts.path} ${r.status}: ${text.slice(0, 300)}`);
         err.status = r.status; err.body = json; err.isRateLimited = (r.status === 429);
         throw err;

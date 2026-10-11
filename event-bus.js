@@ -5,7 +5,7 @@
  * 基于 Node.js EventEmitter，0 外部依赖
  * 
  * 7 条因果链事件:
- *   account.ed  (S1注册 → S3养号)
+ *   account.registered  (S1注册 → S3养号)
  *   account.healthy     (S3养号 → S5发布)
  *   content.generated   (S4内容 → S5发布)
  *   post.published      (S5发布 → S6营销)
@@ -39,7 +39,7 @@ class EventBus {
    * 订阅事件
    * @param {string} event - 事件名
    * @param {string} subscriber - 订阅者名称（模块名）
-   * @param {} handler - 处理函数 (data) => void | Promise
+   * @param {function} handler - 处理函数 (data) => void | Promise
    */
   on(event, subscriber, handler) {
     const wrapped = async (data) => {
@@ -226,7 +226,7 @@ class EventBus {
 
 // 7 条因果链事件常量
 const CAUSAL_EVENTS = [
-  'account.ed',
+  'account.registered',
   'account.healthy',
   'content.generated',
   'post.published',

@@ -13,6 +13,9 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const { EventEmitter } = require('events');
+// [P3-C5] 视频质检（时长/分辨率/体积/首帧非黑）。独立模块，避免与 video-render 形成循环依赖。
+const { checkVideo } = require('./video-quality.js');
 
 function findFfmpeg() {
   const candidates = [
@@ -43,8 +46,10 @@ function findFont() {
   return 'C:/Windows/Fonts/arial.ttf';
 }
 
-class VideoRender {
+// [P2-C3] 继承 EventEmitter：渲染完成需通知外部回写内容记录的 content_type/video_url_local
+class VideoRender extends EventEmitter {
   constructor(dataStore, opts = {}) {
+    super();
     this.dataStore = dataStore;
     this.ffmpegPath = opts.ffmpegPath || findFfmpeg();
     this.fontPath = opts.fontPath || findFont();
@@ -52,6 +57,8 @@ class VideoRender {
     this.bgImageDir = opts.bgImageDir || 'D:/MSCMS-Content/bg';
     if (!fs.existsSync(this.outDir)) fs.mkdirSync(this.outDir, { recursive: true });
     if (!fs.existsSync(this.bgImageDir)) fs.mkdirSync(this.bgImageDir, { recursive: true });
+    // [P3-C5] 质检阈值覆盖（默认见 video-quality.js 的 DEFAULT_LIMITS）
+    this.qcLimits = opts.qcLimits || null;
     this._queue = [];
     this._running = false;
     console.log(`[VideoRender] ffmpeg=${this.ffmpegPath} font=${this.fontPath} out=${this.outDir}`);
@@ -98,7 +105,9 @@ class VideoRender {
   _renderOne(req) {
     return new Promise((resolve, reject) => {
       const id = req.id || `vid-${Date.now()}`;
-      const duration = Math.max(3, Math.min(10, parseInt(req.duration, 10) || 8));
+      // [P3-C5] 下限提到 5 —— 质检要求时长 ≥5s，原下限 3 会被自己的质检拒掉；
+      //   上限放宽到 60，供调度器按平台需要（Tumblr 建议 15~30s）显式指定。
+      const duration = Math.max(5, Math.min(60, parseInt(req.duration, 10) || 8));
       const lines = Array.isArray(req.lines) && req.lines.length
         ? req.lines.map(l => this._sanitizeText(l))
         : [this._sanitizeText(req.title || '今日热点')];
@@ -148,14 +157,31 @@ class VideoRender {
         }
         const ok = fs.existsSync(outPath);
         const size = ok ? fs.statSync(outPath).size : 0;
+
+        // [P3-C5] 渲染完成后立即质检。
+        //   degraded=true 表示「质检工具不可用」，那不是视频不合格 —— 放行但标记，
+        //   避免 ffmpeg 探针故障把整条视频链路全量拒掉。
+        let qc = null;
+        if (ok) {
+          try {
+            qc = checkVideo(outPath, { ffmpegPath: this.ffmpegPath, limits: this.qcLimits || undefined });
+          } catch (e) {
+            qc = { ok: false, reason: 'qc_error', degraded: true, detail: e.message, checks: [], meta: null, luma: null };
+          }
+        }
+        const pass = ok && (!qc || qc.ok || qc.degraded);
+        const status = !ok ? 'error' : (pass ? 'done' : 'rejected');
+
         const rec = this._status(id, req.contentId, {
-          status: ok ? 'done' : 'error',
+          status,
           filePath: outPath,
           videoUrl: `/api/v14/media/video/${id}`,
           size,
-          error: ok ? '' : 'output missing'
+          quality: qc,
+          error: !ok ? 'output missing' : (pass ? '' : `质检未通过: ${qc.detail}`)
         });
-        console.log(`[VideoRender] ${id} 完成 ${size} bytes`);
+        console.log(`[VideoRender] ${id} ${status} ${size} bytes` + (qc ? ` qc=${qc.reason}${qc.degraded ? '(degraded)' : ''}` : ''));
+        // 仅 status==='done' 会 emit 'render:done'（见 _status），rejected 不进发布队列
         resolve(rec);
       });
 
@@ -178,6 +204,10 @@ class VideoRender {
     );
     if (existing) this.dataStore.update('video_render', id, rec);
     else this.dataStore.create('video_render', rec);
+    // [P2-C3] 仅在真正完成时广播（rendering/error 不触发回写）
+    if (patch && patch.status === 'done') {
+      try { this.emit('render:done', rec); } catch (_) {}
+    }
     return rec;
   }
 

@@ -223,10 +223,14 @@ class ContentPipeline extends EventEmitter {
     if (!this.contentIntelligence) return null;
 
     try {
-      const trends = await this.contentIntelligence.getTrends(platform);
+      const trends = await this.contentIntelligence.getTrends(platform, 30);
       if (trends && trends.length > 0) {
-        // 选择S/A级话题
-        const topTrend = trends.find(t => t.level === 'S' || t.level === 'A') || trends[0];
+        // S/A 级优先，且在其中「随机取一条」——
+        // 原实现 `find(...) || trends[0]` 恒取排序第一条，导致所有账号
+        // 的 topic 完全相同（topic 无分布）。真实数据下改为集合内随机。
+        const preferred = trends.filter(t => t.level === 'S' || t.level === 'A');
+        const pickFrom = preferred.length ? preferred : trends;
+        const topTrend = pickFrom[Math.floor(Math.random() * pickFrom.length)];
         return {
           title: topTrend.title || topTrend.topic,
           keywords: topTrend.keywords || [],
@@ -327,6 +331,14 @@ class ContentPipeline extends EventEmitter {
       facebook: { maxLength: 63206 },
       youtube: { maxLength: 5000 },
       tumblr: { maxLength: 4096 },
+      // [NEWPLAT-2026-09-21]
+      nostr: { maxLength: 2000 },
+      bluesky: { maxLength: 300 },
+      mastodon: { maxLength: 500 },
+      telegram: { maxLength: 1000 },
+      devto: { maxLength: 5000 },
+      hashnode: { maxLength: 5000 },
+      github: { maxLength: 2000 },
     };
     return specs[platform] || specs.reddit;
   }

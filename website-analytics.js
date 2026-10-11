@@ -20,6 +20,10 @@
 
 const { EventEmitter } = require('events');
 const crypto = require('crypto');
+// 【B0-D4】流量来源归因（单一事实源）— 区分真实用户 / 系统自生成 / 无法判定
+const {
+  classifyTraffic, visitorFingerprint, summarizeProvenance,
+} = require('./data-provenance.js');
 
 // ── 追踪事件类型 ──────────────────────────────────
 const EVENT_TYPES = {
@@ -66,6 +70,12 @@ class WebsiteAnalytics extends EventEmitter {
       totalUniqueVisitors: 0,
       currentOnline: 0,
       todayDAU: 0,
+      // 【B0-D4】分口径计数（累计）。totalVisits 保持向后兼容不动，
+      // 新增可审计口径 —— system = 因果链 S5 驱动访问，unknown = 字段不足无法判定。
+      userVisits: 0,
+      systemVisits: 0,
+      unknownVisits: 0,
+      userUniqueVisitors: 0,
       bounceRate: 0,
       avgSessionDuration: 0,
       topPages: {},
@@ -106,6 +116,17 @@ class WebsiteAnalytics extends EventEmitter {
     };
 
     event.source = this._classifySource(event.referrer, event.utm);
+
+    // 【B0-D4】流量来源归因（单一事实源 data-provenance.js）。
+    // 因果链 S5 会主动发真实 HTTP 请求驱动 visit.recorded，那批流量的 ip 被**如实标注**为
+    // 'self_direct'（server.js:4037 — 不伪造源 IP，符合零伪造原则）。必须在入口就把它
+    // 与真实用户分开，否则会被算进真实访客口径（实测曾累计 351360 次而独立访客仅 2）。
+    event.provenance = classifyTraffic({
+      _system_generated: data._system_generated === true || data._systemGenerated === true,
+      ip: data.ip,
+      source: data.source,
+      ua: data.ua || data.userAgent,
+    });
 
     // 记录事件
     this._recordEvent(event);
@@ -317,6 +338,8 @@ class WebsiteAnalytics extends EventEmitter {
       };
       this.visitors.set(event.visitorId, visitor);
       this.stats.totalUniqueVisitors++;
+      // 【B0-D4】只有判定为真实用户的访客才计入 userUniqueVisitors
+      if (event.provenance === 'user') this.stats.userUniqueVisitors++;
     }
     visitor.lastSeen = event.timestamp;
     visitor.visitCount++;
@@ -325,6 +348,12 @@ class WebsiteAnalytics extends EventEmitter {
   _updateStats(event) {
     this.stats.totalVisits++;
     this.stats.conversionFunnel.visited++;
+
+    // 【B0-D4】按来源分口径累计（可审计）。totalVisits 保持不变以兼容既有消费者。
+    const _pv = event.provenance || 'unknown';
+    if (_pv === 'system') this.stats.systemVisits++;
+    else if (_pv === 'user') this.stats.userVisits++;
+    else this.stats.unknownVisits++;
 
     // 页面统计
     const pagePath = this._getPath(event.url);
@@ -420,10 +449,20 @@ class WebsiteAnalytics extends EventEmitter {
   }
 
   _generateVisitorId(data) {
-    // 【修复】按 IP 去重，使 DAU 反映真实独立访客（而非每次访问一个新 ID）
-    if (data && data.ip) {
-      const h = crypto.createHash('md5').update(String(data.ip)).digest('hex').slice(0, 12);
-      return `v_ip_${h}`;
+    // 【B0-D4 修复 2026-09-20】原实现对任意 data.ip 做 MD5：
+    //     if (data && data.ip) return 'v_ip_' + md5(data.ip).slice(0,12)
+    // 但因果链 S5 驱动访问时 ip 恒为哨兵值 'self_direct'（server.js:4037 为遵守
+    // 零伪造而如实标注），于是**全部记录坍缩成同一个 visitorId** ⇒
+    // 实测 totalUniqueVisitors=2 而 totalVisits=351360。
+    // 改为：仅当 ip 是**真正可用的 IP** 时才按 ip 去重；
+    //       否则回退到 ua+referrer+platform 组合指纹（组合相同仍归同一访客，
+    //       这是有意的稳定去重口径，否则 DAU 会虚高）。
+    const fp = visitorFingerprint(data || {});
+    if (fp.basis === 'ip') {
+      return `v_ip_${crypto.createHash('md5').update(fp.key).digest('hex').slice(0, 12)}`;
+    }
+    if (fp.basis === 'composite') {
+      return `v_fp_${crypto.createHash('md5').update(fp.key).digest('hex').slice(0, 12)}`;
     }
     return `v_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
   }
@@ -459,6 +498,10 @@ class WebsiteAnalytics extends EventEmitter {
   }
 
   // ── 生成模拟数据（用于测试和演示） ──────────────
+  // ⚠️【2026-09-20 B0 审计】本方法是**死代码**（全仓零调用方），
+  // 且 `/api/v14/analytics/simulate` 端点已按零伪造原则禁用（返回 403）。
+  // 保留仅为历史参考，**禁止**在任何启动/定时路径中调用它 ——
+  // 一旦调用会灌入 example.com 假事件并污染大盘。
   generateSimulatedData(count = 100) {
     const platforms = ['reddit', 'x', 'discord', 'instagram', 'tiktok', 'facebook', 'google', 'direct'];
     const countries = ['US', 'CN', 'UK', 'JP', 'DE', 'FR', 'CA', 'AU'];
@@ -484,6 +527,8 @@ class WebsiteAnalytics extends EventEmitter {
 
   // ── 获取状态 ──────────────────────────────────
   getStats() {
+    // 【B0-D4】窗口内（events 最多 maxEvents=10000 条）的口径分布快照
+    const prov = summarizeProvenance(this.events);
     return {
       ...this.stats,
       sessionsActive: this.sessions.size,
@@ -491,6 +536,16 @@ class WebsiteAnalytics extends EventEmitter {
       eventsRecorded: this.events.length,
       hourlyBuckets: this.hourlyBuckets.size,
       dailyBuckets: this.dailyBuckets.size,
+      // 可审计口径：明确区分真实用户 / 系统自生成 / 无法判定。
+      // ⚠️ 前端大盘必须按此字段分区展示，**不得**把 system 并入真实访客。
+      provenance: {
+        ...prov,
+        userVisits: this.stats.userVisits,
+        systemVisits: this.stats.systemVisits,
+        unknownVisits: this.stats.unknownVisits,
+        userUniqueVisitors: this.stats.userUniqueVisitors,
+        note: 'system = 因果链 S5 驱动访问（ip 如实标注 self_direct）；unknown = 字段不足无法判定；二者均不计入真实访客',
+      },
     };
   }
 

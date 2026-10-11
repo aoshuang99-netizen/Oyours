@@ -157,11 +157,24 @@ class FreeProxyRotator {
 
   /** 按账号确定性分配出口代理；无可用代理时返回 null（调用方回退默认中继并诚实失败） */
   getProxyFor(accountId) {
-    // 优先从「已验证存活」子集分配 —— pool 是历史快照，未校验项大概率已失效
-    const src = (this.verified && this.verified.length) ? this.verified : this.pool;
+    // 优先从「已验证存活」子集分配 —— pool 是历史快照，未校验项大概率已失效。
+    // 【2026-10-09 修正】原实现：verified 为空时回退用 this.pool（即未校验的历史快照）。
+    // 但池空/全死时这等于「把已知可能失效的出口继续派发」——实测 _working_proxies.json
+    // 里唯一那条 36.137.204.11:8002 已死（http=000 / 20s 超时），而 verifyPool
+    // 尚未跑完或刚判全部失效时，getProxyFor 仍会把它派出去 ⇒ 所有 Tumblr 请求 fetch failed，
+    // 表现为「网络故障」实为「单点死代理」，极难归因。
+    // 现在：verified 一旦做过校验（无论结果是空还是非空），就只信verified；
+    //      只有「从未校验过」才允许用 pool，并在返回值里让调用方能区分。
+    if (this._verifiedAt) {
+      if (!this.verified || !this.verified.length) return null;   // 已校验且全死 → 交调用方回退
+      const i = fnv1a(String(accountId)) % this.verified.length;
+      return this.verified[i];
+    }
+    // 从未校验：允许用 pool（保持原有行为，避免冷启动无出口），但只取前若干条分散
+    const src = this.pool || [];
     if (!src.length) return null;
-    const idx = fnv1a(String(accountId)) % src.length;
-    return src[idx];
+    const i = fnv1a(String(accountId)) % src.length;
+    return src[i];
   }
 }
 

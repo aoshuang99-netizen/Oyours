@@ -26,9 +26,9 @@ if (-not $script:MsHasLock) { exit 0 }
 # versions 目录下同时存在 junction 软链(22.22.2)与真实目录(22.22.2-2)。
 # 硬编码 "22.22.2\node.exe" 会 ENOENT —— 2026-09-04 排查发现开机自启长期静默失败。
 # 改为：优先真实目录，其次按 semver 倒序扫描所有版本目录，取第一个真实存在的 node.exe。
-$versionsDir = "C:\Users\AS\\binaries\node\versions"
+$versionsDir = "C:\Users\AS\.workbuddy\binaries\node\versions"
 $candidates = New-Object System.Collections.ArrayList
-[void]$candidates.Add((Join-Path $versionsDir "22.22.2-2\node.exe"))
+[void]$candidates.Add((Join-Path $versionsDir "22.22.2-6\node.exe"))
 Get-ChildItem $versionsDir -Directory -ErrorAction SilentlyContinue |
   Where-Object { $_.Name -match '^\d+\.\d+\.\d+' } |
   Sort-Object { [version]($_.Name -replace '^(\d+\.\d+\.\d+).*', '$1') } -Descending |
@@ -38,7 +38,7 @@ foreach ($c in $candidates) { if (Test-Path $c) { $NODE = $c; break } }
 
 # NODE_PATH 优先工作区自带依赖（server.js 依赖 mysql2/undici 等），缺失时回退全局 workspace
 $WS_NODE_MODULES = Join-Path $WS 'node_modules'
-$NODE_PATH = if (Test-Path $WS_NODE_MODULES) { $WS_NODE_MODULES } else { "C:\Users\AS\\binaries\node\workspace\node_modules" }
+$NODE_PATH = if (Test-Path $WS_NODE_MODULES) { $WS_NODE_MODULES } else { "C:\Users\AS\.workbuddy\binaries\node\workspace\node_modules" }
 
 # ── 存储根：所有运行时写入一律落 D 盘 ──────────────────────────────
 # 背景：C 盘曾 195G/195G 完全写满导致 DataStore 全量 ENOSPC；

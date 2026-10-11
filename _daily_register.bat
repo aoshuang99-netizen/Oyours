@@ -4,7 +4,7 @@ REM Daily Tumblr  -> nurture engine
 REM Invoked by Windows Task Scheduler: MSCMS_TumblrDailyRegister (daily 03:00)
 set ELECTRON_RUN_AS_NODE=
 set TUMBLR_NURTURE_PORT=3005
-set NODE_PATH=C:\Users\AS\\binaries\node\workspace\node_modules
+set NODE_PATH=C:\Users\AS\.workbuddy\binaries\node\workspace\node_modules
 set TUMBLR_PROXY=http://:10808
 cd /d "C:\Users\AS\WorkBuddy\2026-06-13-19-42-19"
 
@@ -15,8 +15,8 @@ REM   【全部不存在】(versions 下只剩 22.22.2-3；current 目录里没�
 REM   → 03:00 任务会再次静默空跑。
 REM 根治：不再硬编码任何版本号，遍历 versions\*\node.exe 取第一个可用的（目录名倒序≈版本倒序）。
 set NODE_EXE=
-for /f "delims=" %%i in ('dir /b /o-n "C:\Users\AS\\binaries\node\versions" 2^>nul') do (
-  if not defined NODE_EXE if exist "C:\Users\AS\\binaries\node\versions\%%i\node.exe" set NODE_EXE=C:\Users\AS\\binaries\node\versions\%%i\node.exe
+for /f "delims=" %%i in ('dir /b /o-n "C:\Users\AS\.workbuddy\binaries\node\versions" 2^>nul') do (
+  if not defined NODE_EXE if exist "C:\Users\AS\.workbuddy\binaries\node\versions\%%i\node.exe" set NODE_EXE=C:\Users\AS\.workbuddy\binaries\node\versions\%%i\node.exe
 )
 REM 兜底 2：任何在 PATH 里的 node
 if not defined NODE_EXE for /f "delims=" %%i in ('where node 2^>nul') do (

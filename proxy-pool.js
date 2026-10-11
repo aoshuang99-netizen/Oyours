@@ -65,7 +65,78 @@ class ProxyPool {
       const env = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || null;
       if (env) this.proxies = [{ url: env, name: 'env-default', weight: 1, enabled: true }];
     }
+    this._prewarmAlive();
     return this.proxies;
+  }
+
+  /**
+   * 启动期存活预筛（2026-10-09）。
+   *
+   * 背景：出口池里可能整批失效（实测 44 个 127.0.0.1:202xx 段 CF 出口**全部** http=000，
+   *   只有全局中继 10808 可用）。此时若照常分配，每个账号会拿到一个死出口，
+   *   每次请求都要耗满超时才失败；而熔断器只能逐个追（20203→20204→…），
+   *   表现为「每次调用慢 15s 且 fetched 恒为 0」，极难看出是池子整体失效。
+   *
+   * 处置：构造时并发探测一小批样本（默认 6 个），若**全部**不可用，
+   *   就判定「整池失效」，直接把池收缩为全局中继（若可用）——让业务立刻恢复，
+   *   而不是让熔断器一条条去发现。若样本里还有活的，则只把死样本剔除。
+   *
+   * 探测目标用 Tumblr 的轻量端点，401 视作「可达」（鉴权问题≠网络不通）。
+   */
+  _prewarmAlive() {
+    if (this._prewarmed) return;
+    this._prewarmed = true;
+    // 【2026-10-09 修正】原实现只抽样 6 个。实测池里 90 条（44 个 CF 出口全死），
+    // 抽样剔除 6 个后仍留下 38 个死出口 ⇒ 熔断器要逐个追 38 轮才能收敛，
+    // 而每轮要耗 10s 超时。改为「全池并发探测」：并发 20、每条 6s 超时，
+    // 90 条 ≈ 3~4 批 ≈ 20s 内完成，换来的是池在服务可用前就已干净。
+    const probe = (u) => new Promise((resolve) => {
+      // 用 fetchExt 探测而非 spawn curl：3002 是长驻服务，内部已大量 spawn 过
+      // curl，实测会出现 spawnSync EBUSY / 0.8s 内返回 0 达标的假阴性，
+      // 导致「整池失效」误判。fetchExt 走 undici，无进程依赖。
+      let done = false;
+      const finish = (v) => { if (!done) { done = true; resolve(v); } };
+      let timer = null;
+      let fetcher = null;
+      try {
+        fetcher = require('./http-client.js').fetchExt;
+      } catch (_) { fetcher = null; }
+      if (!fetcher) { finish(false); return; }
+      timer = setTimeout(() => finish(false), 7000);
+      fetcher('https://api.tumblr.com/v2/tumblr.info', { method: 'GET', timeout: 6000 }, u)
+        .then((r) => finish(!!r && r.status !== 0))
+        .catch(() => finish(false));
+    });
+    const all = this.proxies.slice();
+    const CONC = 20;
+    const t0 = Date.now();
+    const runAll = async () => {
+      const results = new Array(all.length);
+      for (let i = 0; i < all.length; i += CONC) {
+        const idx = all.slice(i, i + CONC).map((_, k) => i + k);
+        const rs = await Promise.all(idx.map(j => probe(all[j].url)));
+        rs.forEach((v, k) => { results[idx[k]] = v; });
+      }
+      return results;
+    };
+    runAll().then((results) => {
+      const aliveN = results.filter(Boolean).length;
+      const kept = all.filter((_, i) => results[i]);
+      console.log(`[proxy-pool] 出口预筛：${aliveN}/${all.length} 可达（耗时 ${((Date.now() - t0) / 1000).toFixed(1)}s）`);
+      if (aliveN === 0) {
+        const env = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || null;
+        console.warn(
+          `[proxy-pool] ⚠️ 整池失效（全部 ${all.length} 个出口不可达）` +
+          (env ? ` → 收缩为全局中继 ${env}` : ' → 无全局中继可用，请求将直连（预计失败）')
+        );
+        if (env) this.proxies = [{ url: env, name: 'env-fallback', weight: 1, enabled: true }];
+      } else if (aliveN < all.length) {
+        this.proxies = kept;
+        console.warn(`[proxy-pool] 已剔除 ${all.length - aliveN} 个不可达出口，剩 ${kept.length} 个可用`);
+      } else {
+        console.log('[proxy-pool] 预筛通过：全部出口可达');
+      }
+    }).catch(() => {});
   }
 
   /** 可用代理数量（1 = 单出口，与原行为一致） */

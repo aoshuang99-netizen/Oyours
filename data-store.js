@@ -3,6 +3,8 @@
 const fs = require('fs');
 const fsProm = fs.promises;
 const path = require('path');
+// [P2-B5] 真实媒体判定（单一事实源）
+const _mediaRef = require('./content-media-ref.js');
 
 /**
  * MSCMS v14 — DataStore 统一数据持久化层
@@ -21,6 +23,21 @@ const path = require('path');
  *   count(module)          — 总数
  *   export(module, format) — 导出 CSV/JSON
  */
+
+/**
+ * FNV-1a 变体（双通道 64 位十六进制）——用于为「无 id 记录」生成确定性指纹。
+ * 为什么不用 crypto：本文件被 3002/3005/3012/3013 多进程高频加载，
+ * 保持零额外依赖可脱网运行；此处只需要「确定性 + 低碰撞」，不需要密码学强度。
+ */
+function _fnv1a64(str) {
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 ^= c; h1 = Math.imul(h1, 0x01000193);
+    h2 = Math.imul(h2 ^ c, 0x85ebca6b);
+  }
+  return (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+}
 
 class DataStore {
   constructor(dataDir) {
@@ -96,7 +113,9 @@ class DataStore {
           if (it.published === true || it.published_at || it.status === 'published') return true; // 已发布：永久留痕
           if (it.status === 'queued') return true;                                                // 已入队：等待发布，勿裁
           const hasBody = String(it.body || it.text || it.caption || '').trim().length > 0;
-          const hasMedia = !!(it.preview_url || it.media_path || it.media_url);
+          // [P2-B5] preview_url 多为内容存档 JSON 路径（非媒体）→ 统一判定，
+          // 避免「只有存档路径、无正文无媒体」的空壳 ready 被 protect 永久锁定。
+          const hasMedia = _mediaRef.contentHasRealMedia(it);
           return hasBody || hasMedia;                                                             // 有正文或有媒体 = 真内容
         }
       },
@@ -351,12 +370,28 @@ class DataStore {
               return value;
             }) : []);
         let tombstoned = 0;
-        for (const item of items) {
-          if (item && item.id !== undefined && item.id !== null) {
-            // 墓碑生效：磁盘上这条记录已被别的进程显式删除过 → 沿用删除
-            if (this._isTombstoned(module, item)) { tombstoned++; continue; }
-            map.set(String(item.id), item);
+        let autoIded = 0;
+        for (let item of items) {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+          let id = item.id;
+          if (id === undefined || id === null) {
+            // 【2026-09-20 B5】此处原本是 `if (item.id !== undefined && item.id !== null) {…}`
+            // —— 无 id 的记录被直接跳过，且【不写任何日志、不计数】，属于静默数据丢失。
+            // 实测影响：trends 928 条 + system_audit 79 条被整模块丢弃（占全部记录 2.4%），
+            // 表现为「文件里有数据，但列表页/时序图永远 0 条」，且无从察觉。
+            // 现改为生成【确定性】id（内容指纹 + 冲突序号）：
+            //   · 确定性 ⇒ 重复加载同一文件得到相同 id，不会重复插入、不会翻倍
+            //   · 不再丢数据 ⇒ 列表与时间维度图能看到真实记录（仍零伪造：只是让真实数据可见）
+            id = this._deriveAutoId(item, map);
+            item = Object.assign({ id: id }, item);
+            autoIded++;
           }
+          // 墓碑生效：磁盘上这条记录已被别的进程显式删除过 → 沿用删除
+          if (this._isTombstoned(module, item)) { tombstoned++; continue; }
+          map.set(String(id), item);
+        }
+        if (autoIded > 0) {
+          console.log(`[DataStore] ${module}: ${autoIded} 条记录缺 id → 已按内容指纹补确定性 id（此前会被静默丢弃）`);
         }
         if (tombstoned > 0) {
           console.log(`[DataStore] ${module}: 加载时丢弃 ${tombstoned} 条已墓碑记录（删除传播生效）`);
@@ -371,6 +406,20 @@ class DataStore {
       }
     }
     console.log(`[DataStore] Loaded ${this._cache.size} module data files from ${this.dataDir}`);
+  }
+
+  /**
+   * 为「无 id 的记录」生成确定性 id。
+   * 同一记录反复加载必须得到同一 id（否则每次重启都会把同一批数据再插一遍）。
+   * 内容完全相同的多条记录（如多条同源热点）用 `_2`/`_3` 序号区分，
+   * 序号按文件中的出现顺序分配 ⇒ 只要文件内容确定，结果就确定。
+   */
+  _deriveAutoId(item, map) {
+    const base = 'auto_' + _fnv1a64(JSON.stringify(item));
+    if (!map.has(base)) return base;
+    let n = 2;
+    while (map.has(base + '_' + n)) n++;
+    return base + '_' + n;
   }
 
   /**

@@ -22,7 +22,7 @@
     double-launch conflict. Verify the active launch method first.
   </description>
 
-  <executable>C:\Users\AS\\binaries\cloudflared.exe</executable>
+  <executable>C:\Users\AS\.workbuddy\binaries\cloudflared.exe</executable>
   <!--
     DO NOT FABRICATE the tunnel UUID/name. Fill in from your real cloudflared config.
     Pick the correct tunnel UUID from C:\Users\AS\.cloudflared\*.json (verify which one

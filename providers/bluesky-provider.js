@@ -57,19 +57,73 @@ class BlueskyProvider extends SocialProvider {
     };
   }
 
-  /** 配置状态（驱动 dashboard + 决定桥接是否推进 S4） */
+  /**
+   * 凭据**格式**校验（同步、零网络）。
+   * Bluesky App Password 固定形如 `abcd-efgh-ijkl-mnop`（4 组 4 位小写字母数字，共 19 字符）。
+   */
+  _checkCredFormat(c) {
+    const pw = String(c.appPassword || '');
+    if (!/^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/i.test(pw)) {
+      return {
+        ok: false,
+        reason: `BLUESKY_APP_PASSWORD 格式无效（当前 ${pw.length} 字符，正确格式为 abcd-efgh-ijkl-mnop 共 19 字符）⇒ 该凭据无法通过登录，请到 Bluesky「设置 → App Passwords」重新生成后填入`,
+      };
+    }
+    const id = String(c.identifier || '');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id) && !/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(id)) {
+      return { ok: false, reason: `BLUESKY_IDENTIFIER 格式无效（应为邮箱或 handle，当前「${id.slice(0, 24)}」）` };
+    }
+    return { ok: true };
+  }
+
+  /**
+   * 配置状态（驱动 dashboard + 决定桥接是否推进 S4）。
+   *
+   * 【2026-09-20 F3 修复】原实现 `authorized: hasCreds`(仅判字段非空)，
+   *   导致 9 字节占位值 `12233556…` 也被报成「已授权」——实测 createSession 返回 401，
+   *   仪表盘出现「绿灯但一条都发不出去」的**假绿**（4 个绿灯里 2 个是假的）。
+   *   现改为三态：configured(字段非空) / format(格式是否合法) / reachable(真实探针结果)。
+   *   ⚠️ `configured` 语义**保持不变**（发布路径 cloud-publisher.js:1097 依赖它），
+   *      只收紧 `authorized` —— 该字段此前只用于展示，不参与发布判定。
+   */
   configStatus() {
     const c = this._config();
     const hasCreds = !!(c.identifier && c.appPassword);
+    const fmt = hasCreds ? this._checkCredFormat(c) : { ok: false, reason: null };
+    const probe = this._probeCache || null;
     return {
       identifier: 'bluesky',
       configured: hasCreds,
-      authorized: hasCreds,
+      format: fmt.ok ? 'ok' : 'invalid',
+      authorized: hasCreds && fmt.ok && (!probe || probe.ok === true),
+      reachable: probe ? (probe.ok ? 'ok' : 'fail') : 'unknown',
+      probeAt: probe ? probe.at : null,
       pdsHost: c.pdsHost,
-      reason: hasCreds
-        ? null
-        : '尚未配置 BLUESKY_IDENTIFIER / BLUESKY_APP_PASSWORD。免费获取：注册 Bluesky 账号 → 设置 → App Passwords → 生成（无需开发者门户/App 注册/付费）',
+      reason: !hasCreds
+        ? '尚未配置 BLUESKY_IDENTIFIER / BLUESKY_APP_PASSWORD。免费获取：注册 Bluesky 账号 → 设置 → App Passwords → 生成（无需开发者门户/App 注册/付费）'
+        : (fmt.ok ? null : fmt.reason),
     };
+  }
+
+  /**
+   * **真实探针**：调用 createSession 验证凭据是否真的可用（结果缓存 10 分钟）。
+   * 不抛异常，返回结构化结果；用于让「格式对但认证失败」这类隐性失效可见。
+   */
+  async verifyCredentials({ force = false } = {}) {
+    const now = Date.now();
+    if (!force && this._probeCache && now - this._probeCache.at < 10 * 60 * 1000) {
+      return this._probeCache;
+    }
+    const c = this._config();
+    let out;
+    try {
+      const s = await this._createSession();
+      out = { ok: true, at: now, handle: s.handle, did: s.did };
+    } catch (e) {
+      out = { ok: false, at: now, error: String((e && e.message) || e).slice(0, 200) };
+    }
+    this._probeCache = out;
+    return out;
   }
 
   /** 懒加载 ProxyAgent：仅当存在 HTTP(S)_PROXY 时启用（兼容 ESM-only 的 undici） */

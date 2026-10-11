@@ -53,16 +53,38 @@ class GithubProvider extends SocialProvider {
     };
   }
 
+  /**
+   * 凭据**格式**校验（同步、零网络）。
+   * GitHub PAT 两种现行前缀：classic `ghp_<36位>`、fine-grained `github_pat_<22位以上>`。
+   *
+   * 【2026-09-20 F3 延伸】原 `configStatus()` 里 `authorized: hasCreds` 与 `configured` 冗余，
+   *   占位值会直接假绿。此处补格式闸门，**仅收紧 `authorized`**。
+   */
+  _checkCredFormat(c) {
+    const tk = String(c.token || '');
+    if (!/^(ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,})$/.test(tk)) {
+      return {
+        ok: false,
+        reason: `GitHub PAT 格式无效（当前 ${tk.length} 字符，正确为 ghp_ 开头的 40 位 classic token，或 github_pat_ 开头的 fine-grained token）⇒ 请到 Settings → Developer settings → Personal access tokens 重新生成`,
+      };
+    }
+    return { ok: true };
+  }
+
   configStatus() {
     const c = this._config();
     const hasCreds = !!(c.token);
+    const fmt = hasCreds ? this._checkCredFormat(c) : { ok: false, reason: null };
     return {
       identifier: 'github',
       configured: hasCreds,
-      authorized: hasCreds,
-      reason: hasCreds
-        ? null
-        : '尚未配置 GitHub PAT。免费获取（30 秒·零手机·零审核）：github.com → 右上角头像 → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token（勾选 gist 权限即可）',
+      format: fmt.ok ? 'ok' : 'invalid',
+      authorized: hasCreds && fmt.ok,
+      reachable: 'unknown',
+      probeAt: null,
+      reason: !hasCreds
+        ? '尚未配置 GitHub PAT。免费获取（30 秒·零手机·零审核）：github.com → 右上角头像 → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token（勾选 gist 权限即可）'
+        : (fmt.ok ? null : fmt.reason),
     };
   }
 

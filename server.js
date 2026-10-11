@@ -361,6 +361,17 @@ app.use((req, res, next) => {
 app.use(express.static(__dirname));
 app.use('/content', express.static('D:/MSCMS-Content'));
 
+// 【B2】全局 favicon —— 历史遗留页面均未声明 <link rel="icon">，浏览器每次都会请求
+// /favicon.ico 并得到 404，造成控制台噪音与「未完成品」观感（实测页面验收唯一失分项）。
+// 这里统一返回内联 SVG，无需为每个页面各写一遍，也不再产生 404。
+app.get('/favicon.ico', (req, res) => {
+  res.set('Content-Type', 'image/svg+xml; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.send('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+    + '<circle cx="16" cy="16" r="13" fill="none" stroke="#2563eb" stroke-width="4"/>'
+    + '<circle cx="16" cy="16" r="4" fill="#2563eb"/></svg>');
+});
+
 // CORS — 允许 file:// 控制台访问
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -1589,49 +1600,156 @@ app.post('/api/v1/managed-accounts', async (req, res) => {
   }
 });
 
-// v14 账号管理 API（转发到底层 v1 managed-accounts 数据）
+// ── [B0-D1] 真实账号源构建 ────────────────────────────────
+// 背景：/api/v14/managed-accounts 一直直读 MySQL 表 matrix_accounts_managed，
+// 而该表是**残留脏源**（2026-09-20 实测 147 条，100% status=S0_CREATED、
+// 100% is_valid=NULL，构成 Reddit 56 / X 46 / tumblr 32 等僵尸行）。
+// 前端账号页依赖它 ⇒ 带任何筛选条件时恒返回 0 条，页面全空。
+//
+// 这里把账号页的默认数据源切到**真实账号**（accounts.json + tumblr_token.json），
+// 与 /api/v14/real-accounts 共用同一套"真实账号"判定，避免口径漂移；
+// MySQL 残留改为 `?source=legacy` 显式访问并打 _archived 标记（归档只读）。
+const _MA_FAKE_EMAIL = /@mscms\.mail$/i;
+const _MA_TEMP_EMAIL = /guerrillamail|guerrillamailblock|mailinator|10minutemail|10minute-mail|tempmail|throwaway|dispostable|trashmail|temp-mail|fake|sharklasers|getnada|yopmail/i;
+
+function buildLiveManagedAccounts() {
+  const acctPath = dataFile('accounts.json');
+  let accounts = [];
+  try {
+    if (fs.existsSync(acctPath)) {
+      const parsed = JSON.parse(fs.readFileSync(acctPath, 'utf-8'));
+      accounts = Array.isArray(parsed) ? parsed : [];
+    }
+  } catch (e) {
+    return { accounts: [], error: `accounts.json 读取失败: ${e.message}` };
+  }
+
+  const tokenRecords = readJsonRecords(dataFile('tumblr_token.json'));
+  const tokenById = new Map(tokenRecords.filter((t) => t && t.id).map((t) => [String(t.id), t]));
+
+  const rows = accounts.map((a) => {
+    const hasCreds = !!(a.email && a.password);
+    const token = tokenById.get(String(a.id));
+    const hasApiToken = !!(token && (token.oauthToken || token.accessToken || token.oauth_token)
+      && (token.blogName || token.blog_name || token.blogname));
+    const suspiciousEmail = _MA_FAKE_EMAIL.test(a.email || '') || _MA_TEMP_EMAIL.test(a.email || '');
+    // 与 real-accounts 完全一致的真实判定
+    const isReal = (hasCreds && !suspiciousEmail) || (a.platform === 'tumblr' && hasApiToken);
+    return {
+      // 保持旧端点的 snake_case 契约，前端无需改动
+      id: a.id,
+      platform: a.platform || '',
+      username: a.username || '',
+      email: a.email ? maskEmail(a.email) : '',
+      bot_id: null,
+      // status 保留账号库原值（实测 live 库为 active 117 / unverified 6）；
+      // lifecycle 是按**客观证据**推导的生命周期档位，供按旧枚举筛选的前端使用：
+      //   有 API token（已完成 OAuth 授权，可发布） → S2_ACTIVE
+      //   有网页凭据但无 token                     → S1_WARMING
+      //   两者皆无                                 → S0_CREATED
+      status: a.status || '',
+      lifecycle: hasApiToken ? 'S2_ACTIVE' : (hasCreds ? 'S1_WARMING' : 'S0_CREATED'),
+      is_valid: isReal ? 1 : 0,
+      created_at: a.createdAt || a._ts || null,
+      updated_at: a.updatedAt || null,
+      tags: Array.isArray(a.tags) ? a.tags : [],
+      note: a.note || '',
+      hasApiToken,
+      hasCredentials: hasCreds,
+      suspiciousEmail,
+      _source: 'live',
+      _archived: false,
+    };
+  });
+
+  return { accounts: rows, error: null };
+}
+
+// v14 账号管理 API（来源：真实账号库；MySQL 残留表已归档为 legacy）
 app.get('/api/v14/managed-accounts', async (req, res) => {
   try {
-    const { platform, search, valid, status, limit = '100', offset = '0', pageSize, page, fields } = req.query;
+    const { platform, search, valid, status, limit = '100', offset = '0', pageSize, page, fields, source } = req.query;
     // M3 分页：兼容 page/pageSize（设计约定）与旧 limit/offset（向后兼容）
     const limitNum = Math.max(1, Math.min(500, parseInt(pageSize != null ? pageSize : limit, 10) || 100));
     const offsetNum = Math.max(0, parseInt(offset, 10) || ((page ? (parseInt(page, 10) - 1) * limitNum : 0)));
     // M3 字段投影：仅对已在内存中的行裁剪字段，不拼 SQL，零注入风险；缺省返回全量（向后兼容）
     const fieldList = fields ? String(fields).split(',').map(f => f.trim()).filter(Boolean) : null;
 
-    let where = ' WHERE 1=1';
-    const esc = (v) => typeof v === 'number' ? v : `'${String(v).replace(/'/g, "\\'")}'`;
+    // 【B0-D1】数据源选择
+    //   live（默认）= 真实账号库：accounts.json + tumblr_token.json
+    //   legacy      = MySQL 残留表 matrix_accounts_managed（归档只读）
+    //   all         = 两者合并（排查口径差异时用）
+    const src = String(source || 'live').toLowerCase();
+    if (!['live', 'legacy', 'all'].includes(src)) {
+      return res.status(400).json({ error: `非法 source: ${source}（可选 live | legacy | all）` });
+    }
+    let rows = [];
+    const meta = { source: src, live: null, legacy: null };
 
-    if (platform) { where += ` AND platform = ${esc(platform)}`; }
+    // ① 真实账号（默认数据源）
+    if (src === 'live' || src === 'all') {
+      const built = buildLiveManagedAccounts();
+      meta.live = {
+        count: built.accounts.length,
+        source: 'accounts.json + tumblr_token.json',
+        error: built.error || null,
+      };
+      rows = rows.concat(built.accounts);
+    }
+
+    // ② MySQL 残留表：归档只读，仅显式请求时返回
+    if (src === 'legacy' || src === 'all') {
+      try {
+        const [lg] = await pool.query(
+          'SELECT * FROM matrix_accounts_managed ORDER BY created_at DESC LIMIT 2000'
+        );
+        meta.legacy = {
+          count: lg.length,
+          source: 'MySQL matrix_accounts_managed',
+          archived: true,
+          note: '历史残留表（2026-09-20 实测 100% status=S0_CREATED / is_valid=NULL），已归档，不再作为默认数据源',
+        };
+        rows = rows.concat(lg.map((r) => ({ ...r, _archived: true, _source: 'legacy' })));
+      } catch (e) {
+        meta.legacy = { count: 0, source: 'MySQL matrix_accounts_managed', archived: true, error: e.message };
+      }
+    }
+
+    // ③ 内存筛选（真实账号量级在千以内；内存筛选零注入风险，且天然支持 live/legacy 混合）
+    let filtered = rows;
+    if (platform) filtered = filtered.filter((r) => String(r.platform || '') === String(platform));
     if (search) {
-      const s = esc(`%${search}%`);
-      where += ` AND (username LIKE ${s} OR email LIKE ${s} OR bot_id LIKE ${s})`;
+      const s = String(search).toLowerCase();
+      filtered = filtered.filter((r) => [r.username, r.email, r.bot_id, r.id]
+        .some((v) => String(v == null ? '' : v).toLowerCase().includes(s)));
     }
     if (valid !== undefined && valid !== '') {
       if (valid === 'null') {
-        where += ' AND is_valid IS NULL';
+        filtered = filtered.filter((r) => r.is_valid === null || r.is_valid === undefined);
       } else {
-        where += ` AND is_valid = ${parseInt(valid, 10)}`;
+        filtered = filtered.filter((r) => Number(r.is_valid) === parseInt(valid, 10));
       }
     }
     // 支持按生命周期状态筛选（多个状态用逗号分隔）
     if (status) {
-      const statuses = status.split(',').map(s => esc(s.trim()));
-      where += ` AND status IN (${statuses.join(',')})`;
+      const want = String(status).split(',').map((s) => s.trim()).filter(Boolean);
+      // 【B0-D1】同时匹配账号库原值（active / unverified）与推导出的生命周期档位
+      // （S0_CREATED / S1_WARMING / S2_ACTIVE …）。只匹配其一会让旧筛选恒返 0 ——
+      // 那正是 MySQL 脏源造成的原始症状。
+      if (want.length) {
+        filtered = filtered.filter((r) => want.includes(String(r.status)) || want.includes(String(r.lifecycle)));
+      }
     }
 
-    const [countRows] = await pool.query(
-      'SELECT COUNT(*) as total FROM matrix_accounts_managed' + where
-    );
-    const [rows] = await pool.query(
-      `SELECT * FROM matrix_accounts_managed${where} ORDER BY created_at DESC LIMIT ${limitNum} OFFSET ${offsetNum}`
-    );
+    const total = filtered.length;
+    const pageRows = filtered.slice(offsetNum, offsetNum + limitNum);
 
     // M3 字段投影：仅裁剪已在内存中的行字段（不拼 SQL，零注入）；缺省返回全量（向后兼容）
     const projected = fieldList && fieldList.length
-      ? rows.map(r => { const o = {}; fieldList.forEach(f => { if (Object.prototype.hasOwnProperty.call(r, f)) o[f] = r[f]; }); return o; })
-      : rows;
-    res.json({ total: countRows[0]?.total || 0, accounts: projected });
+      ? pageRows.map(r => { const o = {}; fieldList.forEach(f => { if (Object.prototype.hasOwnProperty.call(r, f)) o[f] = r[f]; }); return o; })
+      : pageRows;
+
+    res.json({ total, accounts: projected, _meta: meta });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2054,17 +2172,31 @@ let v14Modules = null;
 const FAKE_EMAIL_RE = /@mscms\.mail$/i;
 const TEMP_EMAIL_RE = /guerrillamail|guerrillamailblock|mailinator|10minutemail|10minute-mail|tempmail|throwaway|dispostable|trashmail|temp-mail|fake|sharklasers|getnada|yopmail/i;
 const REAL_PUBLISH_PLATFORMS = new Set(
-  String(process.env.MSCMS_REAL_CHANNELS || 'tumblr').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  // 【2026-09-20 F5 修复】默认值必须与 cloud-publisher.js 的 realChannels 默认值**逐字一致**。
+  //   修复前此处默认 'tumblr'，而 cloud-publisher.js:778 默认 'tumblr,nostr' ——
+  //   同一环境变量两处默认值不同 ⇒ 本函数会把 nostr 账号判成「非真实账号」，
+  //   而发布器却允许 nostr 入队，形成「通道开着但账号被判假」的隐形断层，
+  //   这正是「加了环境变量仍不发布」的根因之一。
+  //   ⚠️ 改这里时务必同步改 cloud-publisher.js:778（两处 + MSCMS_PROVIDER_CHANNELS 共三处）。
+  String(process.env.MSCMS_REAL_CHANNELS || 'tumblr,nostr').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 );
 
 function isRealManagedAccount(row, tokenIds, idOverride) {
   if (!row) return false;
-  const id = idOverride !== undefined && idOverride !== null ? String(idOverride) : String(row.id || row.bot_id || '');
   const email = String(row.email || '');
   const suspiciousEmail = FAKE_EMAIL_RE.test(email) || TEMP_EMAIL_RE.test(email);
   if (row.email && row.password && !suspiciousEmail) return true;
   const platform = String(row.platform || '').toLowerCase();
-  return REAL_PUBLISH_PLATFORMS.has(platform) && !!(tokenIds && tokenIds.has(id));
+  if (!REAL_PUBLISH_PLATFORMS.has(platform)) return false;
+  // 【2026-10-09 修复】原先只试 idOverride(=row.id) 或 row.id，漏了 row.bot_id。
+  // matrix_accounts_managed.id 是自增整数，而 tumblr_token.json 的 key 是
+  // `tumblr_xxx` 业务键 —— 二者格式本就不同 ⇒ 合法账号被误判 fake 全部跳过
+  //（实测启动日志 "Restored 0 REAL accounts (skipped 186 fake)"）。
+  // 正确做法：把 id / bot_id / 传入覆盖值**都**试一遍，任一命中 token 即为真实账号。
+  const candidates = [idOverride, row.id, row.bot_id]
+    .filter(v => v !== undefined && v !== null && v !== '')
+    .map(v => String(v));
+  return candidates.some(id => !!(tokenIds && tokenIds.has(id)));
 }
 
 /** 读取 tumblr_token.json 里已授权（有自己 token）的账号 id 集合 */
@@ -2090,11 +2222,17 @@ async function syncManagedAccountsToDataStore(pool, dataStore, limit = 1000) {
        LIMIT ${parseInt(limit, 10) || 1000}`
     );
     // 加载 tumblr API token 的 id 集合（用于判定 tumblr 是否有真实 API 授权）
+    // 【2026-10-09 修复】原实现只处理数组：`if (Array.isArray(tk))`。
+    // 但 tumblr_token.json 是 **object map**（key=账号 id）⇒ 数组分支永不命中
+    // ⇒ tokenIds 恒为空集 ⇒ 所有 tumblr 账号（含合法账号）都被判 fake 跳过。
+    // 实测日志「Synced 0 managed accounts (skipped 186 fake)」即此bug 所致。
+    // 现与 loadAuthorizedTokenIds() 保持一致，两种形态都支持。
     let tokenIds = new Set();
     try {
       const tkPath = dataFile('tumblr_token.json');
       const tk = JSON.parse(fs.readFileSync(tkPath, 'utf8'));
-      if (Array.isArray(tk)) tokenIds = new Set(tk.map(t => t && t.id).filter(Boolean));
+      if (Array.isArray(tk)) tk.forEach(t => { if (t && t.id) tokenIds.add(String(t.id)); });
+      else if (tk && typeof tk === 'object') Object.keys(tk).forEach(k => tokenIds.add(String(k)));
     } catch (e) { /* ignore */ }
     // 假域名/临时邮箱识别（与 /api/v14/real-accounts 完全一致）
     const FAKE_EMAIL = /@mscms\.mail$/i;
@@ -2102,7 +2240,10 @@ async function syncManagedAccountsToDataStore(pool, dataStore, limit = 1000) {
 
     let synced = 0, skipped = 0;
     for (const row of rows) {
-      const id = row.id || row.bot_id;
+      // 【2026-10-09】id 是自增整数（对账号无意义），bot_id 才是业务键
+      //（tumblr_token.json / publish.json 用的都是它）。优先用 bot_id，
+      // 否则 sync 出来的账号在 publish 侧永远匹配不上，重新制造孤儿。
+      const id = row.bot_id || row.id;
       if (!id) continue;
       // 真实判定：有凭据且邮箱非假/临时域名；或 tumblr 有 API token（即便网页凭据缺失）
       const hasCreds = !!(row.email && row.password);
@@ -2114,9 +2255,22 @@ async function syncManagedAccountsToDataStore(pool, dataStore, limit = 1000) {
       // ── 合并保留（非破坏式 upsert）：保护 Phase 0 迁移写入的闭环字段 ──
       // 避免每次同步把 bound_device_id / 密码信封 / login_link / causal_phase 等覆盖为空。
       const existing = dataStore.get('accounts', id) || {};
-      const tagsArr = row.tags
-        ? (Array.isArray(row.tags) ? row.tags : String(row.tags).split(',').map(s => s.trim()).filter(Boolean))
-        : (Array.isArray(existing.tags) ? existing.tags : []);
+      // 【2026-10-09】tags 列存的是 JSON 字符串（如 '["reconciled","orphan"]'），
+      // 原实现一律按逗号切分⇒ 得到 '["reconciled"' 这种带引号碎片的脏数组，
+      // 还会把 JSON 的外层引号当成值的一部分。先试 JSON.parse，失败再退回逗号切分。
+      const tagsArr = (() => {
+        const raw = row.tags ?? existing.tags;
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'string' && raw.trim()) {
+          const t = raw.trim();
+          if (t.startsWith('[')) {
+            try { const p = JSON.parse(t); if (Array.isArray(p)) return p.map(x => String(x).trim()).filter(Boolean); }
+            catch (_) { /* 落到逗号切分 */ }
+          }
+          return t.split(',').map(s => s.trim()).filter(Boolean);
+        }
+        return [];
+      })();
       const record = {
         // 优先保留迁移已建立的闭环字段，缺失才用 MySQL 值填充
         id,
@@ -2124,14 +2278,24 @@ async function syncManagedAccountsToDataStore(pool, dataStore, limit = 1000) {
         platform: row.platform || existing.platform || '-',
         username: row.username || existing.username || '',
         email: row.email || existing.email || '',
+        // 【2026-10-09】MySQL 的 status 是注册流水线状态（S0_CREATED/S1_…），
+        // 而发布器筛选账号用的是 status='active'。原先直接透传 MySQL 值会让
+        // 对账进来的账号永远选不进发布池（等于白补）。归一为本地语义：
+        // 只有显式停用态才透传，其余一律 active。
+        // 注意不能沿用 existing.status —— 旧 sync 已把它写成 S0_CREATED，
+        // 再 || 回去就等于把错误值又保住了（实测踩过）。
+        status: (/^(suspended|disabled|banned|dead)$/i.test(String(row.status || '')))
+          ? String(row.status)
+          : (/^(suspended|disabled|banned|dead)$/i.test(String(existing.status || ''))
+             ? String(existing.status) : 'active'),
+        state: row.status || existing.state || 'S0_CREATED',
+        active_status: existing.active_status || (row.status || 'active'),
         // 密码：MySQL 来的明文加密存储；已加密(信封)则原样保留
         password: row.password ? encryptPassword(row.password) : (existing.password || ''),
         phone: row.phone || existing.phone || '',
         registration_ip: row.registration_ip || existing.registration_ip || '',
         proxy_used: row.proxy_used || existing.proxy_used || '',
         notes: row.notes || existing.notes || '',
-        status: row.status || existing.status || 'S0_CREATED',
-        state: row.status || existing.state || 'S0_CREATED',
         healthScore: row.health_score !== null && row.health_score !== undefined ? parseFloat(row.health_score) : (existing.healthScore || 50),
         health_score: row.health_score !== null && row.health_score !== undefined ? row.health_score : (existing.health_score || null),
         banRiskScore: row.ban_risk_score !== null && row.ban_risk_score !== undefined ? parseFloat(row.ban_risk_score) : (existing.banRiskScore || 10),
@@ -2376,6 +2540,38 @@ function initV14() {
     });
     v14Modules.trendIntel = new TrendIntel(dataStore);
     v14Modules.videoRender = new VideoRender(dataStore);
+    // ── [P2-C3] 视频渲染完成 → 回写内容记录 ─────────────────────────────
+    // 背景：video-render 原先只写自己的 video_render 记录，内容记录仅在手工
+    // API 里被动更新（且漏了 content_type）。发布器 _resolveMediaForPublish 依赖
+    // content 的媒体字段才能走视频通道，故必须在此闭环。
+    try {
+      v14Modules.videoRender.on('render:done', (rec) => {
+        try {
+          const cid = rec && (rec.contentId || rec.id);
+          if (!cid) return;
+          if (!dataStore.get('content', cid)) return;   // 零伪造：不存在的关联内容不新建
+          dataStore.update('content', cid, {
+            content_type: 'video',
+            video_url: rec.videoUrl || null,
+            video_url_local: rec.filePath || null,
+            media_path: rec.filePath || null,   // 让媒体判定/发布器都认到这段视频
+            duration: rec.duration || null,
+          });
+          console.log(`[causal] 视频渲染完成回写: ${cid} -> content_type=video (${rec.filePath})`);
+        } catch (e) { console.warn('[causal] 视频回写失败: ' + e.message); }
+      });
+    } catch (e) { console.warn('[causal] 视频事件订阅失败: ' + e.message); }
+    // ── [P3-C2] 视频调度器：按日定额自动选题 → 渲染 ──────────────────────
+    // 低峰时间窗 + 串行（video-render 内部队列即串行）+ 受 P3-C5 质检闸门约束。
+    // 渲染产物经上面的 render:done 订阅自动升级 content_type='video'。
+    try {
+      const { VideoScheduler } = require('./video-scheduler.js');
+      v14Modules.videoScheduler = new VideoScheduler({
+        dataStore,
+        videoRender: v14Modules.videoRender,
+      });
+      v14Modules.videoScheduler.start();
+    } catch (e) { console.warn('[v14] VideoScheduler 启动失败: ' + e.message); }
     // ── Agnes AI 图像/视频生成（文生图 / 图生图 / 多图合成 / 文生视频 / 图生视频 / 关键帧动画）──
     v14Modules.agnesMedia = new AgnesMedia(dataStore, {
       apiKey: process.env.AGNES_API_KEY,
@@ -2775,7 +2971,13 @@ function initV14() {
       // （历史分布：tiktok 264 / twitter 77 / instagram 14 / tumblr 仅 6）。
       // 改为加权池：tumblr 默认 70%，其余平台分摊 30%。可用 MSCMS_TUMBLR_WEIGHT 调整(0-100)。
       const allPlatforms = (() => {
-        const others = ['reddit', 'instagram', 'tiktok', 'x', 'discord', 'facebook'];
+        // 【2026-09-21】others 原为 6 个「无真实发布通道」的平台
+        // （reddit/instagram/tiktok/x/discord/facebook —— 既无 provider 实现也无真实账号），
+        // 那 30% 生成配额全部堆积在 ready 池（无通道可发，ready 池曾达 3035 条）。
+        // 改为指向**真实可发布通道**，使新平台能真正进入生成→发布闭环。
+        // env MSCMS_CONTENT_OTHERS 可覆盖（逗号分隔，如 'nostr,bluesky,mastodon'）。
+        const others = String(process.env.MSCMS_CONTENT_OTHERS || 'nostr')
+          .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
         const w = Math.min(100, Math.max(0, Number(process.env.MSCMS_TUMBLR_WEIGHT || 70)));
         const pool = [];
         const tCount = Math.max(1, Math.round(100 * w / 100));
@@ -2786,16 +2988,57 @@ function initV14() {
       })();
       let platformQueue = [];
       
+      // [NEWPLAT-2026-09-21] P2c 保底配额 + 队首 + 真实通道保护
+      // 背景：allocateContentQuota() 是数据驱动策略器，对**无历史表现数据的新通道**
+      // 权重恒为 0 ⇒ 新平台永远分不到配额（冷启动死锁）。实测现场（2026-09-21）：
+      //   禁发=[reddit,x,discord,tiktok,instagram,tumblr] / 配额: facebook:2
+      // 即策略器把唯一有真实账号的 tumblr 判为禁发，nostr 完全未入选 ⇒ 新平台 0 投放。
+      // 兜底：对 MSCMS_REAL_CHANNELS（默认 tumblr,nostr）强制保底并**置于队首**
+      // （needed 常为 2，保底通道若排在队尾会被 sort() 混洗沉底，等于没兜住）。
+      let _floorList = [];
       if (platformQuota) {
-        // 按策略配额构建生成队列
+        const _minShareRaw = process.env.MSCMS_CONTENT_MIN_SHARE;
+        const _minShare = (_minShareRaw == null || _minShareRaw === '')
+          ? 1 : Math.max(0, Number(_minShareRaw) || 0);
+        const _realChans = String(process.env.MSCMS_REAL_CHANNELS || 'tumblr,nostr')
+          .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+        const _forceReal = process.env.MSCMS_CONTENT_FORCE_REAL_CHANNELS !== '0';
+
+        if (_minShare > 0) {
+          for (const ch of _realChans) {
+            const wasDisabled = disabledPlatforms.includes(ch);
+            if (wasDisabled && !_forceReal) continue;
+            const cur = Number(platformQuota[ch] || 0);
+            if (cur < _minShare) {
+              platformQuota[ch] = _minShare;
+              _floorList.push(ch);
+              if (wasDisabled) {
+                console.warn(`[causal] ⚠️ 策略器把真实发布通道 ${ch} 判为禁发（健康数据失真），已由保底配额放行`);
+              }
+            }
+          }
+          if (_floorList.length) {
+            console.log(`[causal] 🌱 新通道保底配额: ${_floorList.map(c => c + '=' + platformQuota[c]).join(' ')}`);
+          }
+        }
+
+        // 按策略配额构建生成队列（保底通道稍后单独置于队首）
         for (const [platform, count] of Object.entries(platformQuota)) {
+          if (_floorList.includes(platform)) continue;          // 保底通道单独处理
           if (disabledPlatforms.includes(platform)) continue;
           for (let j = 0; j < count; j++) {
             platformQueue.push(platform);
           }
         }
-        // 混洗以增加多样性
-        platformQueue.sort(() => Math.random() - 0.5);
+        // 其余平台混洗以增加多样性
+        const _restQueue = platformQueue.sort(() => Math.random() - 0.5);
+        // 保底通道按各自配额置于队首
+        const _floorQueue = [];
+        for (const ch of _floorList) {
+          const c = Math.max(1, Number(platformQuota[ch] || 1));
+          for (let j = 0; j < c; j++) _floorQueue.push(ch);
+        }
+        platformQueue = _floorQueue.concat(_restQueue);
       } else {
         // 无策略决定器时回退到轮流模式
         platformQueue = allPlatforms;
@@ -2805,6 +3048,11 @@ function initV14() {
       const cyc = accountTracker.getCurrentAccount() || accountLoop.pickCycleAccount() || { account_id: 'sys_default', platform: 'tumblr' };
       const cycleAccountId = cyc.account_id;
       console.log(`[causal] 🔗 周期账户(追踪): ${cycleAccountId} (${cyc.platform}) | 内容按平台绑定同平台真实账户`);
+
+      // ── P1-D 生成侧去重（同批次 + 历史指纹）──────────────────────────
+      const _batchFp = new Set();
+      let _dedupSkip = 0;
+      ensureBodyFpIndex(dataStore);
 
       for (let i = 0; i < needed; i++) {
         const platform = platformQueue[i % platformQueue.length] || allPlatforms[i % allPlatforms.length];
@@ -2825,9 +3073,14 @@ function initV14() {
           console.error(`[causal] 主动生成失败(${platform}): ${genErr.message}`);
         }
         
-        if (!generated || !generated.content || generated.fallback) {
+        // [NEWPLAT-2026-09-21] 原判据只看外层包装对象 generated.fallback，而 contentPipeline
+        // 把 fallback:true 打在内层 content 上 ⇒ 该分支永不触达，真实的
+        // 「无可用内容源」被误报成「正文过短(<30字符)」，掩盖根因。
+        if (!generated || !generated.content || generated.fallback || generated.content.fallback) {
           // 无真实内容时跳过，不填充假数据
-          console.warn(`[causal] ⚠️ 跳过假内容生成: platform=${platform}, 无可用AI模型`);
+          const _fbDetail = generated && generated.content && generated.content.error
+            ? ` | ${generated.content.error}` : '';
+          console.warn(`[causal] ⚠️ 跳过假内容生成: platform=${platform}, 无可用AI模型${_fbDetail}`);
           continue;
         }
 
@@ -2861,10 +3114,52 @@ function initV14() {
         const qualityScore = generated?.qualityScore != null ? generated.qualityScore
           : (generated?.content?.qualityScore != null ? generated.content.qualityScore : null);
         const contentType = generated?.content?.content_type || 'text';
+
+        // ── P1-B1 标签链路 ──────────────────────────────────────────────
+        // 池内容自带 tags（content-pool.getContent 已修字段对齐）；
+        // LLM 产物无 tags → 用规则生成器推导；提不出则留空，由质检闸门拦截。
+        // 池内容带 topic；LLM 产物从管线 Stage1 的 trend_analysis 回填（真实热点标题）
+        // P1 修复：topic 统一归一化（对象取其 title），避免落库出现 "[object Object]"
+        const contentTopic = _ctTools.normalizeTopic(generated?.content?.topic)
+          || _ctTools.normalizeTopic((Array.isArray(generated?.stages) ? generated.stages : [])
+            .map((x) => (x && x.stage === 'trend_analysis' && x.result && x.result.topic) ? x.result.topic : null)
+            .find((x) => !!x));
+        let contentTags = Array.isArray(generated?.content?.tags) ? generated.content.tags
+          : (Array.isArray(generated?.content?.hashtags) ? generated.content.hashtags : []);
+        if (!contentTags.length) {
+          try {
+            contentTags = require('./content-tagger.js').deriveTags({
+              topic: contentTopic, title, body,
+              tone: generated?.content?.tone,
+              target_audience: generated?.content?.target_audience,
+              keywords: generated?.content?.keywords,
+              platform,
+            });
+          } catch (e) { contentTags = []; }
+        }
+        // ── P1-D 正文指纹（跨账号复用硬闸门依据；按 body 而非 id）────────
+        const bodyFp = require('./content-tagger.js').bodyFingerprint(body);
+
+        // P1-D 生成侧硬闸门：同批次或历史已存在该正文 → 跳过（不落库、不推进因果链）
+        // 安全阀：连续跳过达阈值即放行并告警，避免内容源枯竭导致零生成。
+        if (bodyFp && (_batchFp.has(bodyFp) || _bodyFpIndex.has(bodyFp))) {
+          _dedupSkip += 1;
+          const _sf = Number(process.env.MSCMS_DEDUP_GEN_MAX_SKIP || 5);
+          if (_dedupSkip < _sf) {
+            console.warn(`[causal] ♻️ 跳过重复正文(连续第 ${_dedupSkip} 次, fp=${bodyFp}): ${contentId}`);
+            continue;
+          }
+          console.warn(`[causal] ⚠️ 生成侧去重安全阀触发：连续 ${_dedupSkip} 条重复，本次放行并告警（内容源枯竭，需扩容内容池）`);
+          eventBus.emit('content.dedup.starved', { streak: _dedupSkip, platform }, 'dedup-gate');
+          _dedupSkip = 0;
+        } else {
+          _dedupSkip = 0;
+        }
+
         
         // 保存到 DataStore
         // P0：无真实评分 → unscored；P1：再按 quality_v2 单轨判定（≥60 才进发布池）
-        const q2 = computeQualityV2({ title, body, ai_score: generated?.aiScore });
+        const q2 = computeQualityV2({ title, body, ai_score: generated?.aiScore, tags: contentTags });
         const contentStatus = (qualityScore == null || q2 < 60) ? 'unscored' : 'ready';
         if (contentStatus !== 'ready') {
           console.warn(`[causal] ⚠️ 内容未过质检(v2=${q2})，标记 unscored 不进发布池: ${contentId}`);
@@ -2873,15 +3168,19 @@ function initV14() {
           id: contentId, platform, content_type: contentType,
           type: 'post', title, body, quality_score: qualityScore,
           quality_v2: q2, ai_score: generated?.aiScore || 0,
+          tags: contentTags, body_fp: bodyFp, topic: contentTopic,
           account_id: boundAccountId,
           status: contentStatus, generated_at: new Date().toISOString(),
         });
+        // 登记指纹供后续去重（本批次 + 历史索引）
+        if (bodyFp) { _batchFp.add(bodyFp); _bodyFpIndex.add(bodyFp); }
 
         // 发射事件推进因果链（绑定同平台真实账户，闭环）
         eventBus.emit('content.generated', {
           content_id: contentId, platform, account_id: boundAccountId,
           bound_device_id: cyc.bound_device_id || null,
           type: 'post', content_type: contentType, title, body,
+          topic: contentTopic, tags: contentTags, body_fp: bodyFp,
           quality_score: qualityScore, generated_at: new Date().toISOString(),
         }, 'gate-executor');
 
@@ -3016,8 +3315,11 @@ function initV14() {
       // 短路为 '' 即 falsy，守卫形同虚设，无正文记录直接放行（实测 ready 池中
       // 1.4 万条数字 id 记录 100% 为空正文）。改为直接判长度；有 preview_url 的
       // 图片/视频贴允许无正文。
-      const _garbled = !_t || Q2_BAD_RE.test(_t) || (!previewUrl && _b.length < 30);
-      const q2Main = computeQualityV2({ title, body, ai_score: generated?.aiScore, preview_url: previewUrl });
+      // [P2-B5] previewUrl 是存档 JSON 路径，不得作为「有媒体」依据；
+      // 真实媒体字段从生成产物透传（pickMediaFields 已过滤空值/.json）。
+      const _mediaMain = pickMediaFields(generated?.content || {});
+      const _garbled = !_t || Q2_BAD_RE.test(_t) || (!contentHasRealMedia(_mediaMain) && _b.length < 30);
+      const q2Main = computeQualityV2({ title, body, ai_score: generated?.aiScore, ..._mediaMain });
       if (_garbled) {
         console.warn(`[causal] 🚫 响应体检未通过，丢弃不入库: ${contentId} title="${_t.slice(0, 40)}"`);
       } else {
@@ -3033,7 +3335,9 @@ function initV14() {
           quality_score: qualityScore,
           quality_v2: q2Main,
           ai_score: generated?.aiScore || 0,
-          preview_url: previewUrl,
+          preview_url: previewUrl,                 // 存档路径：仅供预览页
+          media_path: _mediaMain.media_path || null,  // [P2-B5] 真实媒体
+          media_url: _mediaMain.media_url || null,
           status: _st,
           account_id: data.account_id,
           generated_at: new Date().toISOString(),
@@ -3061,16 +3365,28 @@ function initV14() {
     // ── S4→S5: 内容生成 → 云手机真实发布（无虚假数据）──
     // 注册执行器：当 content.generated 阶段完成后，批量入队 CloudPublisher
     // 平台名映射：内容平台 → 账号平台（DataStore 中 'x' 对应 'twitter'）
-    const PLATFORM_TO_ACCOUNT = { 'x': 'twitter', 'twitter': 'twitter', 'reddit': 'reddit', 'instagram': 'instagram', 'tiktok': 'tiktok', 'discord': 'discord', 'facebook': 'facebook', 'tumblr': 'tumblr' };
+    // [NEWPLAT-2026-09-21] 补 provider 通道平台，使映射表与 SUPPORTED_PUBLISH_PLATFORMS 口径一致
+    //   （使用处有 `|| content.platform` 兜底，故本项为诊断/可维护性改进，非功能必需）
+    const PLATFORM_TO_ACCOUNT = { 'x': 'twitter', 'twitter': 'twitter', 'reddit': 'reddit', 'instagram': 'instagram', 'tiktok': 'tiktok', 'discord': 'discord', 'facebook': 'facebook', 'tumblr': 'tumblr', 'nostr': 'nostr', 'bluesky': 'bluesky', 'mastodon': 'mastodon', 'telegram': 'telegram', 'devto': 'devto', 'hashnode': 'hashnode', 'github': 'github' };
 
     // 支持发布的平台列表（与 PlatformPublishConfig 对应）
-    const SUPPORTED_PUBLISH_PLATFORMS = ['reddit', 'x', 'twitter', 'instagram', 'tiktok', 'facebook', 'discord', 'tumblr'];
+    // 【2026-09-21】补齐 provider 通道平台，使日志里的「支持列表」与实际可发布通道一致
+    // （仅用于诊断打印，不参与闸门判定；真正的闸门是 REAL_CHANNELS ∩ _providerChannels）。
+    const SUPPORTED_PUBLISH_PLATFORMS = ['reddit', 'x', 'twitter', 'instagram', 'tiktok', 'facebook', 'discord', 'tumblr',
+      'nostr', 'bluesky', 'mastodon', 'telegram', 'devto', 'hashnode', 'github'];
 
     // 真实发布通道：必须与 cloud-publisher.js 的 MSCMS_REAL_CHANNELS 判定保持一致，
     // 否则 S4 会把没有真实通道的平台内容反复入队 → 入队瞬间即 FAILED
     // （"no real channel"），挤占每轮有限的入队名额并污染失败统计。
-    // 接入新通道时改 env MSCMS_REAL_CHANNELS 即可，两处同步生效。
-    const REAL_CHANNELS = (process.env.MSCMS_REAL_CHANNELS || 'tumblr')
+    // 【2026-09-20 F5(2)】接入新通道时改 env MSCMS_REAL_CHANNELS 即可；但 env 未设时
+    //   必须与全部 4 处硬编码默认值同源 —— 改一处就得改全部：
+    //     · server.js:2181          REAL_PUBLISH_PLATFORMS
+    //     · server.js:3285（本处）  REAL_CHANNELS  ← S4→S5 入队闸门
+    //     · cloud-publisher.js:787  realChannels   ← 发布闸门
+    //     · v14-account-loop.js:22  REAL_PUBLISH_PLATFORMS
+    //   生产 env 实测未设置 ⇒ 四处默认值即真实生效值。任一不同源即形成
+    //   「cloud-publisher 放行、但链路不入队」的隐形断层（nostr 0 条即此类根因）。
+    const REAL_CHANNELS = (process.env.MSCMS_REAL_CHANNELS || 'tumblr,nostr')
       .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
     chainGate.registerExecutor('post.published', async (phase) => {
@@ -3104,10 +3420,46 @@ function initV14() {
         console.warn('[causal][诊断] dataStore.list 异常: ' + e.message);
       }
       // 从 DataStore 获取待发布内容（dataStore.list 返回 { items, total, ... } 对象）
-      // 【P1 修复】DataStore 记录的时间字段是 createdAt（驼峰），旧代码 sort:'created_at'
-      // 恒为 undefined，使比较器失效、排序退化，取到的 50 条全是最新生成但平台不可发布的内容。
-      const contentResult = dataStore.list('content', { filter: { status: 'ready' }, limit: 50, sort: 'createdAt', order: 'desc' });
-      let contents = (contentResult && contentResult.items) ? contentResult.items : [];
+      // ── P0-1 修复（2026-09-15）：发布断粮根因 ────────────────────────────────
+      // 旧实现 = 「取最新 50 条 ready」→ 再按平台过滤。该窗口是**全局时间序**：
+      // 实测磁盘上最新 50 条 ready 全为 reddit/tiktok/instagram/discord/facebook/x，
+      // tumblr **0 条**；而 tumblr ready 实际有 3035 条、其中 2957 条完全通过 isPublishable。
+      // 结果「2957 条可发内容，一条都取不到」→ contents=0 → 跳过发布阶段
+      // → 冷启动只补 1 分 → 永久卡在 post.published 1/2 → 因果链死锁（零发布+零生成）。
+      // 上一版只修了 sort 字段名（created_at→createdAt），但排序修好恰恰**加速**了
+      // 其他平台新内容挤占窗口，所以断粮依旧。
+      // 修法：把平台条件下推到 DataStore.filter（逐字段 String 精确匹配，与库内
+      // 小写平台名一致），每个真实通道各取一窗再合并去重。窗口从此只被**同平台**
+      // 内容竞争，不再被其他平台的生成洪峰挤出。
+      const PICK_LIMIT_PER_CHANNEL = Math.max(50, Number(process.env.MSCMS_PICK_LIMIT_PER_CHANNEL) || 50);
+      const pickedIds = new Set();
+      const picked = [];
+      const pickStat = [];
+      for (const ch of REAL_CHANNELS) {
+        let r = null;
+        try {
+          r = dataStore.list('content', {
+            filter: { status: 'ready', platform: ch },
+            limit: PICK_LIMIT_PER_CHANNEL,
+            sort: 'createdAt', order: 'desc',
+          });
+        } catch (e) {
+          console.warn(`[causal] ⚠️ 通道 ${ch} 选取失败: ${e.message}`);
+          continue;
+        }
+        const items = (r && r.items) ? r.items : [];
+        pickStat.push(`${ch}=${items.length}/${(r && r.total) || 0}`);
+        for (const c of items) {
+          if (!c || c.id == null) continue;
+          const key = String(c.id);
+          if (pickedIds.has(key)) continue;
+          pickedIds.add(key);
+          picked.push(c);
+        }
+      }
+      console.log(`[causal] 逐通道选取(${REAL_CHANNELS.join(',')}): ${pickStat.join(' | ')} → 合并去重 ${picked.length} 条`);
+      const contentResult = { items: picked.slice(), total: picked.length };
+      let contents = picked;
       // 只保留「可发布且未被消费」的内容：
       //  - 平台受支持
       //  - status 仍为 ready（queued/published/failed 的内容不再重复入队）
@@ -3145,19 +3497,38 @@ function initV14() {
       console.log(`[causal] DataStore 查到 ${contents.length} 条 ready 内容 (真实通道: ${REAL_CHANNELS.join(', ')}；支持列表: ${SUPPORTED_PUBLISH_PLATFORMS.join(', ')})`);
 
       if (contents.length < phase.target) {
-        console.log(`[causal] Ready 内容不足 (${contents.length}/${phase.target})，尝试获取全部内容并筛选`);
-        const allResult = dataStore.list('content', { limit: 100, sort: 'createdAt', order: 'desc' });
-        const allItems = (allResult && allResult.items) ? allResult.items : [];
-        const allFiltered = allItems.filter(isPublishable);
-        // 合并去重
-        const existingIds = new Set(contents.map(c => c.id));
-        for (const c of allFiltered) {
-          if (!existingIds.has(c.id)) {
+        // ── P0-1 修复（第二处）：兜底补取同样必须按通道下推条件 ──────────────
+        // 旧兜底是 `list('content', {limit:100, sort:'createdAt'})` 无平台条件，
+        // 实测最新 100 条全是 published/queued，补取恒为 0，兜底完全失效。
+        // 现改为：逐通道、只下推平台条件（**不带 status**，以兼容历史缺失 status
+        // 的记录，交由 isPublishable 兜底判定），并扩大窗口。
+        console.log(`[causal] 可发布内容不足 (${contents.length}/${phase.target})，按通道扩大窗口补取`);
+        const FALLBACK_LIMIT_PER_CHANNEL = Math.max(200, PICK_LIMIT_PER_CHANNEL * 4);
+        const existingIds = new Set(contents.map(c => String(c.id)));
+        const fbStat = [];
+        for (const ch of REAL_CHANNELS) {
+          let r = null;
+          try {
+            r = dataStore.list('content', {
+              filter: { platform: ch },
+              limit: FALLBACK_LIMIT_PER_CHANNEL,
+              sort: 'createdAt', order: 'desc',
+            });
+          } catch (e) { continue; }
+          const items = (r && r.items) ? r.items : [];
+          let add = 0;
+          for (const c of items) {
+            if (!c || c.id == null) continue;
+            const key = String(c.id);
+            if (existingIds.has(key)) continue;
+            if (!isPublishable(c)) continue;
+            existingIds.add(key);
             contents.push(c);
-            existingIds.add(c.id);
+            add++;
           }
+          fbStat.push(`${ch}+${add}`);
         }
-        console.log(`[causal] 合并后共 ${contents.length} 条可用内容`);
+        console.log(`[causal] 扩大窗口补取 ${fbStat.join(',')}，合并后共 ${contents.length} 条可用内容`);
       }
 
       if (contents.length === 0) {
@@ -3203,7 +3574,21 @@ function initV14() {
                   || null;
                 // P1 质检单轨：取消 `|| 80` 兜底分与 `status:'ready'` 硬编码
                 // （旧逻辑下无论生成质量如何都直接进发布池，是垃圾外发的第二条通道）
-                const q2 = computeQualityV2({ title, body, ai_score: task?.aiScore, preview_url: previewUrl });
+                // P1-B1/D 同上：补标签与指纹（该链路独立落库，不经过 S4→S5）
+                let _tagsB = Array.isArray(task?.result?.tags) ? task.result.tags
+                  : (Array.isArray(task?.result?.hashtags) ? task.result.hashtags : []);
+                if (!_tagsB.length) {
+                  try {
+                    _tagsB = require('./content-tagger.js').deriveTags({
+                      topic: _ctTools.normalizeTopic(task?.result?.topic), title, body,
+                      tone: task?.result?.tone, platform: plat,
+                    });
+                  } catch (e) { _tagsB = []; }
+                }
+                const _fpB = require('./content-tagger.js').bodyFingerprint(body);
+                // [P2-B5] 同上：previewUrl 为存档 JSON 路径，媒体判定用真实字段
+                const _mediaB = pickMediaFields(task?.result || {});
+                const q2 = computeQualityV2({ title, body, ai_score: task?.aiScore, preview_url: previewUrl, tags: _tagsB, ..._mediaB });
                 const qsB = (task?.qualityScore != null) ? task.qualityScore : null;
                 const stB = (qsB == null || q2 < 60) ? 'unscored' : 'ready';
                 dataStore.create('content', {
@@ -3215,6 +3600,9 @@ function initV14() {
                   quality_v2: q2,
                   ai_score: task?.aiScore || 0,
                   preview_url: previewUrl,
+                  media_path: _mediaB.media_path || null,   // [P2-B5] 真实媒体
+                  media_url: _mediaB.media_url || null,
+                  tags: _tagsB, body_fp: _fpB, topic: _ctTools.normalizeTopic(task?.result?.topic),
                   status: stB, used_count: 0,
                 });
                 if (stB === 'ready') {
@@ -3230,16 +3618,40 @@ function initV14() {
 
       // 通过 CloudPublisher 真实发布
       if (v14Modules.cloudPublisher && contents.length > 0) {
-        // ── 优先发布「已配图」内容 ──────────────────────────────
-        // 配图产能约 4.3 张/分钟，而内容生成约 17 条/分钟 —— 绝大多数内容无图。
-        // 若严格按 created_at desc 取最新，有限的配图会沉在池底、被更新的无图内容挤掉，
-        // 带图发布率将趋近于 0。故在保持「只发 ready 内容」语义不变的前提下调整优先级：
-        // 有图的排前面，同档内仍按时间倒序。
+        // ── [P3-C4] 发布优先级：视频 > 图文 > 文字 ──────────────
+        // 原实现只有「有图 > 无图」两档（配图产能约 4.3 张/分钟，而生成约 17 条/分钟，
+        // 不排序则有限的配图会沉在池底被无图内容挤掉），视频从未参与 —— 因为
+        // content_type 长期恒为 text（P2-C3 才接通写回）。
+        // 现分三档，同档内按时间倒序：
+        //   0 = 视频（content_type='video' 且确有真实媒体，否则发不出去）
+        //   1 = 图文（有真实媒体）
+        //   2 = 文字（无媒体）
+        // 媒体判定统一走 content-media-ref（P2-B5 单一事实源，排除 preview_url 里的 *.json 存档路径）。
+        let _prioMediaRef = null;
+        try { _prioMediaRef = require('./content-media-ref.js'); } catch (_) { _prioMediaRef = null; }
+        const _hasRealMedia = (c) => _prioMediaRef
+          ? _prioMediaRef.contentHasRealMedia(c)
+          : !!(c && (c.media_path || c.mediaPath));
+        const _prioRank = new Map();
+        const _rankOf = (c) => {
+          const k = String((c && c.id) || '');
+          if (_prioRank.has(k)) return _prioRank.get(k);
+          // 分档规则在 content-media-ref.mediaTypeRank（可单测）；此处只负责缓存，
+          // 因为 sort 的比较函数会被调用 O(n log n) 次。
+          const r = _prioMediaRef
+            ? _prioMediaRef.mediaTypeRank(c)
+            : (_hasRealMedia(c) ? 1 : 2);
+          _prioRank.set(k, r);
+          return r;
+        };
+        // 时间键同时兼容 createdAt（DataStore 实际字段）与 created_at（历史写法）——
+        // 原实现只读 created_at，而 content 上是 undefined，时间序其实从未生效，
+        // 等于「有图档内保持 DataStore 返回顺序」，并不真的是时间倒序。
+        const _timeKey = (c) => String((c && (c.createdAt || c.created_at)) || '');
         contents.sort((a, b) => {
-          const am = a.media_path ? 1 : 0;
-          const bm = b.media_path ? 1 : 0;
-          if (am !== bm) return bm - am;
-          return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+          const d = _rankOf(a) - _rankOf(b);
+          if (d !== 0) return d;
+          return _timeKey(b).localeCompare(_timeKey(a));
         });
         // 【2026-09-09 修复】存量脏内容 body 为空 → 发布时报 "Content is empty" 反复轮回（空转）。
         // 这里先过滤掉无正文的条目，并把其中少量标记 unscored，避免每轮都被挑中又发不出去。
@@ -3253,20 +3665,173 @@ function initV14() {
             try { dataStore.update('content', c.id, { status: 'unscored', _emptyBody: true }); _fixed++; } catch (_) {}
           }
         }
-        const toPublish = contents.filter(_hasText).slice(0, phase.target * 2);
+        // ── N2（2026-09-15）：入队前剔除「绑定到 token 失效账号」的内容 ──────────
+        // 为什么必须在【入队前】拦，而不是只在发布器里拦：
+        //   内容一旦入队就被标 status='queued'，而它 100% 发不出去（token 已被撤销）
+        //   → 这条内容从此沉底，永远回不到 ready。
+        //   在选取阶段过滤掉，内容**仍留在 ready 池**，等账号重新授权后自动恢复发布（自愈）。
+        // 另一层作用：避免「绑定失效账号的内容反复占住 target*2 窗口 → 每轮空转」——
+        //   contents 是按 createdAt desc 取的前 50 条/通道，被过滤后 slice 才生效，
+        //   所以失效内容不会挤掉可用内容的名额。
+        const _deadTokIds = (v14Modules.cloudPublisher
+          && typeof v14Modules.cloudPublisher.deadTokenIds === 'function')
+          ? v14Modules.cloudPublisher.deadTokenIds() : new Set();
+        let _deadSkipped = 0;
+        // ── [ACCEL-2026-09-22 · P0-1A] 解除「每周期仅 4 条」入队天棚 ────────────
+        // 原实现 `.slice(0, phase.target * 2)`，而 post.published 阶段 target=2
+        //   ⇒ 恒定 4 条/周期 ⇒ 实测 47 批/天 × 4 = 188 条/天。
+        //   硬上限本应是 114 账号 × 12 = 1,368 条/天 ⇒ 利用率仅 9.6%，这是全链路第一瓶颈。
+        // 现改为 env 可调（默认 40），按「待入队内容量」决定实际批大小。
+        // ⚠️ 只放开这里的**入队上限**，绝不动 chainGate 的 phase.target
+        //   —— 那是背压目标而非吞吐上限，拉高会让 cycle 等不到 2×N 次成功而卡死（09-12 教训同源）。
+        // 回滚：MSCMS_ENQUEUE_PER_CYCLE=4 即逐字恢复原行为。
+        //
+        // 【2026-09-22 19:37 二次校准，实测驱动】初版默认 40 是**未测量时的估计值**，实测证明过高：
+        //   19 分钟采样（19:18–19:36，19 样本）：
+        //     · 真实发布 1.61/min ≈ **97/h**（tumblr 1.0/min + nostr 0.61/min）
+        //     · 链路周期实测 ≈ 4.5 min/次 ⇒ 约 **13.3 周期/h**
+        //     · 入队 40/周期 ⇒ 40×13.3 ≈ **532/h**，是发布能力的 **5.5 倍**
+        //     · 后果（sawtooth 发散）：ready 2073→1941（−132）、queued 53→163（+110），
+        //       queue 深度逐周期抬升 32→68→101→125→158（地板每周期 +37）
+        //   ⇒ 入队必须与**发布能力**对齐，否则 ready 池会被灌进 queued 变成僵尸队列
+        //     （历史上 queued 曾累积到 418 条，见 tools/reclaim-stale-queued.js）。
+        //   取值依据：97/h ÷ 13.3 ≈ **7.3/周期** 为收敛点；取 10 留约 1.4× 缓冲。
+        //   ⚠️ 该值不是「越大越快」——**吞吐由发布侧（429 共享 app-key 限流）决定**，
+        //     入队只是缓冲。若后续发布侧扩容，再同步上调本值。
+        const _enqCap = Math.max(4, Number(process.env.MSCMS_ENQUEUE_PER_CYCLE || 10));
+        // ── [DAU-2026-09-23 · B2] 引流帖优先入队 ──────────────────────────────
+        // 背景：content 池按索引序，kk20-/hlua40- 引流帖（含 hlua.cc.cd /
+        //   kkmatch.com 链接）被埋在尾部，入队取前 _enqCap 条时永远轮不到，
+        //   ⇒ 近期外发的全是 trends 技术灌水帖，带不来 DAU。
+        // 现按「是否引流帖」二值排序，把 kk20-/hlua40- 顶到每批最前（稳定排序，
+        //   同组内保持原序）。回滚：删除本 sort 即可。
+        const _isPromo = (c) => /^kk20-|hlua40-/.test(String((c && c.id) || ''));
+        // ── [P0-2026-10-09] 曾被回收的 ready 优先入队 ────────────────────────
+        // 根因：_recoverStaleQueued() 把等窗口的 queued 打回 ready 后，这些内容
+        // 会与「刚生成的新内容」站在同一队列里竞争 _enqCap 限额。而新内容
+        // 持续涌入 ⇒ 被回收的内容永远抢不到位置 ⇒ 长期饥饿（互动 history=[]
+        // 与 requeued_at==queued_at+30min 是铁证）。
+        // 判据：有 requeued_at 且 requeue_reason 含 recover ⇒ 它已经等过窗口，
+        //   优先级必须高于尚未尝试过的新内容。
+        const _wasRecovered = (c) => !!c.requeued_at &&
+          /recover|stale/i.test(String(c.requeue_reason || 'recover'));
+        const toPublish = contents
+          .filter(_hasText)
+          .filter((c) => {
+            if (_deadTokIds.size === 0) return true;
+            const aid = c.account_id || (c.content && c.content.account_id);
+            if (aid && _deadTokIds.has(String(aid))) { _deadSkipped++; return false; }
+            return true;
+          })
+          // 排序优先级：① 曾被回收（已等过窗口） ② 引流帖 ③ 其余（稳定排序保持原序）
+          .sort((a, b) => (
+            (Number(_wasRecovered(b)) - Number(_wasRecovered(a))) ||
+            (Number(_isPromo(b)) - Number(_isPromo(a)))
+          ))
+          .slice(0, _enqCap);
+        const _recoveredPicked = toPublish.filter(_wasRecovered).length;
+        if (_recoveredPicked) {
+          console.log(`[causal] ♻️ 本批含${_recoveredPicked} 条「曾被回收」内容（已等过窗口，优先入队避免饥饿）`);
+        }
+        if (_deadSkipped > 0) {
+          console.warn(`[causal] 🔒 跳过 ${_deadSkipped} 条「绑定 token 失效账号」的内容`
+            + `（保留在 ready 池，账号重新授权后自动恢复发布）`);
+        }
         console.log(`[causal] 入队 ${toPublish.length} 条内容到 CloudPublisher`);
 
         // 预加载一次账号列表（避免每次循环都查 DataStore）
-        const accResult = dataStore.list('accounts', { filter: { status: 'active' }, limit: 50 });
+        // ── [ACCEL-2026-09-22 · P0-1B] 解除账号池 50 条天棚 ────────────────────
+        // 原 `limit: 50` 使 117 个 active 账号只有 50 个（43%）参与分配，
+        //   实测日志「可用活跃账号: 50 个」出现 47 次**恒为 50** —— 天棚确凿。
+        //   被排除的 67 个账号在整个发布循环里从未被考虑过。
+        // 回滚：MSCMS_ACCOUNT_POOL_LIMIT=50。
+        const _accLimit = Math.max(50, Number(process.env.MSCMS_ACCOUNT_POOL_LIMIT || 2000));
+        const accResult = dataStore.list('accounts', { filter: { status: 'active' }, limit: _accLimit });
         const accountsArr = (accResult && accResult.items) ? accResult.items : [];
-        console.log(`[causal] 可用活跃账号: ${accountsArr.length} 个`);
+        console.log(`[causal] 可用活跃账号: ${accountsArr.length} 个 (池上限 ${_accLimit}` +
+          `, DataStore 报告 total=${(accResult && accResult.total) || 'n/a'})`);
 
         let enqueuedCount = 0;
         let dupSkipped = 0;
+        // ── [ACCEL-2026-09-22 · P0-1C] 配额感知的轮询分配器 ──────────────────────
+        // 取代原 `|| accountsArr[0]` 常量兜底。原兜底把**全部** nostr 内容
+        //   （225 条）恒定锁死在 active 列表索引 [0] 的同一个 tumblr 账号上
+        //   ⇒ 该账号 12 帖日配额被 nostr 吃干 ⇒ 后续全部任务「超出配额 (12/12)」推迟
+        //   ⇒ 队列 depth 4→43 单调爬升，而并发槽 active=0/3 全程为 0（无一条真正执行）。
+        // 现按平台分桶 + 配额感知轮询：同平台账号轮流承载，配额满则换下一个，
+        //   全池满才返回 null（交由上层明确跳过并打印，绝不静默退化）。
+        // ── [KK20-2026-09-22] 定向投放保留账号：从通用池排除 ────────────────────
+        // 这些账号的发布窗口专供定向投放（背景见 v14-account-loop.js 顶部说明）。
+        // 与 accountLoop.getAccountForPlatform 的排除保持同源口径，避免两处漂移。
+        // 文件缺失/解析失败 → 空集合 → 完全无行为变更（安全默认）。
+        const _reservedIds = (function () {
+          const f = process.env.MSCMS_RESERVED_ACCOUNTS_FILE || 'D:/mscms-ws/data/kk20-reserved-accounts.json';
+          if (!f || f === 'none') return new Set();
+          try {
+            const d = JSON.parse(require('fs').readFileSync(f, 'utf8'));
+            const a = Array.isArray(d) ? d : (d.accounts || d.items || []);
+            return new Set(a
+              .map(x => String(typeof x === 'string' ? x : ((x && (x.id || x.account_id)) || '')))
+              .filter(Boolean));
+          } catch (_) { return new Set(); }
+        })();
+        const _isReservedId = (id) => _reservedIds.size > 0 && _reservedIds.has(String(id));
+        const _poolByPlatform = Object.create(null);
+        for (const _a of accountsArr) {
+          const _p = String(_a.platform || '').toLowerCase();
+          if (!_p) continue;
+          if (_isReservedId(_a.id || _a.account_id)) continue;   // 保留账号不参与通用轮转
+          if (!_poolByPlatform[_p]) _poolByPlatform[_p] = [];
+          _poolByPlatform[_p].push(_a);
+        }
+        const _rrCursor = Object.create(null);   // platform -> 轮询游标（跨内容保留）
+        const _quotaOf = (id) => {
+          try {
+            return Number(v14Modules.cloudPublisher._getDailyPostCount(id) || 0);
+          } catch (_) { return 0; }
+        };
+        const _dailyMaxOf = (id) => {
+          try {
+            const rules = v14Modules.cloudPublisher.nurturingRules;
+            const m = rules && rules.dailyQuota && rules.dailyQuota.post && rules.dailyQuota.post.max;
+            return Number(m || 12);
+          } catch (_) { return 12; }
+        };
+        const _pickAccountForPlatform = (platform) => {
+          const key = String(platform || '').toLowerCase();
+          const pool = _poolByPlatform[key];
+          if (!pool || !pool.length) return null;
+          const cur = _rrCursor[key] || 0;
+          for (let i = 0; i < pool.length; i++) {
+            const cand = pool[(cur + i) % pool.length];
+            const cid = cand.id || cand.account_id;
+            if (_quotaOf(cid) < _dailyMaxOf(cid)) {
+              _rrCursor[key] = (cur + i + 1) % pool.length;
+              return cand;
+            }
+          }
+          return null;   // 该平台全池配额已满
+        };
+        // provider 通道判定：复用 cloud-publisher 的单一事实源，避免两处口径漂移
+        const _isProvCh = (p) => {
+          try {
+            return typeof v14Modules.cloudPublisher._isProviderChannel === 'function'
+              && v14Modules.cloudPublisher._isProviderChannel(p);
+          } catch (_) { return false; }
+        };
         for (const content of toPublish) {
           // ── 需求1: 发布必须使用内容所绑定的同一账户(闭环) ──
           let acc = null;
-          const contentAccountId = content.account_id || (content.content && content.content.account_id);
+          let contentAccountId = content.account_id || (content.content && content.content.account_id);
+          // [KK20-2026-09-22] 保留账号的绑定只对「定向投放内容」(id 前缀 kk20-) 有效。
+          // 通用内容若绑定在保留账号上（存量历史绑定，实测 369 条 ready 挂在 20 个
+          // 保留账号上），会持续抢占其 45 分钟发布窗口 ⇒ 定向投放被饿死。
+          // 这里丢弃通用内容的保留账号绑定，让它落到下方轮询池（该池已排除保留账号）
+          // ⇒ 存量自动迁移到其余账号，无需停机改盘。定向内容绑定保持不变。
+          if (contentAccountId && _isReservedId(contentAccountId)
+              && !/^kk20-/.test(String(content.id || ''))) {
+            contentAccountId = null;
+          }
           if (contentAccountId) {
             acc = accountsArr.find(a => a.id === contentAccountId || a.account_id === contentAccountId);
             if (!acc) {
@@ -3276,11 +3841,26 @@ function initV14() {
             }
           }
           if (!acc) {
-            // 兜底: 按平台匹配一个活跃账户
+            // ── [ACCEL-2026-09-22 · P0-1C] 兜底改为配额感知轮询，废弃 accountsArr[0] 常量 ──
+            // 原实现 `|| accountsArr[0]` 是**常量兜底**：只要前两路没命中，
+            //   所有新平台内容都会落到同一个账号（实测恰好是 active 列表索引 [0] 的
+            //   `tumblr_cpzzo2sx`，225 条 nostr 内容 100% 锁死在它身上）。
             const targetPlatform = PLATFORM_TO_ACCOUNT[content.platform] || content.platform;
-            acc = accountsArr.find(a => a.platform === targetPlatform || a.platform === content.platform)
-              || accountLoop.getAccountForPlatform(content.platform)
-              || accountsArr[0];
+            const wantPlat = String(targetPlatform || '').toLowerCase();
+            const contentPlat = String(content.platform || '').toLowerCase();
+            acc = (wantPlat === contentPlat)
+              ? _pickAccountForPlatform(wantPlat)
+              : (_pickAccountForPlatform(wantPlat) || _pickAccountForPlatform(contentPlat));
+            // provider 通道（nostr/bluesky/mastodon…）：账号池通常**没有**同平台账号
+            //   （实测 117 个 active 账号全是 tumblr、0 个 nostr）。
+            //   此时用 tumblr 池**轮询**承载，靠 P0-2 的 provider 独立配额命名空间
+            //   避免吃掉承载账号的真实日配额 —— 绝不退化为常量兜底。
+            if (!acc && contentPlat && _isProvCh(contentPlat)) {
+              acc = _pickAccountForPlatform('tumblr');
+            }
+            if (!acc && typeof accountLoop.getAccountForPlatform === 'function') {
+              acc = accountLoop.getAccountForPlatform(content.platform);
+            }
           }
 
           if (!acc) {
@@ -3289,6 +3869,16 @@ function initV14() {
           }
 
           const publishAccountId = acc.id || acc.account_id || contentAccountId;
+
+          // ── N2 兜底拦截：账号解析结果若落在 token 失效名单，同样不入队 ──────────
+          // 上面的预过滤用的是 `content.account_id`；但账号解析还可能是
+          // `accountLoop.getAccount()` 或「按平台兜底匹配」的结果，两者不保证一致，
+          // 故这里再判一次。命中即 continue（不标 queued、不消耗内容）。
+          if (_deadTokIds.size > 0 && publishAccountId && _deadTokIds.has(String(publishAccountId))) {
+            _deadSkipped++;
+            console.warn(`[causal] 🔒 跳过内容 ${content.id}：解析出的发布账号 ${publishAccountId} token 已失效`);
+            continue;
+          }
 
           // ── 去重闸门：该 (账号, 内容) 近 24h 已发过则跳过，杜绝重复刷屏 ──
           const dedupeKey = `${publishAccountId}|${content.id}`;
@@ -3426,13 +4016,46 @@ function initV14() {
       // 垃圾（65% 出自该链路）绕过质检外发的根因。现在：
       //   ① 响应体检（错误响应/占位文案/正文过短）→ 拒绝落库
       //   ② 质检单轨 quality_v2 < 60 → 存为 unscored，不进发布队列
+      // ── [P2-B4] 图文成品组装：标题 ≤ 平台上限 / 正文首行摘要 / 正文尾部 3~8 标签 ──
+      // 本处是全部 content.generated 的汇聚落库点，故在此统一组装，
+      // 保证「落库正文即成品」，避免多个上游落库点各组装一次产生漂移。
+      // 必须在 _t2/_b2 体检与 _fp2 指纹之前完成（指纹需与落库正文一致）。
+      try {
+        const _spc4 = require('./aigc-content-generator.js').PLATFORM_SPECS[data.platform] || {};
+        const _c4 = require('./content-tagger.js').composePost({
+          platform: data.platform,
+          title: data.title,
+          body: data.body,
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          titleMaxLength: Number(_spc4.titleMaxLength || 0),
+        });
+        data.title = _c4.title;
+        data.body = _c4.body;
+      } catch (e) { /* 组装失败不阻断落库 */ }
       const _t2 = String(data.title || '').trim();
       const _b2 = String(data.body || '').trim();
-      // 【2026-09-12 修复】有 preview_url 的图片/视频贴允许无正文；纯文本必须有正文。
-      const _hasMedia2 = !!data.preview_url;
+      // 【2026-09-12 修复】有**真实媒体**的图片/视频贴允许无正文；纯文本必须有正文。
+      // [P2-B5] 原为 `!!data.preview_url` —— 该字段是存档 JSON 路径、恒为真，
+      // 使本处（全部 content.generated 的最终落库点，影响面最大）的空正文守卫失效。
+      const _mediaData = pickMediaFields(data);
+      const _hasMedia2 = contentHasRealMedia(_mediaData);
+      // ── P1-B1/D 最终落库点补齐标签与正文指纹 ─────────────────────────
+      // 本处覆盖全部 content.generated 链路（含内容池直出、MySQL 回采等），
+      // 因此是标签/指纹覆盖面的关键点：缺 tags → 规则派生；写 body_fp 供复用闸门使用。
+      let _tags2 = Array.isArray(data.tags) ? data.tags : [];
+      if (!_tags2.length) {
+        try {
+          _tags2 = require('./content-tagger.js').deriveTags({
+            topic: _ctTools.normalizeTopic(data.topic), title: data.title, body: data.body,
+            tone: data.tone, platform: data.platform,
+          });
+        } catch (e) { _tags2 = []; }
+      }
+      const _fp2 = require('./content-tagger.js').bodyFingerprint(data.body);
+
       const _q2 = Number.isFinite(Number(data.quality_v2)) && data.quality_v2 !== undefined
         ? Number(data.quality_v2)
-        : computeQualityV2({ title: data.title, body: data.body, ai_score: data.ai_score, preview_url: data.preview_url });
+        : computeQualityV2({ title: data.title, body: data.body, ai_score: data.ai_score, preview_url: data.preview_url, tags: _tags2, ..._mediaData });
       // 【2026-09-12 修复·关键】原为 `(_b2 && _b2.length < 30)` —— `_b2` 为空串时
       // `'' && ...` 短路为 '' (falsy)，守卫完全失效 → 无正文记录畅通无阻。
       // 实测：causal-chain-manager 轮询 MySQL matrix_content_generated 后 emit 的
@@ -3454,6 +4077,10 @@ function initV14() {
         quality_v2: _q2,
         ai_score: data.ai_score || 0,
         preview_url: data.preview_url || null,
+        // [P2-B5] 透传真实媒体，避免媒体信息在最终落库时丢失（此前只存 preview_url）
+        media_path: _mediaData.media_path || null,
+        media_url: _mediaData.media_url || null,
+        tags: _tags2, body_fp: _fp2, topic: _ctTools.normalizeTopic(data.topic),
         status: _q2 >= 60 ? 'ready' : 'unscored',
         used_count: 0
       });
@@ -3881,7 +4508,12 @@ function initV14() {
 
       const SYSTEM_SELF_GENERATED = data._system_generated === true
         || data.source === 'system-simulated'
-        || data.traffic_mode === 'http_direct';  // HTTP直连模拟流量
+        || data.traffic_mode === 'http_direct'   // HTTP直连模拟流量
+        // 【2026-09-20 F4 修复(2)】'self_direct' 是 doVisit() 写下的本机直连哨兵值，
+        //   必须与 TEST-NET / http_direct 同等对待；否则 flowTag 会把它写成「真实外部流量」，
+        //   与 matrix_visits_recorded.visitor_type='system' 自相矛盾
+        //   （实测 12:52 入库的 20 条新记录 DB 已正确标 system，日志却仍称「真实外部流量」）。
+        || String(data.ip || '').toLowerCase() === 'self_direct';
 
       // 过滤真正无效的本地/内网 IP（任何模式下都排除）
       const isLocalIP = !data.ip || data.ip === '127.0.0.1' || data.ip === '::1'
@@ -3902,7 +4534,11 @@ function initV14() {
         return;
       }
 
-      const flowTag = isCloudMode && (isTestNetIP || SYSTEM_SELF_GENERATED) ? '云矩阵模拟' : '真实外部';
+      // 【2026-09-20 F4 修复(2)】flowTag 必须与 visitor_type 判定同源：
+      //   系统自生成的流量（self_direct / TEST-NET / http_direct）绝不称「真实外部」。
+      //   原实现写成 `isCloudMode && (...)`，导致非云模式下即便是系统流量也被标为
+      //   「真实外部」——这正是把 54.7 万条本机直连读成「真实外部流量」的文案来源。
+      const flowTag = (isTestNetIP || SYSTEM_SELF_GENERATED) ? (isCloudMode ? '云矩阵模拟' : '系统自生成') : '真实外部';
       console.log(`[causal] S6→S7: visit.recorded ${flowTag}流量 → source=${data.source}, platform=${data.platform}, ip=${data.ip}`);
       const _r = dataStore.create('analytics', {
         id: data.visit_id,
@@ -3925,10 +4561,27 @@ function initV14() {
         contentId: data.content_id, postId: data.post_id, platform: data.platform,
         duration: data.duration,
       }); } catch(e) {}
+      // 【2026-09-20 F4 修复】visitor_type 不再硬编码 'organic'。
+      //   背景：doVisit() 的自访问其 ip 恒为哨兵值 'self_direct'（如实标注，非伪造），
+      //   但 INSERT 处一律写 'organic' ⇒ 实测 573,758 条访问记录 100% 标 organic，
+      //   其中 546,712 条为本机直连，直接把「自然流量」口径污染成 0 真实外部流量。
+      //   改走 data-provenance.js 的**同一判定**（self_direct / TEST-NET → 'system'），
+      //   保持单一事实源：classifyTraffic 返回 'user' 才是 organic，其余一律 system。
+      const visitorType = (() => {
+        try {
+          const { classifyTraffic } = require('./data-provenance.js');
+          return classifyTraffic({ ip: data.ip, ua: data.ua, source: data.source }) === 'user' ? 'organic' : 'system';
+        } catch (e) {
+          // 兜底（模块缺失时不得中断写入）：本机 / 哨兵 / TEST-NET 一律 system
+          const ip = String(data.ip || '').trim();
+          return (!ip || /^(self[_-]direct|localhost|127\.0\.0\.1|::1|loopback|internal|system)$/i.test(ip) || /^203\.0\.113\./.test(ip))
+            ? 'system' : 'organic';
+        }
+      })();
       try {
         pool.execute(
           'INSERT INTO matrix_visits_recorded (post_id, account_id, visitor_type, ip, ua, referrer, landing_page, duration, is_unique, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [data.post_id || null, data.account_id || null, 'organic', data.ip || null,
+          [data.post_id || null, data.account_id || null, visitorType, data.ip || null,
            data.ua || null, data.referrer || null, data.landing_page || null,
            data.duration || 0, data.is_unique ? 1 : 0, data.source || null]
         ).catch((err) => {
@@ -3971,12 +4624,36 @@ function initV14() {
 
       // 【修复】使用单一权威数据源：WebsiteAnalytics（visitorId 去重）
       // 不再从 DataStore 累加 IP 计数（IP 不可靠：NAT、移动网络、系统模拟IP）
-      let dauData = { currentDAU: 0, targetDAU: phase.target || 1 };
+      //
+      // [ACCEL-2026-09-22 · P0-3] DAU 目标与「真实用户分子」双修正。
+      //   缺陷 1（假达标根因）：原 `targetDAU: phase.target || 1` 把**因果链阶段的进度目标**
+      //     （dau.updated 阶段 defaultTarget=1）当成了 DAU 目标，与业务目标毫无关系
+      //     ⇒ `currentDAU >= 1` 恒真 ⇒ 连续 14 天上报「DAU 达标」。
+      //     本进程内其实存在**两个互不相干的 DAU 目标**：控制器是 200（setTarget(200)），
+      //     而 dau_log 记的是 1。现统一以 dauController.dailyTarget 为权威源。
+      //   缺陷 2（分子掺水）：原分子取 `stats.todayDAU`（dailyBucket.uniqueVisitors，
+      //     **不区分 provenance**）⇒ 因果链 S5 自驱访问（system）被计入真实 DAU
+      //     （实测 raw=12 而真实 user=0）。现分子改用 `provenance.userUniqueVisitors`
+      //     （仅真实用户、已按 visitorId 去重）；system/unknown 一律**不计入**分子，
+      //     但保留 Independent 字段供审计。
+      const _dauTarget = (() => {
+        const _env = Number(process.env.MSCMS_DAU_TARGET || 0);
+        if (_env > 0) return { value: _env, source: 'env:MSCMS_DAU_TARGET' };
+        const _ctrl = Number((v14Modules.dauController && v14Modules.dauController.dailyTarget) || 0);
+        if (_ctrl > 0) return { value: _ctrl, source: 'dauController.dailyTarget' };
+        return { value: 50, source: 'staircase-default(T+7)' };
+      })();
+      let dauData = { currentDAU: 0, targetDAU: _dauTarget.value, targetSource: _dauTarget.source };
       if (v14Modules.websiteAnalytics) {
         const stats = v14Modules.websiteAnalytics.getStats ? v14Modules.websiteAnalytics.getStats() : {};
         // websiteAnalytics 内部使用 visitorId（非IP）做去重，更准确
-        // 【修复】getStats() 实际暴露 todayDAU / totalUniqueVisitors，原字段名(uniqueVisitors/realTimeDAU/dailyTotal)不存在 → 恒为 0
-        dauData.currentDAU = stats.todayDAU || stats.totalUniqueVisitors || 0;
+        const _prov = stats.provenance || {};
+        // 真实用户口径（去重后）
+        dauData.realDAU = Number(_prov.userUniqueVisitors || 0);
+        dauData.systemDAU = Number(_prov.systemVisits || 0);
+        dauData.unknownDAU = Number(_prov.unknownVisits || 0);
+        dauData.rawTodayDAU = Number(stats.todayDAU || stats.totalUniqueVisitors || 0); // 旧口径（含 system），仅供对照
+        dauData.currentDAU = dauData.realDAU;
         // 附加详细统计
         dauData.totalVisits = stats.totalVisits || 0;
         dauData.totalEvents = stats.totalEvents || 0;
@@ -3992,20 +4669,35 @@ function initV14() {
              WHERE DATE(created_at) = ? AND source != 'system-simulated'`,
             [today]
           );
+          // [ACCEL-2026-09-22 · P0-3] 回退口径同样只取非 system 记录 ⇒ 即真实用户口径
           dauData.currentDAU = dauRows[0]?.dau || 0;
+          dauData.realDAU = dauData.currentDAU;
+          dauData.dauSource = 'db:matrix_visits_recorded(non-system)';
         } catch(e) { /* DB 查询失败不阻塞 */ }
       }
+      if (!dauData.dauSource) dauData.dauSource = 'websiteAnalytics:provenance.userUniqueVisitors';
 
-      console.log(`[causal] DAU 统计 (visitorId去重): current=${dauData.currentDAU}, totalVisits=${dauData.totalVisits || 'N/A'}, target=${dauData.targetDAU}`);
+      console.log(`[causal] DAU 统计 (真实用户口径): current=${dauData.currentDAU}`
+        + ` [raw含system=${dauData.rawTodayDAU || 0} / system=${dauData.systemDAU || 0}`
+        + ` / unknown=${dauData.unknownDAU || 0}]`
+        + `, totalVisits=${dauData.totalVisits || 'N/A'}`
+        + `, target=${dauData.targetDAU}(${dauData.targetSource})`
+        + `, 来源=${dauData.dauSource || 'n/a'}`);
 
       eventBus.emit('dau.updated', {
         currentDAU: dauData.currentDAU,
+        realDAU: dauData.realDAU || 0,
+        systemDAU: dauData.systemDAU || 0,
+        unknownDAU: dauData.unknownDAU || 0,
+        rawTodayDAU: dauData.rawTodayDAU || 0,
         targetDAU: dauData.targetDAU,
+        targetSource: dauData.targetSource,
+        dauSource: dauData.dauSource,
         totalVisits: dauData.totalVisits,
         gap: Math.max(0, dauData.targetDAU - dauData.currentDAU),
         platform: 'all',
         _ts: Date.now(),
-        source: 'website-analytics-visitorId-dedup',
+        source: 'website-analytics-user-unique-dedup',
       }, 'dau-controller');
       // 进度由 chainGate.connectEventBus 自动累进（仅达标时累进）
     });
@@ -4030,7 +4722,14 @@ function initV14() {
       console.log(`[causal] S7→决策: dau.updated → current=${data.currentDAU}, target=${data.targetDAU}, gap=${data.gap}`);
       dataStore.create('dau_log', {
         currentDAU: data.currentDAU,
+        // [ACCEL-2026-09-22 · P0-3] 落库补齐审计字段，使「真实 / 自驱 / 未知」三口径可追溯。
+        realDAU: data.realDAU,
+        systemDAU: data.systemDAU,
+        unknownDAU: data.unknownDAU,
+        rawTodayDAU: data.rawTodayDAU,
         targetDAU: data.targetDAU,
+        targetSource: data.targetSource,
+        dauSource: data.dauSource,
         gap: data.gap,
         timestamp: data._ts
       });
@@ -4558,9 +5257,9 @@ function initV14() {
       let loaded = 0, skippedFake = 0;
       for (const row of managedRows) {
         if (!row.bot_id) continue;
-        if (!isRealManagedAccount(row, tokenIds, row.id || row.bot_id)) { skippedFake++; continue; }
+        if (!isRealManagedAccount(row, tokenIds, row.bot_id || row.id)) { skippedFake++; continue; }
         v14Modules.nurturing.addAccount({
-          id: row.id,
+          id: row.bot_id || row.id,
           bot_id: row.bot_id,
           account_id: row.bot_id,
           platform: row.platform,
@@ -4950,6 +5649,10 @@ app.post('/api/v14/content/:id/render', async (req, res) => {
     try {
       v14.dataStore.update('content', req.params.id, {
         video_url: vr.videoUrl, video_url_local: vr.filePath,
+        // [P2-C3] 渲染完成即把内容升级为 video（此前漏写，导致视频内容仍以
+        // content_type='text' 落库，发布优先级与视频质检都识别不到）。
+        content_type: 'video',
+        media_path: vr.filePath || null,
         duration: vr.duration, status: 'ready'
       });
     } catch (_) {}
@@ -4972,6 +5675,30 @@ app.get('/api/v14/video-render/list', async (req, res) => {
     const v14 = initV14();
     if (!v14) return res.status(500).json({ error: 'v14 not initialized' });
     const r = v14.videoRender.list({ limit: parseInt((req.query || {}).limit) || 50 });
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── [P3-C2] 视频调度器：状态 / 手工触发 ──
+app.get('/api/v14/video-scheduler/stats', async (req, res) => {
+  try {
+    const v14 = initV14();
+    if (!v14 || !v14.videoScheduler) return res.status(503).json({ error: 'video scheduler unavailable' });
+    res.json(v14.videoScheduler.stats());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 手工触发一次调度。force=1 可绕过时间窗与配额（用于验收/联调）。
+app.post('/api/v14/video-scheduler/run', async (req, res) => {
+  try {
+    const v14 = initV14();
+    if (!v14 || !v14.videoScheduler) return res.status(503).json({ error: 'video scheduler unavailable' });
+    const b = req.body || {};
+    const r = await v14.videoScheduler.tick({
+      force: b.force === true || b.force === '1' || b.force === 1,
+      limit: parseInt(b.limit, 10) || undefined,
+      duration: parseInt(b.duration, 10) || undefined,
+    });
     res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -6377,7 +7104,97 @@ app.post('/api/v14/proxy/bind', (req, res) => {
 app.get('/api/v14/proxy/list', (req, res) => {
   try {
     const v14 = initV14();
-    res.json({ proxies: v14.proxyMgr.listProxies(), bindings: v14.proxyMgr.listBindings() });
+    // 【B0-D2 修复 2026-09-20】ProxyManager 的内存 Map（proxy-manager.js:211）只由
+    // addProxy() 填充，而全仓没有任何启动路径把真实出口池导入进去 ⇒ 本端点恒返回
+    // {"proxies":[],"bindings":[]}，「代理管理」页因此是空壳（用户看不到真实出口）。
+    // 真实出口池在 D:/MSCMS-Desktop/resources/proxy-pool.json，由 cloud-publisher 的
+    // pickExitForAccount() 消费。这里把它作为**只读**数据源一并返回，并标明各自来源，
+    // 避免前端把「无设备绑定」误读成「系统没有代理」。
+    let exitPool = { ok: false, source: null, total: 0, enabled: 0, items: [], error: 'module unavailable' };
+    let exitSummary = null;
+    try {
+      const eps = require('./exit-pool-source.js');
+      exitPool = eps.loadExitPool();
+      exitSummary = eps.summarizeExitPool(exitPool);
+    } catch (e) {
+      exitPool = { ok: false, source: null, total: 0, enabled: 0, items: [], error: e.message };
+      exitSummary = { ok: false, error: e.message, total: 0, enabled: 0, uniqueExitIps: 0 };
+    }
+    res.json({
+      proxies: v14.proxyMgr.listProxies(),
+      bindings: v14.proxyMgr.listBindings(),
+      // exitPool 与 proxies/bindings 是**两套东西**：
+      //   proxies/bindings = 设备↔代理绑定（ProxyManager，内存态）
+      //   exitPool         = 发布出站用的真实出口池（文件态，权威）
+      exitPool: { ...exitSummary, items: exitPool.items },
+      _meta: {
+        proxiesSource: 'ProxyManager(内存 · 设备代理绑定用)',
+        exitPoolSource: exitPool.source || null,
+        note: 'proxies/bindings 为空仅表示尚无设备-代理绑定；真实出口请读 exitPool',
+      },
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 【B0-D2】出口池专用端点 —— 只读、无副作用（不探活）
+// 大盘 / 代理管理页用它展示真实出口与容量水位，避免每次拉全量 items。
+app.get('/api/v14/proxy/pool', (req, res) => {
+  try {
+    const eps = require('./exit-pool-source.js');
+    const includeDisabled = req.query.includeDisabled !== '0' && req.query.includeDisabled !== 'false';
+    const pool = eps.loadExitPool({ includeDisabled });
+    // 容量水位需要「当前可发布账号数」才能算越线；调用方传值优先，缺省自动推算（见 resolvePublishableAccounts）
+    const pub = resolvePublishableAccounts(parseInt(req.query.publishableAccounts, 10));
+    const summary = eps.summarizeExitPool(
+      eps.loadExitPool(), // 摘要按全量算，不受 includeDisabled 影响
+      pub.value != null ? { publishableAccounts: pub.value } : {}
+    );
+    res.set('Cache-Control', 'no-store').json({
+      ...summary,
+      items: pool.items,
+      includeDisabled,
+      publishableAccounts: pub.value,
+      publishableSource: pub.source,
+      ...(pub.error ? { publishableError: pub.error } : {}),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 【B2 补全 B0-D2】出口容量水位所需的「可发布账号数」推定
+// ─────────────────────────────────────────────────────────────
+// 原实现要求调用方显式传 ?publishableAccounts=N，否则 overLine/utilization 恒为 null
+// ⇒ 默认调用下「出口越线」这个头号风险指标是隐形的。
+// 这里改为：优先用调用方传值（便于压测量算）；缺省时从 live 账号源自动推算，并标明依据。
+// 可发布定义 = platform=tumblr 且已通过 OAuth 授权（hasApiToken）且判定为真实账号（is_valid=1）。
+// 该判定与 buildLiveManagedAccounts() 完全同源，避免口径漂移。
+function resolvePublishableAccounts(explicit) {
+  if (Number.isFinite(explicit) && explicit > 0) {
+    return { value: explicit, source: 'query' };
+  }
+  try {
+    const built = buildLiveManagedAccounts();
+    const rows = Array.isArray(built && built.accounts) ? built.accounts : [];
+    const n = rows.filter((r) => r && r.platform === 'tumblr' && r.hasApiToken && r.is_valid === 1).length;
+    return { value: n, source: 'live(accounts.json∩tumblr_token.json: platform=tumblr & hasApiToken & is_valid)' };
+  } catch (e) {
+    return { value: null, source: null, error: e.message };
+  }
+}
+
+app.get('/api/v14/proxy/pool/summary', (req, res) => {
+  try {
+    const eps = require('./exit-pool-source.js');
+    const pub = resolvePublishableAccounts(parseInt(req.query.publishableAccounts, 10));
+    const summary = eps.summarizeExitPool(
+      eps.loadExitPool(),
+      pub.value != null ? { publishableAccounts: pub.value } : {}
+    );
+    res.set('Cache-Control', 'no-store').json({
+      ...summary,
+      publishableAccounts: pub.value,
+      publishableSource: pub.source,
+      ...(pub.error ? { publishableError: pub.error } : {}),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -7575,8 +8392,52 @@ app.get('/api/v14/analytics/stats', (req, res) => {
 app.post('/api/v14/analytics/track', (req, res) => {
   try {
     const v14 = initV14();
-    const event = v14.websiteAnalytics.trackVisit(req.body);
-    res.json({ tracked: true, eventId: event.id });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 【2026-09-24 P0-3 修复】真实访客 IP 必须由服务端从 CDN 请求头解析。
+    //
+    // 实测根因（这是「真实 DAU 结构性恒为 0」的唯一原因）：
+    //   · 浏览器端 SDK（website-analytics.getTrackingSDK）上报体只有
+    //     {url, referrer, userAgent, visitorId, sessionId, utm, type} —— **不含 ip**。
+    //     浏览器本来也不可能知道自己的公网 IP。
+    //   · 本路由把 req.body 原样交给 trackVisit()，于是 data.ip 恒为 ''，
+    //     classifyTraffic({ip:''}) → 'unknown'（data-provenance.js:148/153）。
+    //   · ⇒ 即便有 100 万个真实访客，也一个都进不了 'user' 口径；
+    //     analytics.json 1130/1130 全是 self_direct，dau_log 历史 realDAU 峰值 = 0。
+    //
+    // 修复：真实客户端 IP 只认服务端可验证的来源，顺序为
+    //   cf-connecting-ip（Cloudflare Tunnel 写入，不可被页面伪造）
+    //   > x-forwarded-for 首段
+    //   > socket.remoteAddress
+    //
+    // 为什么这样改是【安全】的（不会把自驱流量变成「真实」）：
+    //   · 本机直连（因果链 S5 的 http://127.0.0.1:3002/r/xxx 驱动访问）没有 CF 头，
+    //     落到 socket.remoteAddress = '127.0.0.1' → classifyTraffic → 'system'（已被排除）。
+    //   · 显式声明系统生成的请求（_system_generated / traffic_mode=http_direct /
+    //     source=self_direct）一律不覆盖，保持原有如实标注。
+    //   · TEST-NET 模拟住宅段仍由 data-provenance 判为 'system'。
+    //   ⇒ 只有「经 Cloudflare 进来的、带公网 IP 的」请求才会成为 'user'。
+    // ══════════════════════════════════════════════════════════════════════
+    const body = Object.assign({}, req.body || {});
+    const declaredSystem = body._system_generated === true
+      || body._systemGenerated === true
+      || String(body.traffic_mode || body._traffic_mode || '').toLowerCase() === 'http_direct'
+      || /^self[_-]direct$/i.test(String(body.source || '').trim());
+
+    if (!declaredSystem) {
+      const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+      const realIp = String(req.headers['cf-connecting-ip'] || fwd || req.socket.remoteAddress || '').trim();
+      if (realIp) {
+        body.ip = realIp;
+        body._ip_source = req.headers['cf-connecting-ip'] ? 'cf-connecting-ip'
+          : (fwd ? 'x-forwarded-for' : 'socket');
+      }
+    } else {
+      body._ip_source = 'declared-system';
+    }
+
+    const event = v14.websiteAnalytics.trackVisit(body);
+    res.json({ tracked: true, eventId: event.id, provenance: event.provenance, ip_source: body._ip_source || 'none' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -8052,11 +8913,40 @@ function pickTrendTopic() {
 // 对质量毫无区分度 → 质检闸门形同虚设。新内容改用 quality_v2，发布准入以它为准。
 // 维度：有效性 40 + 完整性 20 + 业务相关性 20 + AI 味 20 = 100，≥60 才进 ready 池。
 const Q2_BAD_RE = /^(400|401|403|404|405|408|429|500|502|503|504)\b|bad request|auto-generated|internal server error|service unavailable|unauthorized|forbidden|not found|gateway|error occurred|timed? ?out|^post for\s+[\w-]+$|^\s*(undefined|null)\s*$/i;
+// ── P1-D 正文指纹索引（生成侧去重；按 body 而非 id）──────────────────
+// 禁用 id 查重的原因：内容池产物落库时 id 曾被 `content_direct_<ts>_<i>` 兜底，
+// 每次生成都不同 → 查重恒 miss（实测重复率 65.3% 却从未被拦下）。
+const _ctTools = require('./content-tagger.js');
+// [P2-B5] 真实媒体判定（单一事实源）：preview_url 是内容存档 JSON 路径，不是媒体。
+// 详见 content-media-ref.js 头部注释（实测 1,340 条 preview_url 100% 为 .json）。
+const _mediaRef = require('./content-media-ref.js');
+const contentHasRealMedia = _mediaRef.contentHasRealMedia;
+const pickMediaFields = _mediaRef.pickMediaFields;
+
+const _bodyFpIndex = new Set();
+let _bodyFpIndexLoaded = false;
+function ensureBodyFpIndex(ds) {
+  if (_bodyFpIndexLoaded) return;
+  _bodyFpIndexLoaded = true;
+  try {
+    // DataStore.list() 返回分页对象 { items, total, page, limit, pages }（非数组）
+    const _res = ds.list('content', { limit: 50000 });
+    const rows = Array.isArray(_res) ? _res : (_res && Array.isArray(_res.items) ? _res.items : []);
+    let n = 0;
+    for (const c of rows) { if (c && c.body_fp) { _bodyFpIndex.add(c.body_fp); n++; } }
+    console.log(`[dedup] 正文指纹索引已加载: ${n} 条（存量无 body_fp 属正常，随新内容逐步积累）`);
+  } catch (e) { console.warn('[dedup] 指纹索引加载失败: ' + e.message); }
+}
+
 function computeQualityV2(c) {
   const t = String(c.title || '').trim();
   const b = String(c.body || c.text || '').trim();
-  // 【2026-09-12 校准】图片/视频贴可无正文（有 preview_url 即视为内容载体完整）。
-  const hasMedia = !!(c.preview_url || c.previewUrl);
+  // [P2-B5 2026-09-16] 媒体判定纠正：原为 `!!(c.preview_url || c.previewUrl)`，
+  // 而本库 preview_url 实测 100% 是 saveContentToFile() 写入的内容存档 JSON 路径
+  // （1,340 条全为 `/content/.../<id>.json`），真媒体在 media_path（7,262 条）。
+  // 只看 preview_url 会双向误判：假的算「有图」(放宽完整性 + 豁免空正文封顶)，
+  // 真的反而不算「有图」。故统一走 contentHasRealMedia()。
+  const hasMedia = contentHasRealMedia(c);
   let s = 0;
   if (t && !Q2_BAD_RE.test(t)) s += 40;                              // ① 有效性
   // ② 完整性 —— 只认正文长度。原实现为 `b.length || t.length`，即正文为空时
@@ -8073,6 +8963,13 @@ function computeQualityV2(c) {
   else if (ai < 20) s += 20; else if (ai < 40) s += 14; else if (ai < 60) s += 8;
   // ⑤ 纯文本但正文不足 30 字 → 封顶 40，永不达标（≥60 才进 ready 发布池）
   if (!hasMedia && b.length < 30) s = Math.min(s, 40);
+  // ⑥ P1-B2 标签闸门：无标签不得进 ready 池（裸发到平台等于浪费一次发布配额）。
+  //    仅在调用方「显式传入 tags 键」时生效 —— 新生成路径会传，
+  //    存量内容（12,608 条无 tags）与发布侧旧判定不受影响，避免回溯拦空导致发布归零。
+  if (Object.prototype.hasOwnProperty.call(c, 'tags')) {
+    const tagList = Array.isArray(c.tags) ? c.tags.filter((x) => x && String(x).trim()) : [];
+    if (tagList.length === 0) s = Math.min(s, 40);
+  }
   return Math.max(0, Math.min(100, s));
 }
 
@@ -8845,10 +9742,113 @@ app.get('/api/v14/alerts/stats', (req, res) => {
 //  引流转化模块 v2.0 API — 渠道健康
 // ═══════════════════════════════════════════════════════════
 
+// ── [B0-D3] tumblr 渠道健康：注入真实数据 ──────────────────
+// channel-health.js 是一个通用评分框架，初始所有渠道都是「骨架」（0 数据）。
+// tumblr 是当前**唯一真实运行**的通道，这里把磁盘上的真实口径灌进评分器，
+// 使「渠道健康」页对 tumblr 显示真实数据，对其余渠道明确显示「骨架」。
+//
+// 数据来源（全部只读文件，无网络、无副作用）：
+//   · tumblr_token.json            → 已授权账号总数
+//   · _tumblr_token_deadlist.json  → 失效 token 黑名单（TTL 内的）
+//   · publish.json                 → 真实发布成功数（判据 publish_url 非空）
+// 60 秒缓存：避免每次请求都重读数 MB 的 publish.json（顺带满足「刷新不打爆后端」）。
+let _chTumblrCache = { at: 0, data: null };
+const CH_TUMBLR_CACHE_MS = 60 * 1000;
+
+function collectTumblrChannelMetrics() {
+  const now = Date.now();
+  if (_chTumblrCache.data && (now - _chTumblrCache.at) < CH_TUMBLR_CACHE_MS) {
+    return _chTumblrCache.data;
+  }
+
+  const out = {
+    totalAccounts: 0, activeAccounts: 0, deadAccounts: 0, shadowBannedAccounts: 0,
+    accountAliveRate: 0,
+    totalClicks: 0, clicksToday: 0, uniqueClicks: 0,
+    totalConversions: 0, conversionRate: 0, conversionValue: 0,
+    estimatedCost: 0, estimatedRevenue: 0, roi: 0,
+    _sources: [],
+  };
+
+  // 1) 账号口径：有 OAuth token 且带 blogName 的记录才是"可发布账号"
+  try {
+    const tokens = readJsonRecords(dataFile('tumblr_token.json'));
+    const usable = tokens.filter((t) => t && t.id
+      && (t.oauthToken || t.accessToken || t.oauth_token)
+      && (t.blogName || t.blog_name || t.blogname));
+    // 失效黑名单（格式容错：数组 / {dead:[]} / {items:[]}）
+    const deadSet = new Set();
+    try {
+      const dl = JSON.parse(fs.readFileSync(dataFile('_tumblr_token_deadlist.json'), 'utf-8'));
+      const arr = Array.isArray(dl) ? dl : ((dl && (dl.dead || dl.items || dl.list)) || []);
+      for (const x of arr) {
+        if (x == null) continue;
+        deadSet.add(String(typeof x === 'object' ? (x.id || x.accountId || x.account_id) : x));
+      }
+    } catch { /* 黑名单不存在属正常（没失效 token） */ }
+    const alive = usable.filter((t) => !deadSet.has(String(t.id)));
+    out.totalAccounts = usable.length;
+    out.activeAccounts = alive.length;
+    out.deadAccounts = usable.length - alive.length;
+    out.accountAliveRate = usable.length ? alive.length / usable.length : 0;
+    out._sources.push(`tumblr_token.json(${usable.length} 可发布 / ${deadSet.size} 在黑名单)`);
+  } catch (e) {
+    out._tokensError = e.message;
+  }
+
+  // 2) 发布口径：publish.json 中真实发出去的 tumblr 帖（判据只看 publish_url）
+  try {
+    const pubs = readJsonRecords(dataFile('publish.json'));
+    const tPubs = pubs.filter((p) => p && String(p.platform || '').toLowerCase() === 'tumblr' && p.publish_url);
+    out.totalConversions = tPubs.length;   // 这里的"转化"= 成功产出，非付费转化，见 _note
+    const today = new Date().toISOString().slice(0, 10);
+    out.conversionsToday = tPubs.filter((p) => String(p.published_at || '').slice(0, 10) === today).length;
+    out._sources.push(`publish.json(${tPubs.length} 条成功发布)`);
+  } catch (e) {
+    out._publishError = e.message;
+  }
+
+  // 3) 点击口径：从引流短链读取真实点击（有则填，无则保持 0 并如实说明）
+  try {
+    const links = readJsonRecords(dataFile('traffic_links.json'));
+    const tLinks = links.filter((l) => l && String(l.platform || l.source || '').toLowerCase() === 'tumblr');
+    const clicks = tLinks.reduce((s, l) => s + (Number(l.clicks) || Number(l.click_count) || 0), 0);
+    out.totalClicks = clicks;
+    if (tLinks.length) out._sources.push(`traffic_links.json(${tLinks.length} 条链接 / ${clicks} 次点击)`);
+  } catch (e) {
+    out._linksError = e.message;
+  }
+
+  // 成本/ROI：当前没有真实计费数据源 ⇒ 保持 0（不得估算，否则又是假指标）
+  out._note = '转化口径说明：此处的 totalConversions 指该渠道**成功发布/产出的内容数**，'
+    + '不是付费转化；成本与 ROI 因缺少真实计费数据源而保持 0，不做估算。';
+
+  _chTumblrCache = { at: now, data: out };
+  return out;
+}
+
+
 app.get('/api/v14/channel/health', (req, res) => {
   try {
     const v14 = initV14();
     if (!v14) return res.status(500).json({ error: 'v14 not initialized' });
+    // 【B0-D3】把 tumblr（当前唯一真实运行的通道）接上磁盘上的真实口径；
+    // 其余渠道保持 skeleton 标记，前端据此显示「骨架」而非假的 35 分。
+    // 注入失败不得影响端点本身 —— 静默降级为全 skeleton（诚实优于好看）。
+    try {
+      const live = collectTumblrChannelMetrics();
+      v14.channelHealth.applyLiveData('tumblr', {
+        totalAccounts: live.totalAccounts,
+        activeAccounts: live.activeAccounts,
+        deadAccounts: live.deadAccounts,
+        accountAliveRate: live.accountAliveRate,
+        totalClicks: live.totalClicks,
+        totalConversions: live.totalConversions,
+        conversionRate: live.totalAccounts > 0 ? live.totalConversions / live.totalAccounts : 0,
+      });
+    } catch (e) {
+      console.warn('[v14] channel/health tumblr 真实数据注入失败（保持 skeleton）: ' + e.message);
+    }
     res.json(v14.channelHealth.getAllHealth());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -9131,7 +10131,8 @@ app.get('/api/v14/dashboard', async (req, res) => {
       devices: v14.deviceManager.getStats(),
       nurturing: v14.nurturing.getStats(),
       decision: v14.decisionEngine.getStats(),
-      decisionEngine: v14.decisionEngine.getStats(),
+      // [B4 瘦身] 原 decisionEngine 键与 decision 值完全相同（同一次 getStats 序列化两遍），
+      // 全仓零消费方（前端只读 d.decision）⇒ 移除，单次响应省 ~100KB。
       evolution: v14.evolutionSystem.generateReport('daily'),
       gps: { activeTrajectories: v14.gpsEngine.getActiveStatus().length },
       session: v14.sessionMgr.getStats(),
@@ -9149,7 +10150,7 @@ app.get('/api/v14/dashboard', async (req, res) => {
       websiteAnalytics: v14.websiteAnalytics.getStats(),
       trafficRouter: v14.trafficRouter.getStats(),
       conversion: v14.conversionEngine.getStats(),
-      proactiveMarketing: v14.proactiveMarketing.getStats(),
+      // [B4 瘦身] 原此处重复了一遍 proactiveMarketing（上方 dauController 之后已给），移除。
       cloudPublisher: v14.cloudPublisher ? v14.cloudPublisher.stats : {},
       chainGate: v14.chainGate ? v14.chainGate.getStatus() : {},
       eventBus: v14.eventBus ? v14.eventBus.getStats() : {},
@@ -10154,16 +11155,338 @@ app.get('/api/v14/kpi/overview', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// M6 KPI 实时推送（每 20s 广播一次，非高频轮询；global 守卫避免重复定时器）
+// ══════════════════════════════════════════════════════════════
+//  B2: 刷新机制 — 60s 指标缓存 + SSE 实时通道（方案 §5.1 双通道）
+// ──────────────────────────────────────────────────────────────
+//  数据源：computeKpiSnapshot —— 本层【不产生任何数据】，只做缓存与分发。
+//  双通道：
+//    · 轮询页（v14-console/dash）：前端 10 分钟自动刷 → /api/v14/metrics/snapshot
+//      服务端 60s 缓存 + 并发合并，N 个浏览器并发只触发 1 次全量聚合。
+//    · 实时页 /v14-live.html：SSE /api/v14/metrics/stream（秒级，仅变化时推帧）
+//  零伪造：上游失败且无历史值 → 503 + error；有历史值 → 降级 stale 并显式标注 error。
+// ══════════════════════════════════════════════════════════════
+const { MetricsCache: _MetricsCache, MetricsStream: _MetricsStream } = require('./v14-metrics-cache.js');
+
+const _metricsCache = new _MetricsCache({ ttlMs: Number(process.env.MSCMS_METRICS_TTL_MS || 60000) });
+const _metricsStream = new _MetricsStream({ cache: _metricsCache, eventName: 'metrics' });
+_metricsStream.setProvider(() => computeKpiSnapshot());
+
+// 变化时同步推给既有 WebSocket Hub（/ws/v14），保证 WS 与 SSE 双通道内容一致
+_metricsStream.onPush = (snap) => {
+  try { if (global.__rt && typeof global.__rt.pushKpi === 'function') global.__rt.pushKpi(snap); }
+  catch (_) { /* 附加通道失败不影响 SSE 主通道 */ }
+};
+
+/** GET /api/v14/metrics/snapshot?refresh=1 — 轮询页取数（命中 60s 缓存） */
+app.get('/api/v14/metrics/snapshot', async (req, res) => {
+  try {
+    const force = String(req.query.refresh || '') === '1';
+    const r = await _metricsCache.get(() => computeKpiSnapshot(), { force });
+    if (!r.ok) return res.status(503).json({ ok: false, error: r.error, _cache: _metricsCache.getStats() });
+    res.set('Cache-Control', 'no-store').json({
+      ok: true,
+      data: r.data,
+      _cache: Object.assign({ cached: !!r.cached, stale: !!r.stale, coalesced: !!r.coalesced, ageMs: r.ageMs }, _metricsCache.getStats()),
+    });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+/** GET /api/v14/metrics/stream — SSE 实时通道（EventSource 断线自动重连） */
+app.get('/api/v14/metrics/stream', async (req, res) => {
+  res.status(200);
+  res.set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no', // 防反向代理（CF tunnel / nginx）缓冲导致「假实时」
+  });
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+  // SSE 属长连接：必须关闭 socket 空闲超时，否则会被静默断开
+  try { req.socket.setTimeout(0); req.socket.setNoDelay(true); req.socket.setKeepAlive(true); } catch (_) {}
+
+  _metricsStream.writeFrame(res, {
+    retry: 3000,
+    event: 'hello',
+    data: {
+      ok: true, server: 'mscms-v14', eventName: _metricsStream.eventName,
+      intervalMs: _metricsStream.intervalMs, ttlMs: _metricsCache.ttlMs, ts: Date.now(),
+    },
+  });
+
+  const unsub = _metricsStream.subscribe((ev, payload) => {
+    if (ev === 'error') _metricsStream.writeFrame(res, { event: 'error', data: payload });
+    else _metricsStream.writeFrame(res, { event: ev, data: payload });
+  });
+
+  // 连接即下发当前快照：命中缓存则零延迟，未命中则触发一次计算
+  try {
+    const r = await _metricsCache.get(() => computeKpiSnapshot(), {});
+    if (r.ok) {
+      _metricsStream.writeFrame(res, {
+        event: _metricsStream.eventName,
+        data: Object.assign({}, r.data, {
+          _cache: { cached: !!r.cached, stale: !!r.stale, ageMs: r.ageMs, initial: true },
+        }),
+      });
+    } else {
+      _metricsStream.writeFrame(res, { event: 'error', data: { ok: false, error: r.error } });
+    }
+  } catch (_) { /* 首帧失败不阻断连接，后续 tick 会补 */ }
+
+  // 25s 心跳（SSE 注释帧）：保持中间设备不判定空闲
+  const hb = setInterval(() => {
+    try { if (!res.writableEnded && !res.destroyed) res.write(': hb ' + Date.now() + '\n\n'); }
+    catch (_) { /* 已断开 */ }
+  }, 25000);
+  if (hb.unref) hb.unref();
+
+  let closed = false;
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(hb);
+    try { unsub(); } catch (_) { /* 幂等 */ }
+  };
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
+});
+
+/** GET /api/v14/metrics/stream/stats — 缓存命中率与订阅数（运维自检） */
+app.get('/api/v14/metrics/stream/stats', (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ok: true, stream: _metricsStream.getStats() });
+});
+
+// 后台定时：每 5s 取一次快照（受 60s TTL 约束，实际每 60s 才全量重算一次），
+// 仅在业务数值变化时推送 —— 无变化不产生任何网络帧，避免实时页被无用帧刷屏。
+_metricsStream.start({ intervalMs: Number(process.env.MSCMS_METRICS_PUSH_MS || 5000) });
+
+// 兼容保留：原 M6 的 20s WS KPI 广播改为复用同一份缓存（不再重复全量计算）
 if (!global.__kpiPushTimer) {
   global.__kpiPushTimer = setInterval(async () => {
     try {
-      const snap = await computeKpiSnapshot();
-      if (snap.ok && global.__rt && global.__rt.pushKpi) global.__rt.pushKpi(snap);
+      const r = await _metricsCache.get(() => computeKpiSnapshot(), {});
+      if (r.ok && global.__rt && global.__rt.pushKpi) global.__rt.pushKpi(r.data);
     } catch (_) { /* 静默 */ }
   }, 20000);
+  if (global.__kpiPushTimer.unref) global.__kpiPushTimer.unref();
 }
 
+// ══════════════════════════════════════════════════════════════
+// B4 · 大盘 L0「服务健康总览」
+//   背景：实测 `/api/v14/services/health` 等 6 个候选端点全部 404 ——
+//         大盘「服务 11 项」没有数据源，此前只能靠人工 netstat 判断。
+//   数据源：services-registry.js（11 项权威清单）+ service-probe.js（真实 TCP/HTTP 探活）。
+//   零伪造：只认真实连接结果；探不通即 down，不做「配置存在=在线」的推断。
+//   复用 B2 的 MetricsCache ⇒ N 个浏览器并发只触发 1 轮探活。
+// ══════════════════════════════════════════════════════════════
+const _svcProber = require('./service-probe.js').getProber();
+const _svcCache = new _MetricsCache({ ttlMs: Number(process.env.MSCMS_SERVICES_TTL_MS || 60000) });
+
+/** GET /api/v14/services/health?refresh=1 — 11 项服务真实探活（60s 缓存） */
+app.get('/api/v14/services/health', async (req, res) => {
+  try {
+    const force = req.query.refresh === '1';
+    const r = await _svcCache.get(() => _svcProber.probeAll(), { force });
+    if (!r.ok) {
+      return res.status(503).json({ ok: false, error: r.error, _cache: _svcCache.getStats() });
+    }
+    const d = r.data || {};
+    res.set('Cache-Control', 'no-store').json({
+      ok: true,
+      services: d.results || [],
+      summary: d.summary || null,
+      source: d.source || 'services-registry.js',
+      probedAt: d.probedAt || null,
+      elapsedMs: d.elapsedMs == null ? null : d.elapsedMs,
+      _cache: Object.assign(
+        { cached: !!r.cached, stale: !!r.stale, coalesced: !!r.coalesced, ageMs: r.ageMs },
+        _svcCache.getStats()
+      ),
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// B5 · 时间维度统一聚合：GET /api/v14/metrics/timeseries
+// ──────────────────────────────────────────────────────────────
+// 依据升级方案 §3.4「可视化与时间维度（全站统一）」：
+//   粒度自动映射 日→小时 · 周→日 · 月→日 · 年→月
+//   服务端分桶聚合（绝不把 4 万条记录推给前端）
+//
+// 纯逻辑内核在 v14-timeseries.js（可脱网单测）；本层只负责
+//   ① 从 DataStore 取真实记录  ② keyed 缓存（复用 B2 的 MetricsCache）  ③ HTTP 契约
+//
+// 零伪造 —— 内核只做「按真实时间字段分桶计数」，不生成任何合成点，不做外推/
+//   平滑/随机抖动。空桶 = 该时段确实 0 条（真实事实，可画）；resolved === 0
+//   才置 meta.datasetEmpty=true，由前端渲染「暂无数据」占位。缺时间字段的记录
+//   计入 meta.dropped 并如实暴露 coverage，绝不猜测时间。
+// ══════════════════════════════════════════════════════════════
+const _B5TS = require('./v14-timeseries.js');
+const _B5_TS_TTL_MS = Number(process.env.MSCMS_TS_TTL_MS) > 0 ? Number(process.env.MSCMS_TS_TTL_MS) : 60000;
+const _B5_TS_CACHE_MAX = 160;
+
+// key → MetricsCache 小 LRU：复用 B2 的 TTL / 并发合并 / stale 降级语义，
+// 避免 N 个浏览器同时切时间维度时对 DataStore 做 N 次全量扫描。
+const _b5TsCaches = new Map();
+function _b5TsCacheFor(key) {
+  let c = _b5TsCaches.get(key);
+  if (c) { _b5TsCaches.delete(key); _b5TsCaches.set(key, c); return c; } // 命中移到队尾
+  c = new _MetricsCache({ ttlMs: _B5_TS_TTL_MS });
+  _b5TsCaches.set(key, c);
+  while (_b5TsCaches.size > _B5_TS_CACHE_MAX) _b5TsCaches.delete(_b5TsCaches.keys().next().value);
+  return c;
+}
+function _b5TsCacheStats() {
+  let hits = 0, misses = 0, coalesced = 0, stale = 0, entries = 0;
+  for (const c of _b5TsCaches.values()) {
+    const s = c.getStats();
+    hits += s.hits; misses += s.misses; coalesced += s.coalesced; stale += s.staleServed; entries++;
+  }
+  const t = hits + misses;
+  return { entries, ttlMs: _B5_TS_TTL_MS, hits, misses, coalesced, staleServed: stale, hitRate: t > 0 ? +((hits / t) * 100).toFixed(1) : null };
+}
+
+/** GET /api/v14/metrics/timeseries — 时间维度聚合（服务端分桶，零伪造） */
+app.get('/api/v14/metrics/timeseries', async (req, res) => {
+  try {
+    const v14 = initV14();
+    if (!v14 || !v14.dataStore) return res.status(500).json({ ok: false, error: 'v14 not initialized' });
+
+    const known = v14.dataStore.getModules();
+    const knownSet = new Set(known);
+    const moduleList = String(req.query.module || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 8);
+    if (!moduleList.length) return res.status(400).json({ ok: false, error: '缺少 module 参数' });
+    // 模块名必须已存在：_ensureModule 会为未知名字凭空建缓存，白名单校验防缓存膨胀
+    const unknown = moduleList.filter(m => !knownSet.has(m));
+    if (unknown.length) return res.status(400).json({ ok: false, error: `未知模块：${unknown.join(', ')}`, knownModules: known });
+
+    const now = Date.now();
+    const range = String(req.query.range || 'week');
+    const rr = _B5TS.resolveRange({ range, from: req.query.from, to: req.query.to, now });
+    if (rr.error) return res.status(400).json({ ok: false, error: rr.error });
+
+    let gran = String(req.query.granularity || '').toLowerCase() || rr.gran;
+    if (!_B5TS.GRANULARITIES.includes(gran)) return res.status(400).json({ ok: false, error: `granularity 仅支持 ${_B5TS.GRANULARITIES.join('|')}` });
+    // 粒度不得细于窗口所需（如 today 却要 month 粒度只会产出 700+ 个空桶）
+    if (_B5TS.GRANULARITIES.indexOf(gran) < _B5TS.GRANULARITIES.indexOf(rr.gran)) gran = rr.gran;
+
+    // metric：count（默认）| sum:<字段> | avg:<字段>
+    const metricQ = String(req.query.metric || 'count');
+    let metricMode = null, metricField = null;
+    if (metricQ !== 'count') {
+      const mm = metricQ.match(/^(sum|avg):(.+)$/);
+      if (!mm) return res.status(400).json({ ok: false, error: 'metric 仅支持 count | sum:<字段> | avg:<字段>' });
+      metricMode = mm[1]; metricField = mm[2].trim();
+    }
+
+    // filter=k:v,k2:v2（与 DataStore.list 的精确字符串匹配语义一致）
+    const filter = {};
+    if (req.query.filter) {
+      for (const seg of String(req.query.filter).split(',')) {
+        const i = seg.indexOf(':');
+        if (i > 0) filter[seg.slice(0, i).trim()] = seg.slice(i + 1).trim();
+      }
+    }
+    const hasFilter = Object.keys(filter).length > 0;
+    const force = String(req.query.refresh || '') === '1';
+    const fieldQ = req.query.field ? String(req.query.field) : null;
+
+    const key = JSON.stringify([moduleList, fieldQ, metricQ, range, req.query.from || null, req.query.to || null, gran, hasFilter ? filter : 0]);
+    const cache = _b5TsCacheFor(key);
+
+    const r = await cache.get(async () => {
+      const out = {};
+      for (const m of moduleList) {
+        const listed = v14.dataStore.list(m, hasFilter ? { limit: 1e9, page: 1, filter } : { limit: 1e9, page: 1 });
+        const records = (listed && listed.items) || [];
+        const rf = _B5TS.resolveField(records, m, fieldQ);
+        const agg = _B5TS.aggregate(records, {
+          field: rf.field, chain: rf.chain, fieldAuto: rf.fieldAuto,
+          metricMode, metricField, from: rr.from, to: rr.to, gran,
+        });
+        out[m] = Object.assign({
+          module: m, range,
+          from: new Date(rr.from).toISOString(),
+          to: new Date(rr.to).toISOString(),
+          records: records.length,
+          fieldCandidates: rf.candidates,
+          granularity: agg.meta.granularity,
+        }, agg);
+      }
+      return out;
+    }, { force });
+
+    if (!r.ok) return res.status(503).json({ ok: false, error: r.error, _cache: _b5TsCacheStats() });
+
+    const per = r.data || {};
+    const payload = {
+      ok: true,
+      range,
+      from: new Date(rr.from).toISOString(),
+      to: new Date(rr.to).toISOString(),
+      nowIso: new Date(now).toISOString(),
+      requestedGranularity: gran,
+      metric: metricMode ? `${metricMode}:${metricField}` : 'count',
+      filter: hasFilter ? filter : null,
+      fieldOverride: fieldQ,
+      multi: moduleList.length > 1,
+      modules: moduleList,
+      _cache: Object.assign(
+        { cached: !!r.cached, stale: !!r.stale, coalesced: !!r.coalesced, ageMs: r.ageMs },
+        _b5TsCacheStats()
+      ),
+    };
+    if (moduleList.length === 1) Object.assign(payload, per[moduleList[0]]);
+    else payload.series = per;
+
+    res.set('Cache-Control', 'no-store').json(payload);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** GET /api/v14/metrics/timeseries/modules — 各模块时间字段可用性体检（供前端选默认口径） */
+app.get('/api/v14/metrics/timeseries/modules', (req, res) => {
+  try {
+    const v14 = initV14();
+    if (!v14 || !v14.dataStore) return res.status(500).json({ ok: false, error: 'v14 not initialized' });
+    const out = [];
+    for (const m of v14.dataStore.getModules()) {
+      const listed = v14.dataStore.list(m, { limit: 1e9, page: 1 });
+      const records = (listed && listed.items) || [];
+      const rf = _B5TS.resolveField(records, m, null);
+      const cov = _B5TS.resolveCoverage(records, rf.chain);
+      out.push({
+        module: m,
+        records: records.length,
+        recommendedField: rf.field,
+        fieldChain: rf.chain,
+        recommendedBy: rf.fieldAuto ? 'auto' : 'override',
+        parseable: cov.resolved,
+        fieldsUsed: cov.fieldsUsed,          // 字段链里各字段实际贡献多少条
+        coverage: cov.coverage,
+        candidates: rf.candidates,
+        // 诚实标注：连一个可用时间字段都没有的模块，前端只能显示「暂无数据」
+        usable: cov.resolved > 0,
+      });
+    }
+    out.sort((a, b) => (b.records || 0) - (a.records || 0));
+    res.set('Cache-Control', 'no-store').json({
+      ok: true,
+      timezone: _B5TS.timezoneLabel(),
+      rangeGranularityMap: _B5TS.RANGE_GRANULARITY_MAP,
+      maxBuckets: _B5TS.getMaxBuckets(),
+      count: out.length,
+      usableCount: out.filter(x => x.usable).length,
+      emptyCount: out.filter(x => !x.usable).length,
+      modules: out,
+    });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // ── L2: 模块数据列表 (复用 DataStore CRUD) ──────────
 // ── L3: 单条数据详情 (复用 DataStore CRUD) ──────────
 // (见下方统一 CRUD 路由)
@@ -10482,6 +11805,28 @@ app.post('/api/v14/content', (req, res) => {
       cover_url: coverUrl,
       duration: duration ? Number(duration.toFixed(2)) : null,
       images,
+      // [KK20-2026-09-22] 显式落 media_path / media_type —— 修的是「图文静默降级为纯文本」。
+      // 根因链（实测确证，非推测）：
+      //   ① 本路由只写 images[]，并把 preview_url 设成 images[0]；
+      //   ② 紧接着 saveContentToFile() 会把 preview_url **覆盖成存档 JSON 路径**
+      //      `/content/<date>/image_text/<id>.json`；
+      //   ③ 发布器 `cloud-publisher.js:_resolveMediaForPublish()` 的候选列表
+      //      [media_path, image_path, video_path, media_url, image_url, preview_url]
+      //      逐个经 `isRealMediaRef()` 过滤，该 .json 路径被 `ARCHIVE_JSON_RE` 判为
+      //      「内容存档 JSON」而剔除 ⇒ 候选全空 ⇒ 静默降级为纯文本发布。
+      //   这正是 P2-B5 的事故形态。补 media_path 从根上切断该降级路径。
+      // 兼容性：仅在未显式传入 media_path 时回退到 images[0]/video_url；
+      //   存量内容（无 images 字段）取值仍为 null —— 零行为变更。
+      media_path: (typeof b.media_path === 'string' && b.media_path.trim())
+        ? b.media_path.trim()
+        : (videoUrl || images[0] || null),
+      media_type: (function () {
+        const _m = (typeof b.media_path === 'string' && b.media_path.trim())
+          ? b.media_path.trim()
+          : (videoUrl || images[0] || '');
+        if (!_m) return null;
+        return /\.(mp4|mov|webm)$/i.test(String(_m)) ? 'video' : 'image';
+      })(),
       quality_score: Number(b.quality_score) || 80,
       preview_url: coverUrl || (images[0] || null),
       status,

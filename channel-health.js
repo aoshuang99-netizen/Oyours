@@ -115,11 +115,21 @@ class ChannelHealth extends EventEmitter {
       roi: 0,
 
       // 健康评分
-      accountAliveRate: 1.0,
+      // 【B0-D3 修复 2026-09-20】原值为 accountAliveRate: 1.0 / healthScore: 100 ——
+      // 但此时**一个账号都还没接入**，"0 个账号的存活率"并不是 100%。
+      // 那两个初始值会被 _recalculate() 算成 30(aliveRate×30) + 5(trend down) = **35 分**，
+      // 于是 /api/v14/channel/health 长期返回一个看起来像真实评分的 35，
+      // 用户无法分辨「健康度真的是 35」还是「根本还没数据」。现改为 0，
+      // 并由 dataQuality 明确指出该渠道是骨架还是已接真实数据。
+      accountAliveRate: 0,
       shadowBanRate: 0,
-      healthScore: 100,
-      trend: 'stable',          // up | stable | down
+      healthScore: 0,
+      trend: 'unknown',         // up | stable | down | unknown(无数据)
       trendPercent: 0,
+
+      // 数据质量：'skeleton' = 尚无任何真实数据接入；'live' = 已接入真实指标
+      dataQuality: 'skeleton',
+      dataUpdatedAt: null,
 
       // 时间
       lastUpdated: null,
@@ -251,8 +261,19 @@ class ChannelHealth extends EventEmitter {
         score: m.healthScore,
         trend: m.trend,
         trendPercent: m.trendPercent,
-        status: this._getStatusLabel(m.healthScore)
+        // 【B0-D3】骨架渠道返回 'unknown' 而非按 0 分算出的 'critical' ——
+        // 「没有数据」不等于「健康状况极差」，两者对决策的含义完全相反。
+        status: this._isSkeleton(m) ? 'unknown' : this._getStatusLabel(m.healthScore),
+        dataQuality: this._isSkeleton(m) ? 'skeleton' : 'live',
+        scoreMeaningful: !this._isSkeleton(m),
       },
+
+      // 渠道级数据质量标记（供前端角标/置灰）
+      dataQuality: this._isSkeleton(m) ? 'skeleton' : 'live',
+      dataQualityNote: this._isSkeleton(m)
+        ? '该渠道尚未接入真实数据（账号/点击/转化均为 0），下列指标与评分均为占位值'
+        : null,
+      dataUpdatedAt: m.dataUpdatedAt || null,
 
       alerts: m.alerts.slice(-10),
       lastUpdated: m.lastUpdated
@@ -371,10 +392,56 @@ class ChannelHealth extends EventEmitter {
     this.removeAllListeners();
   }
 
+  // ── 数据质量判定（B0-D3）───────────────────────────
+  // 「骨架渠道」= 从未接入任何真实指标。此时 healthScore 不具业务含义，
+  // 前端必须显式标注，不能把它当成真实健康度展示。
+  _isSkeleton(m) {
+    if (!m) return true;
+    return (m.totalAccounts || 0) === 0
+      && (m.totalClicks || 0) === 0
+      && (m.totalConversions || 0) === 0
+      && m.dataQuality !== 'live';
+  }
+
+  // ── 注入真实数据（B0-D3）───────────────────────────
+  // 供 server.js 从真实数据源（账号库 / 发布记录 / 链接点击）灌入。
+  // 只覆盖传入的字段，未传字段保持不变；调用后该渠道标记为 live。
+  applyLiveData(channelId, patch = {}) {
+    const m = this.metrics[channelId];
+    if (!m) return null;
+    const ALLOWED = [
+      'totalAccounts', 'activeAccounts', 'shadowBannedAccounts', 'deadAccounts',
+      'accountAliveRate', 'shadowBanRate',
+      'totalClicks', 'uniqueClicks', 'clicksToday',
+      'totalConversions', 'conversionsToday', 'conversionRate', 'conversionValue', 'conversionEvents',
+      'estimatedCost', 'estimatedRevenue', 'roi',
+    ];
+    for (const k of ALLOWED) {
+      if (patch[k] !== undefined && patch[k] !== null) m[k] = patch[k];
+    }
+    if (patch.alerts !== undefined) m.alerts = patch.alerts;
+    // 只有确实灌入了账号或点击数据才算 live，避免「传了个空对象就变绿的」假活
+    if ((m.totalAccounts || 0) > 0 || (m.totalClicks || 0) > 0) {
+      m.dataQuality = 'live';
+    }
+    m.dataUpdatedAt = new Date().toISOString();
+    this._recalculate();
+    return this.getHealth(channelId);
+  }
+
   // ── 内部方法 ─────────────────────────────────────
   _recalculate() {
     for (const channelId of Object.keys(this.metrics)) {
       const m = this.metrics[channelId];
+
+      // 【B0-D3】骨架渠道不计算分数 —— 无数据时算出来的任何数字都是噪声。
+      if (this._isSkeleton(m)) {
+        m.healthScore = 0;
+        m.trend = 'unknown';
+        m.trendPercent = 0;
+        continue;
+      }
+
       // 综合评分: 存活率×30 + 转化率×30 + ROI×25 + 趋势×15
       const aliveScore = m.accountAliveRate * 30;
       const convScore = Math.min(m.conversionRate * 10, 30); // 3%转化率=30分

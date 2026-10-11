@@ -160,14 +160,37 @@ function loadSchnorr() {
 // 沙箱/内网常需经 HTTP_PROXY 才能连 wss；Node 全局 WebSocket 直连会被拦。
 // 优先用 undici.WebSocket + ProxyAgent（懒加载，避免无 undici 时崩溃），
 // 无代理或 undici 不可用时回退全局 WebSocket。
+//
+// 【2026-09-21 P0 修复】生产环境实测 `HTTP_PROXY`/`HTTPS_PROXY` **均为空**
+// （`_autostart_mscms.bat` 与 `tools/mscms-watchdog.js` 的 BASE_ENV 都没设），
+// 而 relay 的 wss 在国内直连必被 GFW 拦 ⇒ **relay 恒失败 ⇒ nostr 通道凭据就绪却 0 投放**。
+// 实测：显式注入 `HTTP_PROXY=http://127.0.0.1:10808` 后 3/3 relay 全部 OK。
+// 故改为**兜底解析链**，不再要求调用方必须先设标准 env：
+//   MSCMS_NOSTR_PROXY（显式，值 off/none/direct/- 表示强制直连）
+//   → HTTP_PROXY / http_proxy / HTTPS_PROXY（标准）
+//   → TUMBLR_PROXY（项目既有出口变量）
+//   → http://127.0.0.1:10808（本项目默认本地出口，由 exit-guard 守护）
+const DEFAULT_NOSTR_PROXY = 'http://127.0.0.1:10808';
 let _wsDispatcher = null;
+let _wsProxyResolved = null;
+function resolveWsProxy() {
+  if (_wsProxyResolved !== null) return _wsProxyResolved;
+  const explicit = String(process.env.MSCMS_NOSTR_PROXY || '').trim();
+  if (/^(off|none|direct|-)$/i.test(explicit)) { _wsProxyResolved = ''; return ''; }
+  _wsProxyResolved = explicit
+    || process.env.HTTP_PROXY || process.env.http_proxy || process.env.HTTPS_PROXY
+    || process.env.TUMBLR_PROXY
+    || DEFAULT_NOSTR_PROXY;
+  return _wsProxyResolved;
+}
 function getWsDispatcher() {
   if (_wsDispatcher !== null) return _wsDispatcher;
-  const proxy = process.env.HTTP_PROXY || process.env.http_proxy || process.env.HTTPS_PROXY || '';
+  const proxy = resolveWsProxy();
   if (!proxy) { _wsDispatcher = null; return null; }
   try {
     const undici = require('undici');
     _wsDispatcher = new undici.ProxyAgent(proxy);
+    console.log(`[NostrProvider] relay 出口代理 = ${proxy}（来源: ${process.env.MSCMS_NOSTR_PROXY ? 'MSCMS_NOSTR_PROXY' : (process.env.HTTP_PROXY || process.env.HTTPS_PROXY || process.env.TUMBLR_PROXY) ? 'env' : '默认 10808'}）`);
   } catch (e) {
     console.warn('[NostrProvider] 未能加载 undici ProxyAgent，WebSocket 将直连：', e.message);
     _wsDispatcher = null;
@@ -225,18 +248,57 @@ class NostrProvider extends SocialProvider {
     };
   }
 
+  /** 凭据**格式**校验（同步、零网络）：私钥须为 nsec1… 或 64 位 hex */
+  _checkCredFormat() {
+    try {
+      this._resolveKeys();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, reason: String((e && e.message) || e).slice(0, 160) };
+    }
+  }
+
+  /**
+   * 配置状态。
+   * 【2026-09-20 F3】与 bluesky / mastodon 对齐三态口径（configured / format / reachable）。
+   *   nostr 原本就比其他两个严格（额外检查 schnorrOk 依赖），此处再补密钥格式与签名自检。
+   */
   configStatus() {
     const c = this._config();
     const schnorrOk = !!loadSchnorr();
     const hasCreds = !!(c.privateKey && schnorrOk);
+    const fmt = hasCreds ? this._checkCredFormat() : { ok: false, reason: null };
+    const probe = this._probeCache || null;
     return {
       identifier: 'nostr',
       configured: hasCreds,
-      authorized: hasCreds,
-      reason: hasCreds
-        ? null
-        : '尚未配置 NOSTR_PRIVATE_KEY（nsec 或 64 位 hex）。可点击「生成新密钥」在本地创建（零账号/零第三方/免费）。需 @noble/curves 签库：' + (schnorrOk ? '已就绪' : '缺失'),
+      format: fmt.ok ? 'ok' : 'invalid',
+      authorized: hasCreds && fmt.ok && (!probe || probe.ok === true),
+      reachable: probe ? (probe.ok ? 'ok' : 'fail') : 'unknown',
+      probeAt: probe ? probe.at : null,
+      relays: c.relays || null,
+      reason: !hasCreds
+        ? '尚未配置 NOSTR_PRIVATE_KEY（nsec 或 64 位 hex）。可点击「生成新密钥」在本地创建（零账号/零第三方/免费）。需 @noble/curves 签库：' + (schnorrOk ? '已就绪' : '缺失')
+        : (fmt.ok ? null : fmt.reason),
     };
+  }
+
+  /**
+   * **真实探针（零网络）**：本地做一次密钥解析 + 公钥派生自检。
+   * 仅证明**密钥可用**；relay 连通性属出口问题，不在此判定（不伪造「已连通」结论）。
+   */
+  async verifyCredentials({ force = false } = {}) {
+    const now = Date.now();
+    if (!force && this._probeCache && now - this._probeCache.at < 10 * 60 * 1000) return this._probeCache;
+    let out;
+    try {
+      const { pubHex } = this._resolveKeys();
+      out = { ok: true, at: now, pubkey: pubHex, npub: encodeNpubNsec('npub', pubHex) };
+    } catch (e) {
+      out = { ok: false, at: now, error: String((e && e.message) || e).slice(0, 200) };
+    }
+    this._probeCache = out;
+    return out;
   }
 
   _resolveKeys() {

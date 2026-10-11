@@ -44,6 +44,8 @@ const ACCOUNTS = path.join(WS, 'data', 'accounts.json');
 /** 旧行为：单出口写死。现作为「选路失败时的兜底」，正常路径由 registration-exits 决定。 */
 const OUT_PROXY = 'http://127.0.0.1:10808';
 const RX = require('./registration-exits.js');
+// 【2026-09-16 走 B】命名规则的唯一定义处（与 tools/build-rename-map.js 共用，避免漂移）
+const NAMING = require('./account-naming.js');
 process.env.MSCMS_DATASTORE_WRITE_MODULES = process.env.MSCMS_DATASTORE_WRITE_MODULES || '*,-content';
 // [2026-09-12] 本脚本不是 content 属主：显式声明写入范围，防止与主服务抢写（多写者覆盖）
 const dataStore = new DataStore(path.join(WS, 'data'));
@@ -105,6 +107,39 @@ function genPassword() {
   const s = '!@#$%';
   const pick = (str, k) => Array.from({ length: k }, () => str[Math.floor(Math.random() * str.length)]).join('');
   return pick(a, 2) + pick(b, 3) + pick(n, 3) + pick(s, 1) + pick(b, 2) + Math.floor(Math.random() * 999);
+}
+
+// ---------- 命名（2026-09-16 走 B 方案：规则前移到注册链路）----------
+/**
+ * 已占用 blogName（本地账本，进程内缓存）
+ * 来源：data/accounts.json 的 username/blog_name + data/tumblr_token.json 的 blogName
+ * 只做「本地不撞名」，线上是否已被别人占用由 precheckBlogName() 现场判定。
+ */
+let _USED_NAMES = null;
+function getUsedNames() {
+  if (!_USED_NAMES) {
+    _USED_NAMES = NAMING.collectUsedNames(WS);
+    log('  命名账本: 本地已占用 blogName ' + _USED_NAMES.size + ' 个');
+  }
+  return _USED_NAMES;
+}
+
+/**
+ * 线上名称可用性预检 —— 在【反检测浏览器内】发起，与注册同出口、同会话。
+ * 判据（已实测）：未授权 GET /info → 404 = 名字可用 / 401 = 已被占用。
+ * 返回 true(可用) / false(已占用) / null(判不了)
+ * ⚠️ 任何异常都返回 null，调用方必须「null 也放行」——绝不因预检失败而阻断注册。
+ */
+async function precheckBlogName(page, name) {
+  try {
+    const code = await page.evaluate(async (n) => {
+      const r = await fetch('https://api.tumblr.com/v2/blog/' + encodeURIComponent(n) + '.tumblr.com/info', { method: 'GET' });
+      return r.status;
+    }, name);
+    if (code === 404) return true;
+    if (code === 401 || code === 200) return false;
+    return null;
+  } catch (_) { return null; }
 }
 
 // ---------- reCAPTCHA Enterprise 同页执行 ----------
@@ -215,7 +250,7 @@ async function waitAnyVisible(page, selectors, timeoutMs) {
  * 首轮回填因出口抖动未触发创建接口时，重新导航再走一遍（最多 2 轮）。
  * 成功判据：createStatus 有值（200=成功；非 200 也说明请求已到达，不需要重试）。
  */
-async function registerWithShardX(page, email, pw, blogName) {
+async function registerWithShardX(page, email, pw, blogName, blogTitle) {
   const net = [];
   attachNetCapture(page, 'reg', net);
   const state = { createStatus: null };
@@ -227,7 +262,7 @@ async function registerWithShardX(page, email, pw, blogName) {
   let last = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     if (attempt > 1) log('  ♻️ 首轮未触发创建接口，重试第 ' + attempt + ' 轮', '♻️ ');
-    last = await registerAttempt(page, email, pw, blogName, net, state);
+    last = await registerAttempt(page, email, pw, blogName, net, state, blogTitle);
     if (last && last.createStatus) break;
     if (attempt < 2) {
       try { await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 15000 }); } catch (_) {}
@@ -237,7 +272,7 @@ async function registerWithShardX(page, email, pw, blogName) {
   return last;
 }
 
-async function registerAttempt(page, email, pw, blogName, net, state) {
+async function registerAttempt(page, email, pw, blogName, net, state, blogTitle) {
   log('  goto /register');
   const gr = await page.goto('https://www.tumblr.com/register', { waitUntil: 'domcontentloaded', timeout: 60000 });
   log('    HTTP ' + (gr ? gr.status() : 'ERR') + ' final=' + page.url().slice(0, 70));
@@ -304,6 +339,28 @@ async function registerAttempt(page, email, pw, blogName, net, state) {
   if (hasBlog) {
     log('  填 blogName=' + blogName);
     await page.fill('input[name=blogName]', blogName, { timeout: 20000 });
+    // ── 防御式显示名填写（2026-09-16）────────────────────────────────
+    // 现状：注册表单只在 blog 步骤暴露 input[name=blogName]，未观察到独立显示名字段，
+    //       因此 Tumblr 侧 primary blog 的 title 一直是 "Untitled"。
+    // 这里做「有则填、无则静默」——不改变流程，只把现场输入框名记进日志，
+    // 供后续判断是否能在注册期就把显示名（KK-Jane 这类）设好。
+    try {
+      const inputs = await page.evaluate(() => Array.from(document.querySelectorAll('input'))
+        .map((i) => i.name || i.type).filter(Boolean).slice(0, 15));
+      log('    blog 步骤输入框: ' + JSON.stringify(inputs));
+      if (blogTitle) {
+        const titleSel = 'input[name=blogTitle], input[name=title], input[name=blog_title]';
+        const hasTitle = await page.evaluate((s) => !!document.querySelector(s), titleSel);
+        if (hasTitle) {
+          await page.fill(titleSel, blogTitle, { timeout: 8000 });
+          log('    ✅ 已填写显示名 title=' + blogTitle);
+        } else if (process.env.MSCMS_DEBUG_NAMING === '1') {
+          log('    未发现显示名字段（Tumblr 侧 title 将保持 Untitled）');
+        }
+      }
+    } catch (e) {
+      log('    显示名步骤异常（已忽略，不影响注册）: ' + e.message, '⚠️ ');
+    }
     await page.waitForTimeout(3500);
   } else {
     log('    ⚠️ 未出现 blogName 输入框', '⚠️ ');
@@ -385,6 +442,14 @@ function makeAccountRecord(accountId, email, pw, blogName, verified, extra) {
     email_provider: /@gmail\.com$/i.test(String(email || '')) ? 'fabricated-gmail' : 'cf-email-routing',
     email_receivable: !!email && !/@gmail\.com$/i.test(String(email)),
     registered_at: now,
+    // 【2026-09-20 B5】必须同时写 createdAt：
+    //   本函数用 fs.writeFileSync 直写 accounts.json，绕过了 DataStore.create()
+    //   （后者一定会补 createdAt/updatedAt）。此前只写 registered_at，导致
+    //   accounts 模块出现「字段世代分裂」——8 月导入的 87 条只有 createdAt，
+    //   本脚本注册的 36 条只有 registered_at，两者交集为 0，
+    //   任何按 createdAt 的新增趋势图都会在这批账号上显示为「零新增」（失真）。
+    //   两个字段都保留：registered_at 是既有消费方（日报/审计）的字段，不动。
+    createdAt: now,
     bound_device_id: pickLeastLoadedDevice(),
     created_by: 'tumblr-onboard-shardx',
     ...(extra || {}),
@@ -490,10 +555,17 @@ async function oauthInPage(page, accountId, appIdx, exitProxy) {
 async function onboardOne(appIdx, probe, opts) {
   opts = opts || {};
   const accountId = 'tumblr_' + Math.random().toString(36).slice(2, 10);
-  const rand = Math.random().toString(36).slice(2, 9);
   const email = await genEmail();
   const pw = genPassword();
-  const blogName = 'mscms' + rand;
+  // ── 命名（2026-09-16 起，走 B：规则前移，只对新号生效）─────────────────
+  // 旧实现 `'mscms' + rand`：152 个存量账号全是 mscms 前缀 → 极强批量指纹。
+  // 现按 `<family>-<name>` 规则生成，家系池默认 8 个（env MSCMS_NAME_FAMILIES 可覆盖），
+  // 家系按 accountId 哈希稳定选路（同一账号永远同一家系，不同账号散开）。
+  const usedNames = getUsedNames();
+  const named = NAMING.allocate({ accountId, used: usedNames });
+  let blogName = named.blogName;
+  const blogTitle = named.title;
+  usedNames.add(blogName);
 
   // ── 出口选路（2026-09-12 灰度）：hashStr(accountId) % 9 单元，重启一致 ──
   const unit = RX.pickUnit(accountId, opts.unit || null);
@@ -504,6 +576,8 @@ async function onboardOne(appIdx, probe, opts) {
   }
 
   log('\n===== 账号 ' + (appIdx + 1) + ': ' + email + ' / blog=' + blogName + ' =====');
+  log('  命名: family=' + named.family + ' name=' + named.name + (named.initial ? ' initial=' + named.initial : '') +
+      ' → blog=' + blogName + '（显示名待设: ' + blogTitle + '）');
   log('  出口单元: ' + (unit ? unit.unit : '(空池→' + OUT_PROXY + ')') + (unit && unit.cf ? '  [CF /64]' : '') + '  代理: ' + exitProxy);
 
   // 实测出口 IP —— 必须在节流判断【之前】拿：
@@ -581,7 +655,32 @@ async function onboardOne(appIdx, probe, opts) {
     log('  环境: webdriver=' + env.webdriver + ' tz=' + env.tz + ' screen=' + env.screen);
     log('  UA=' + env.ua.slice(0, 80));
 
-    const res = await registerWithShardX(page, email, pw, blogName);
+    // ── 名称可用性预检（2026-09-16 新增）────────────────────────────────
+    // 在反检测浏览器内发起，同出口同会话；404=可用 / 401=已被占用。
+    // 目的：避免把一个「名字已被别人占用」的账号送上注册表单、白白打穿单元配额与信誉。
+    // ⚠️ 预检只会【换名】，绝不会因预检异常而中止注册（null 一律放行）。
+    // 可用 MSCMS_BLOGNAME_PRECHECK=0 关闭。
+    if (process.env.MSCMS_BLOGNAME_PRECHECK !== '0') {
+      const st0 = await precheckBlogName(page, blogName);
+      if (st0 === false) {
+        log('  ⚠️ 名称已被占用: ' + blogName + ' → 按规则换名', '⚠️ ');
+        let swapped = false;
+        for (let k = 1; k <= 5; k++) {
+          const alt = NAMING.buildBlogName(named.family, named.name, named.initial, usedNames, k);
+          const st = await precheckBlogName(page, alt);
+          if (st === false) { usedNames.add(alt); continue; }
+          log('  ✅ 换用可用名: ' + alt + (st === null ? '（预检无法判定，按可用处理）' : ''));
+          blogName = alt; usedNames.add(alt); swapped = true; break;
+        }
+        if (!swapped) log('  ⚠️ 连续 5 个候选名都不可用/判不了，仍按原候选继续（不阻断注册）', '⚠️ ');
+      } else if (st0 === true) {
+        log('  名称预检: ' + blogName + ' 可用 ✅');
+      } else {
+        log('  名称预检: 无法判定（不阻断注册）');
+      }
+    }
+
+    const res = await registerWithShardX(page, email, pw, blogName, blogTitle);
 
     if (probe) {
       log('\n--- [probe] 抓包共 ' + res.net.length + ' 条，已保留现场页面（不记账、不落盘）---');
@@ -604,7 +703,16 @@ async function onboardOne(appIdx, probe, opts) {
 
     // OAuth —— 与注册同出口
     const tok = await oauthInPage(page, accountId, appIdx, exitProxy).catch(e => { log('  OAuth 异常: ' + e.message, '⚠️ '); return null; });
-    appendAccount(makeAccountRecord(accountId, email, pw, blogName, false, exitMeta()));
+    appendAccount(makeAccountRecord(accountId, email, pw, blogName, false, {
+      ...exitMeta(),
+      // ── 命名元数据（2026-09-16 走 B）────────────────────────────
+      // intended_title：规则推导出的显示名；Tumblr 侧注册期可能设不上（保持 Untitled），
+      //   故以 intended_ 前缀标明它是【本地意图】而非「已生效值」——零伪造。
+      name_family: named.family,
+      naming_rule: 'family-name',
+      intended_title: blogTitle,
+      title_applied: false,
+    }));
     log('  已写入 accounts.json (blog=' + blogName + ', exit=' + (unit && unit.unit) + ', ip=' + (egressIp || 'N/A') + ')', '📝 ');
     return { ok: true, accountId, email, blogName, unit: unit && unit.unit, ip: egressIp, hasToken: !!(tok && tok.oauthToken), net: res.net };
   } catch (e) {

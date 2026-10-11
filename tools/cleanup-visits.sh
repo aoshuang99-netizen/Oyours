@@ -9,7 +9,7 @@ echo "[1/3] 备份 matrix_visits_recorded ..."
 echo "  $(wc -c < "$BK/visits_recorded.sql") bytes  err=$(wc -c < "$BK/visits_recorded.err") bytes"
 
 echo "[2/3] 删除伪造记录 ..."
-"C:/Users/AS//binaries/node/versions/22.22.2-2/node.exe" -e "
+"C:/Users/AS/.workbuddy/binaries/node/versions/22.22.2-6/node.exe" -e "
 const mysql=require('C:/Users/AS/WorkBuddy/2026-06-13-19-42-19/node_modules/mysql2/promise');
 (async()=>{
   const c=await mysql.createConnection({host:'',port:3307,user:'root',:'''affiliate_system'});
@@ -32,7 +32,7 @@ const mysql=require('C:/Users/AS/WorkBuddy/2026-06-13-19-42-19/node_modules/mysq
 "
 
 echo "[3/3] OPTIMIZE 回收空间 ..."
-"C:/Users/AS/WorkBuddy/binaries/node/versions/22.22.2-2/node.exe" -e "
+"C:/Users/AS/.workbuddy/binaries/node/versions/22.22.2-6/node.exe" -e "
 const mysql=require('C:/Users/AS/WorkBuddy/2026-06-13-19-42-19/node_modules/mysql2/promise');
 (async()=>{
   const c=await mysql.createConnection({host:'',port:3307,user:'root',:'''affiliate_system'});

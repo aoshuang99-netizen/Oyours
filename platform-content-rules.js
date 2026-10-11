@@ -67,6 +67,249 @@ const PlatformContentRules = {
     ],
   },
 
+  tumblr: {
+    name: 'Tumblr',
+    contentPolicy: {
+      prohibited: [
+        '禁止儿童性剥削内容（零容忍，直接封号）',
+        '禁止人肉搜索或泄露他人隐私信息',
+        '禁止骚扰、仇恨言论、暴力威胁',
+        '禁止 spam（同一正文跨博客重复发布、批量刷相关性低的 tag）',
+        '禁止冒充他人或品牌',
+        '禁止推广非法产品或服务',
+        '成人内容须标注 mature（未标注会被下架）',
+      ],
+      maxTags: 30,                    // Tumblr 单帖标签上限
+      rateLimits: {
+        newAccount: { postsPerDay: 5, reblogsPerDay: 20, likesPerDay: 50 },
+        normal: { postsPerDay: 12, reblogsPerDay: 100, likesPerDay: 200 },
+      },
+    },
+    moderationTriggers: {
+      duplicateBody: { threshold: 2, action: 'shadowban_risk', score: 40 },   // 同一正文跨博客复用
+      tagStuffing: { threshold: 20, action: 'spam_filter', score: 25 },       // tag 堆砌
+      linkVelocity: { threshold: 5, action: 'rate_limit', score: 20 },
+      newAccountActivity: { threshold: 'high_velocity', action: 'captcha', score: 20 },
+      reportRatio: { threshold: 0.1, action: 'auto_removal', score: 30 },
+    },
+    safeHashtags: ['art', 'photography', 'writing', 'music', 'life'],
+    bannedHashtags: ['porn', 'nsfw'],   // 未标注 mature 的账号应避开
+    linkPolicy: {
+      newAccount: 'limited',
+      minAge: 3,
+      allowedDomains: [],
+      suspiciousDomains: ['bit.ly', 'tinyurl.com', 'short.link'],
+    },
+    contentTips: [
+      '正文控制在 4096 字符内（超限会被截断或拒绝）',
+      '标签最多 30 个，用英文小写长尾词更易被 tag 页收录',
+      '同一正文不要跨博客重复发布（会被判 spam）',
+      '长文用 read more 折叠，保持 dash 可读性',
+      '图片/视频贴也建议配一段真实正文，避免纯媒体裸发',
+      '新账号先养号再发链接，避免首日带外链',
+    ],
+  },
+  // [NEWPLAT-2026-09-21]
+  nostr: {
+    name: 'Nostr',
+    contentPolicy: {
+      prohibited: [
+        '禁止非法内容（儿童剥削、恐怖主义、暴力威胁）',
+        '禁止 spam（同一事件重复广播、批量刷 tag）',
+        '禁止冒充他人（NIP-05 身份冒用）',
+        '禁止推广非法产品或服务',
+      ],
+      // Nostr 无平台级配额；限制来自所连 relay 的速率策略
+      rateLimits: {
+        newAccount: { postsPerHour: 3, postsPerDay: 10 },
+        normal: { postsPerHour: 10, postsPerDay: 50 },
+      },
+    },
+    moderationTriggers: {
+      duplicateEvent: { threshold: 2, action: 'relay_reject', score: 35 },
+      tagStuffing: { threshold: 10, action: 'relay_reject', score: 20 },
+      relayFlood: { threshold: 'high_velocity', action: 'relay_rate_limit', score: 25 },
+    },
+    safeHashtags: ['nostr', 'bitcoin', 'dev', 'art', 'writing'],
+    bannedHashtags: [],
+    linkPolicy: {
+      newAccount: 'limited',
+      minAge: 1,
+      allowedDomains: [],
+      suspiciousDomains: ['bit.ly', 'tinyurl.com', 'short.link'],
+    },
+    contentTips: [
+      '单条 note 控制在 600 字符内，长文用长文格式另行处理',
+      '同一正文不要重复广播到同一 relay（会被 relay 拒收）',
+      'tag 控制在 2 个以内，Nostr 的 tag 用于检索而非曝光',
+      '正文长度必须 ≥30 字符，否则会被本地质检闸门丢弃',
+    ],
+  },
+  bluesky: {
+    name: 'Bluesky',
+    contentPolicy: {
+      prohibited: [
+        '禁止非法内容（儿童剥削、恐怖主义、暴力威胁）',
+        '禁止骚扰、仇恨言论、人肉搜索',
+        '禁止 spam 与重复刷屏',
+        '禁制冒充他人或品牌',
+      ],
+      rateLimits: {
+        newAccount: { postsPerDay: 5, repliesPerDay: 20 },
+        normal: { postsPerDay: 20, repliesPerDay: 100 },
+      },
+    },
+    moderationTriggers: {
+      duplicateBody: { threshold: 2, action: 'label_risk', score: 30 },
+      replySpam: { threshold: 10, action: 'rate_limit', score: 25 },
+      reportRatio: { threshold: 0.1, action: 'label', score: 30 },
+    },
+    safeHashtags: ['dev', 'art', 'science', 'books'],
+    bannedHashtags: [],
+    linkPolicy: { newAccount: 'limited', minAge: 3, allowedDomains: [], suspiciousDomains: ['bit.ly', 'tinyurl.com'] },
+    contentTips: [
+      '正文硬上限 300 字符 —— 超限会被 API 直接拒绝',
+      '标签通过 facets 实现，不要写成裸 #tag 文本',
+      '语录式短文表现优于长段落',
+    ],
+  },
+  mastodon: {
+    name: 'Mastodon',
+    contentPolicy: {
+      prohibited: [
+        '禁止非法内容（儿童剥削、恐怖主义、暴力威胁）',
+        '禁止骚扰、仇恨言论、人肉搜索',
+        '禁止 spam 与商业推广刷屏',
+        '禁止未标注内容的敏感媒材（各实例规则不同）',
+      ],
+      instanceSpecific: true,        // 各实例有独立规则
+      rateLimits: {
+        newAccount: { postsPerDay: 5, boostsPerDay: 20 },
+        normal: { postsPerDay: 20, boostsPerDay: 100 },
+      },
+    },
+    moderationTriggers: {
+      duplicateBody: { threshold: 2, action: 'instance_silence_risk', score: 35 },
+      linkVelocity: { threshold: 5, action: 'rate_limit', score: 20 },
+      reportRatio: { threshold: 0.1, action: 'instance_moderation', score: 30 },
+    },
+    safeHashtags: ['introductions', 'dev', 'art', 'fediverse'],
+    bannedHashtags: [],
+    linkPolicy: { newAccount: 'limited', minAge: 3, allowedDomains: [], suspiciousDomains: ['bit.ly', 'tinyurl.com'] },
+    contentTips: [
+      '正文上限通常 500 字符（实例可调）',
+      '热门 tag 用 CamelCase 提升可读性与可检索性',
+      '跨实例传播靠 tag 而非算法，tag 选准比选多重要',
+      '商业推广会被大量实例封锁，保持分享口吻',
+    ],
+  },
+  telegram: {
+    name: 'Telegram',
+    contentPolicy: {
+      prohibited: [
+        '禁止非法内容（儿童剥削、恐怖主义）',
+        '禁止 spam 与批量拉人',
+        '禁止冒充频道或官方身份',
+      ],
+      channelBroadcast: true,
+      rateLimits: {
+        newAccount: { postsPerHour: 5, postsPerDay: 20 },
+        normal: { postsPerHour: 20, postsPerDay: 100 },
+      },
+    },
+    moderationTriggers: {
+      channelFlood: { threshold: 'high_velocity', action: 'flood_wait', score: 30 },
+      duplicateBody: { threshold: 3, action: 'spam_filter', score: 20 },
+    },
+    safeHashtags: [],
+    bannedHashtags: [],
+    linkPolicy: { newAccount: 'limited', minAge: 1, allowedDomains: [], suspiciousDomains: [] },
+    contentTips: [
+      '频道推送以「一眼可读」为先，短行 + 空行分隔',
+      '正文上限 4096 字符，本系统按 1000 字符控制',
+      '含外链的推送到达率下降，链接放末尾',
+    ],
+  },
+  devto: {
+    name: 'DEV Community',
+    contentPolicy: {
+      prohibited: [
+        '禁止纯广告与推广软文（DEV 会直接降权）',
+        '禁止抄袭或未署名转载',
+        '禁止误导性技术内容（安全风险）',
+        '禁止 AI 灌水式低质长文',
+      ],
+      minBodyLength: 200,
+      rateLimits: {
+        newAccount: { postsPerDay: 2 },
+        normal: { postsPerDay: 6 },
+      },
+    },
+    moderationTriggers: {
+      duplicateBody: { threshold: 2, action: 'article_unlisted', score: 40 },
+      lowEffortContent: { threshold: 'short_article', action: 'unlisted', score: 25 },
+      repeatedDomain: { threshold: 3, action: 'spam_filter', score: 25 },
+    },
+    safeHashtags: ['dev', 'javascript', 'node', 'webdev', 'tutorial'],
+    bannedHashtags: [],
+    linkPolicy: { newAccount: 'limited', minAge: 1, allowedDomains: [], suspiciousDomains: ['bit.ly', 'tinyurl.com'] },
+    contentTips: [
+      '正文过短（<200 字符）会被判 low-effort 并下架首页',
+      '标题必须具体，禁止「Introduction to X」式空泛标题',
+      '外链一律放正文，放标题或首行会被降权',
+      'markdown 标题用 ##，DEV 渲染器会生成目录',
+    ],
+  },
+  hashnode: {
+    name: 'Hashnode',
+    contentPolicy: {
+      prohibited: [
+        '禁止抄袭与未署名转载',
+        '禁止纯营销落地页式内容',
+        '禁止误导性技术内容',
+      ],
+      minBodyLength: 200,
+      rateLimits: { newAccount: { postsPerDay: 2 }, normal: { postsPerDay: 4 } },
+    },
+    moderationTriggers: {
+      duplicateBody: { threshold: 2, action: 'deindex_risk', score: 35 },
+      lowEffortContent: { threshold: 'short_article', action: 'reduce_reach', score: 20 },
+    },
+    safeHashtags: ['webdev', 'javascript', 'programming', 'nodejs', 'tutorial'],
+    bannedHashtags: [],
+    linkPolicy: { newAccount: 'limited', minAge: 1, allowedDomains: [], suspiciousDomains: ['bit.ly'] },
+    contentTips: [
+      '正文过短会被判低质，建议 ≥800 字符',
+      '原创性是 Hashnode 的核心排序因子，避免跨平台同稿',
+      '封面图可显著提升点击，但正文本身必须有信息量',
+    ],
+  },
+  github: {
+    name: 'GitHub',
+    contentPolicy: {
+      prohibited: [
+        '禁止发布凭据 / 密钥 / 隐私数据',
+        '禁止垃圾 issue 与无关推广',
+        '禁止冒充项目或维护者',
+      ],
+      rateLimits: {
+        newAccount: { issuesPerDay: 5, commentsPerDay: 20 },
+        normal: { issuesPerDay: 20, commentsPerDay: 100 },
+      },
+    },
+    moderationTriggers: {
+      duplicateBody: { threshold: 2, action: 'spam_flag', score: 40 },
+      lowEffortContent: { threshold: 'short_body', action: 'close_no_contribution', score: 25 },
+    },
+    safeHashtags: [],
+    bannedHashtags: [],
+    linkPolicy: { newAccount: 'limited', minAge: 1, allowedDomains: [], suspiciousDomains: ['bit.ly'] },
+    contentTips: [
+      '正文必须「可验证」：写清版本 / 文件 / 复现步骤',
+      '不使用营销语言，维护者对此高度敏感',
+      '禁止在正文中出现任何 token / 密钥 / 内网地址',
+    ],
+  },
   x: {
     name: 'X (Twitter)',
     contentPolicy: {
@@ -386,11 +629,41 @@ const SensitiveWords = {
 };
 
 // ── 内容审核检查器 ───────────────────────────────────
+// [NEWPLAT-2026-09-21] 未知平台的中性默认规则
+// 原实现回落 PlatformContentRules.reddit，会把 reddit 特有的 karma / 账号年龄
+// 门槛与 subreddit 语义误加到非 reddit 平台（实测：nostr 落到 reddit 规则）。
+// 这里改为中性规则，未知平台不再继承任何平台特有门槛。
+const NEUTRAL_CONTENT_RULES = {
+  name: 'Generic',
+  contentPolicy: {
+    prohibited: [
+      '禁止非法内容（儿童剥削、恐怖主义、暴力威胁）',
+      '禁止骚扰、仇恨言论、人肉搜索',
+      '禁止 spam（重复正文、批量刷 tag）',
+      '禁止冒充他人或品牌',
+    ],
+    rateLimits: {
+      newAccount: { postsPerDay: 3 },
+      normal: { postsPerDay: 12 },
+    },
+  },
+  moderationTriggers: {
+    duplicateBody: { threshold: 2, action: 'quality_gate', score: 30 },
+  },
+  safeHashtags: [],
+  bannedHashtags: [],
+  linkPolicy: { newAccount: 'limited', minAge: 3, allowedDomains: [], suspiciousDomains: [] },
+  contentTips: [
+    '正文保持 30 字符以上（本地质检闸门硬性要求）',
+    '避免同一正文跨平台原样复用',
+  ],
+};
+
 class ContentRuleChecker extends EventEmitter {
   constructor(platform = 'reddit') {
     super();
     this.platform = platform;
-    this.rules = PlatformContentRules[platform] || PlatformContentRules.reddit;
+    this.rules = PlatformContentRules[platform] || NEUTRAL_CONTENT_RULES;
   }
 
   // 全面检查内容
@@ -582,6 +855,15 @@ class ContentRuleChecker extends EventEmitter {
       tiktok: { maxLength: 2200, titleMaxLength: 0 },
       facebook: { maxLength: 63206, titleMaxLength: 0 },
       youtube: { maxLength: 5000, titleMaxLength: 100 },
+      tumblr: { maxLength: 4096, titleMaxLength: 0 },   // Tumblr 正文上限 4096（原实现回落 reddit 40000，误判）
+      // [NEWPLAT-2026-09-21]
+      nostr: { maxLength: 2000, titleMaxLength: 0 },
+      bluesky: { maxLength: 300, titleMaxLength: 0 },
+      mastodon: { maxLength: 500, titleMaxLength: 0 },
+      telegram: { maxLength: 1000, titleMaxLength: 0 },
+      devto: { maxLength: 5000, titleMaxLength: 128 },
+      hashnode: { maxLength: 5000, titleMaxLength: 128 },
+      github: { maxLength: 2000, titleMaxLength: 120 },
     };
     return specs[this.platform] || specs.reddit;
   }

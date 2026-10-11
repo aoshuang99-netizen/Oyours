@@ -43,16 +43,43 @@ class TelegramProvider extends SocialProvider {
     };
   }
 
+  /**
+   * 凭据**格式**校验（同步、零网络）。
+   * Telegram Bot Token 固定形如 `<bot_id>:<密钥>`（bot_id 为 6~12 位数字，密钥约 35 位）。
+   *
+   * 【2026-09-20 F3 延伸】原 `configStatus()` 里 `authorized: hasCreds` —— 与 `configured`
+   *   完全冗余，一旦填入占位值（如 "test"）就会立刻变成「绿灯但发不出去」的假绿。
+   *   此处补格式闸门，**仅收紧 `authorized`**；`configured`（发布路径判据）语义不变。
+   */
+  _checkCredFormat(c) {
+    const tk = String(c.botToken || '');
+    if (!/^\d{6,12}:[A-Za-z0-9_-]{30,}$/.test(tk)) {
+      return {
+        ok: false,
+        reason: `TELEGRAM_BOT_TOKEN 格式无效（当前 ${tk.length} 字符，正确格式为 <bot_id>:<密钥>，形如 123456789:AAH...）⇒ 请到 @BotFather → /newbot 重新获取后填入`,
+      };
+    }
+    const cid = String(c.chatId || '');
+    if (!/^(-?\d{5,}|@[A-Za-z0-9_]{4,})$/.test(cid)) {
+      return { ok: false, reason: `TELEGRAM_CHAT_ID 格式无效（应为数字 id 或 @channelusername，当前「${cid.slice(0, 24)}」）` };
+    }
+    return { ok: true };
+  }
+
   configStatus() {
     const c = this._config();
     const hasCreds = !!(c.botToken && c.chatId);
+    const fmt = hasCreds ? this._checkCredFormat(c) : { ok: false, reason: null };
     return {
       identifier: 'telegram',
       configured: hasCreds,
-      authorized: hasCreds,
-      reason: hasCreds
-        ? null
-        : '尚未配置 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID。免费获取：@BotFather → /newbot → 获得 bot token；频道 chat_id 用 getUpdates 取（无需开发者门户/付费/审核）',
+      format: fmt.ok ? 'ok' : 'invalid',
+      authorized: hasCreds && fmt.ok,
+      reachable: 'unknown',
+      probeAt: null,
+      reason: !hasCreds
+        ? '尚未配置 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID。免费获取：@BotFather → /newbot → 获得 bot token；频道 chat_id 用 getUpdates 取（无需开发者门户/付费/审核）'
+        : (fmt.ok ? null : fmt.reason),
     };
   }
 

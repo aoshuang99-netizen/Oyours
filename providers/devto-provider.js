@@ -43,16 +43,39 @@ class DevtoProvider extends SocialProvider {
     };
   }
 
+  /**
+   * 凭据**格式**校验（同步、零网络）。
+   * ⚠️ dev.to **未公开** API Key 的固定长度/前缀，故此处采用**保守判据**（只拦「明显占位值 /
+   *    截断值」），**不编造官方格式**，以保证不会误伤真实 Key。
+   *
+   * 【2026-09-20 F3 延伸】原 `configStatus()` 里 `authorized: hasCreds` 与 `configured` 完全冗余，
+   *   占位值会直接变成「绿灯但发不出去」的假绿。此处补格式闸门，**仅收紧 `authorized`**。
+   */
+  _checkCredFormat(c) {
+    const k = String(c.apiKey || '');
+    if (!/^[A-Za-z0-9_-]{16,}$/.test(k)) {
+      return {
+        ok: false,
+        reason: `DEVTO_API_KEY 格式可疑（当前 ${k.length} 字符）⇒ dev.to 的 API Key 为 16 位以上无空白串；当前值过短或含非法字符，疑似占位/截断值，请到 Settings → Extensions 重新生成`,
+      };
+    }
+    return { ok: true };
+  }
+
   configStatus() {
     const c = this._config();
     const hasCreds = !!(c.apiKey);
+    const fmt = hasCreds ? this._checkCredFormat(c) : { ok: false, reason: null };
     return {
       identifier: 'devto',
       configured: hasCreds,
-      authorized: hasCreds,
-      reason: hasCreds
-        ? null
-        : '尚未配置 DEVTO_API_KEY。免费获取：dev.to → Settings → Extensions → DEV Community API Keys → Generate（无需开发者门户/付费/审核）',
+      format: fmt.ok ? 'ok' : 'invalid',
+      authorized: hasCreds && fmt.ok,
+      reachable: 'unknown',
+      probeAt: null,
+      reason: !hasCreds
+        ? '尚未配置 DEVTO_API_KEY。免费获取：dev.to → Settings → Extensions → DEV Community API Keys → Generate（无需开发者门户/付费/审核）'
+        : (fmt.ok ? null : fmt.reason),
     };
   }
 

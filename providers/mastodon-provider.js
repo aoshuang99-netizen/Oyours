@@ -54,19 +54,69 @@ class MastodonProvider extends SocialProvider {
     };
   }
 
-  /** 配置状态（驱动 dashboard + 决定桥接是否推进 S4） */
+  /**
+   * 凭据**格式**校验（同步、零网络）。
+   * Mastodon 个人访问令牌为 43 字符的 base64url（`[A-Za-z0-9_-]`）。
+   */
+  _checkCredFormat(c) {
+    const tk = String(c.accessToken || '');
+    if (!/^[A-Za-z0-9_-]{40,}$/.test(tk)) {
+      return {
+        ok: false,
+        reason: `MASTODON_ACCESS_TOKEN 格式无效（当前 ${tk.length} 字符，正确应为 43 字符的 base64url 串）⇒ 该凭据无法通过认证，请到 ${c.instance} 「首选项 → 开发 → 新建应用」重新生成访问令牌`,
+      };
+    }
+    if (!/^https:\/\/[^\s/]+/.test(String(c.instance || ''))) {
+      return { ok: false, reason: `MASTODON_INSTANCE 格式无效（应为 https://实例域名，当前「${String(c.instance || '').slice(0, 40)}」）` };
+    }
+    return { ok: true };
+  }
+
+  /**
+   * 配置状态（驱动 dashboard + 决定桥接是否推进 S4）。
+   *
+   * 【2026-09-20 F3 修复】原实现 `authorized: hasCreds`(仅判字段非空)，
+   *   导致 11 字符占位值 `kuaile13…` 也被报成「已授权」——实测 verify_credentials 返回 401
+   *   `the access token is invalid`，仪表盘出现「绿灯但发不出去」的**假绿**。
+   *   现改为三态：configured(字段非空) / format(格式是否合法) / reachable(真实探针结果)。
+   *   ⚠️ `configured` 语义**保持不变**（发布路径 cloud-publisher.js:1097 依赖它），
+   *      只收紧 `authorized` —— 该字段此前只用于展示，不参与发布判定。
+   */
   configStatus() {
     const c = this._config();
     const hasCreds = !!(c.instance && c.accessToken);
+    const fmt = hasCreds ? this._checkCredFormat(c) : { ok: false, reason: null };
+    const probe = this._probeCache || null;
     return {
       identifier: 'mastodon',
       configured: hasCreds,
-      authorized: hasCreds,
+      format: fmt.ok ? 'ok' : 'invalid',
+      authorized: hasCreds && fmt.ok && (!probe || probe.ok === true),
+      reachable: probe ? (probe.ok ? 'ok' : 'fail') : 'unknown',
+      probeAt: probe ? probe.at : null,
       instance: c.instance,
-      reason: hasCreds
-        ? null
-        : '尚未配置 MASTODON_INSTANCE / MASTODON_ACCESS_TOKEN。免费获取：注册 Mastodon 账号 → 设置 → 开发 → 新建应用/个人访问令牌（无需开发者门户/付费/审核）',
+      reason: !hasCreds
+        ? '尚未配置 MASTODON_INSTANCE / MASTODON_ACCESS_TOKEN。免费获取：注册 Mastodon 账号 → 设置 → 开发 → 新建应用/个人访问令牌（无需开发者门户/付费/审核）'
+        : (fmt.ok ? null : fmt.reason),
     };
+  }
+
+  /**
+   * **真实探针**：调用 verify_credentials 验证令牌是否真的有效（结果缓存 10 分钟）。
+   * 让「格式对但认证失败」这类隐性失效可见（2026-09-20 假绿事件的直接产物）。
+   */
+  async verifyCredentials({ force = false } = {}) {
+    const now = Date.now();
+    if (!force && this._probeCache && now - this._probeCache.at < 10 * 60 * 1000) return this._probeCache;
+    let out;
+    try {
+      const me = await this._api('GET', '/api/v1/accounts/verify_credentials');
+      out = { ok: true, at: now, acct: (me && me.acct) || null, id: (me && me.id) || null };
+    } catch (e) {
+      out = { ok: false, at: now, error: String((e && e.message) || e).slice(0, 200) };
+    }
+    this._probeCache = out;
+    return out;
   }
 
   /** 懒加载 ProxyAgent：仅当存在 HTTP(S)_PROXY 时启用（兼容 ESM-only 的 undici） */

@@ -11,6 +11,50 @@
 
 const { EventEmitter } = require('events');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+// ── 真实热点数据源（P1-A1/A3/A4）─────────────────────
+// trends.json 由 tools/trends-scraper.js 真实抓取落盘（5 源：google_trends /
+// hackernews / devto / medium / lobsters）。此处直读磁盘、刻意不进 DataStore：
+// DataStore 为「内存优先 + 5s flush」，外部脚本写入会被内存旧数据覆盖。
+const TRENDS_TTL_MS = 72 * 3600 * 1000;   // A4：只认 72h 内抓到的条目
+const TRENDS_CACHE_MS = 60 * 1000;        // 磁盘读取缓存 60s（生成周期 ~182s，足够）
+
+function trendsFilePath() {
+  const dir = process.env.MSCMS_DATA_DIR || process.env.DATA_DIR || 'D:/mscms-ws/data';
+  return path.join(dir, 'trends.json');
+}
+
+// 英文停用词 + 中文 2-gram（与 TextDedupEngine._tokenize 口径一致）
+const TREND_STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'for', 'to', 'of', 'in', 'on', 'with', 'is', 'are', 'was',
+  'were', 'be', 'been', 'being', 'it', 'its', 'this', 'that', 'these', 'those', 'you', 'your',
+  'how', 'why', 'what', 'when', 'which', 'who', 'from', 'at', 'by', 'as', 'we', 'they', 'them',
+  'he', 'she', 'his', 'her', 'not', 'no', 'but', 'if', 'then', 'than', 'so', 'up', 'out',
+  'about', 'into', 'over', 'after', 'new', 'using', 'use', 'used', 'get', 'got', 'can', 'will',
+  'just', 'more', 'most', 'all', 'one', 'two', 'also', 'has', 'have', 'had', 'do', 'does', 'did',
+  'my', 'me', 'our', 'their', 'there', 'here', 'now', 'only', 'ever', 'never', 'still', 'even',
+]);
+
+function extractTrendKeywords(text, limit = 5) {
+  const freq = new Map();
+  const words = String(text || '').toLowerCase().match(/[a-z][a-z0-9+#.-]{2,}/g) || [];
+  for (const w of words) {
+    const t = w.replace(/[.\-+#]+$/, '');
+    if (t.length < 3 || TREND_STOPWORDS.has(t)) continue;
+    freq.set(t, (freq.get(t) || 0) + 1);
+  }
+  const s = String(text || '');
+  for (let i = 0; i < s.length - 1; i++) {
+    const bg = s.slice(i, i + 2);
+    if (/[\u4e00-\u9fff]{2}/.test(bg)) freq.set(bg, (freq.get(bg) || 0) + 1);
+  }
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([w]) => w);
+}
 
 // ── 热点评分等级 ─────────────────────────────────
 const HotLevel = {
@@ -162,6 +206,8 @@ class HotTopicScraper extends EventEmitter {
     this.db = opts.db || null;
     this.cache = new Map();
     this.cacheTimeout = 300000; // 5分钟缓存
+    this._trendsCache = null;    // 真实 trends.json 磁盘缓存
+    this._trendsCacheAt = 0;
   }
 
   // 关键词驱动抓取
@@ -194,43 +240,77 @@ class HotTopicScraper extends EventEmitter {
     return unique;
   }
 
-  // 获取当前全网热点
-  async getTrendingTopics(platform = null, limit = 50) {
-    const topics = [];
-    const sources = platform ? [DATA_SOURCES[platform]] : Object.values(DATA_SOURCES);
-
-    for (const source of sources) {
-      if (!source) continue;
-      for (const type of source.types) {
-        const count = Math.floor(Math.random() * 10) + 5;
-        for (let i = 0; i < count; i++) {
-          topics.push({
-            id: `hot_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-            source: source.name,
-            type,
-            title: this._generateTopicTitle(type),
-            keywords: this._generateTopicKeywords(),
-            score: this._calculateHotScore(),
-            level: null,
-            engagement: {
-              views: Math.floor(Math.random() * 1000000) + 10000,
-              likes: Math.floor(Math.random() * 50000) + 100,
-              shares: Math.floor(Math.random() * 10000) + 10,
-              comments: Math.floor(Math.random() * 5000) + 50,
-            },
-            growthRate: (Math.random() * 3 - 0.5).toFixed(2),
-            timestamp: new Date(Date.now() - Math.floor(Math.random() * 86400000)).toISOString(),
-          });
-        }
-      }
+  // ── 真实热点数据源（P1-A1/A3/A4）────────────────────
+  /** 直读 trends.json（带 60s 缓存）；文件缺失/损坏返回 []，绝不伪造 */
+  _readRealTrends() {
+    const now = Date.now();
+    if (this._trendsCache && (now - this._trendsCacheAt) < TRENDS_CACHE_MS) {
+      return this._trendsCache;
     }
+    let arr = [];
+    try {
+      const parsed = JSON.parse(fs.readFileSync(trendsFilePath(), 'utf8'));
+      if (Array.isArray(parsed)) arr = parsed;
+    } catch (e) {
+      arr = [];
+    }
+    this._trendsCache = arr;
+    this._trendsCacheAt = now;
+    return arr;
+  }
 
-    // 计算热度等级
-    topics.forEach(t => {
-      t.level = this._getHotLevel(t.score).level;
+  /**
+   * 真实热点（content-pipeline._getTrendingTopic 的消费契约）
+   * 返回 [{ id,title,keywords,category,level,score,relevance,source,url,fetchedAt }]
+   * level：按 relevance 降序的 percentile 分级 S(top10%)/A(10~30%)/B(30~60%)/C
+   */
+  async getTrends(platform = null, limit = 20) {
+    const now = Date.now();
+    const all = this._readRealTrends();
+
+    // A4 新鲜度：只认 TRENDS_TTL_MS 内的条目
+    let fresh = all.filter((t) => {
+      if (!t || !t.title) return false;
+      const ts = Date.parse(t.fetchedAt || t.timestamp || '');
+      return Number.isFinite(ts) && (now - ts) <= TRENDS_TTL_MS;
     });
+    // 极端情况（长时间未抓取）退化为全部真实条目，仍不伪造
+    if (fresh.length === 0) fresh = all.filter((t) => t && t.title);
+    if (fresh.length === 0) return [];
 
-    return topics.sort((a, b) => b.score - a.score).slice(0, limit);
+    // A3 业务相关性优先（relevanceOf 在 trends-scraper 侧按 TOPIC_KEYWORDS 累加）
+    const relevant = fresh.filter((t) => (t.relevance || 0) > 0);
+    const base = relevant.length ? relevant : fresh;
+
+    const sorted = [...base].sort((a, b) =>
+      ((b.relevance || 0) - (a.relevance || 0)) || ((b.score || 0) - (a.score || 0)));
+
+    const n = sorted.length;
+    return sorted.slice(0, limit).map((t, i) => {
+      const p = n > 1 ? i / (n - 1) : 0;
+      const level = p < 0.1 ? 'S' : p < 0.3 ? 'A' : p < 0.6 ? 'B' : 'C';
+      const ts = t.fetchedAt || t.timestamp || null;
+      return {
+        id: t.simhash ? `trend_${t.simhash}` : `trend_${i}`,
+        title: String(t.title).trim(),
+        keywords: extractTrendKeywords(`${t.title} ${t.summary || ''}`),
+        category: 'trending',
+        level,
+        score: Number(t.score) || 0,
+        relevance: Number(t.relevance) || 0,
+        source: t.source || 'unknown',
+        url: t.url || null,
+        fetchedAt: ts,
+        timestamp: ts,
+      };
+    });
+  }
+
+  // 获取当前全网热点（真实数据；无数据返回 []，不再返回 Math.random 假数据）
+  async getTrendingTopics(platform = null, limit = 50) {
+    const topics = await this.getTrends(platform, limit);
+    this.emit('fetch:complete', { platform, count: topics.length, source: 'trends.json' });
+    return topics;
   }
 
   // 热度评分计算
@@ -262,8 +342,10 @@ class HotTopicScraper extends EventEmitter {
       const key = topic.title.toLowerCase();
       if (!seen.has(key)) {
         seen.add(key);
-        topic.score = this._calculateHotScore();
-        topic.level = this._getHotLevel(topic.score).level;
+        // 保留真实 score —— 原实现对传入条目无条件重算 Math.random 分数，
+        // 会把真实热度彻底打乱（零伪造原则下必须保留原始值）
+        if (!Number.isFinite(topic.score)) topic.score = this._calculateHotScore();
+        if (!topic.level) topic.level = this._getHotLevel(topic.score).level;
         unique.push(topic);
       }
     }
@@ -271,7 +353,12 @@ class HotTopicScraper extends EventEmitter {
     return unique.sort((a, b) => b.score - a.score);
   }
 
-  // ── Mock数据生成器（生产环境替换为真实API） ────
+  // ══════════════════════════════════════════════════════════════════
+  //  ⚠️ 以下 _generateMock* / _calculateHotScore 是随机假数据生成器
+  //  【2026-09-15】已从生产链路摘除：getTrends / getTrendingTopics /
+  //  fetchByKeywords 全部改读真实 trends.json。仅保留供单测与演示，
+  //  严禁在新代码中调用（零伪造原则）。
+  // ══════════════════════════════════════════════════════════════════
   _generateMockTopic(keyword, source, sourceData) {
     const templates = [
       `${keyword} challenge going viral right now`,

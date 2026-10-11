@@ -31,7 +31,7 @@ REM ======================================================================
 
 setlocal
 set "WS=C:\Users\AS\WorkBuddy\2026-06-13-19-42-19"
-set "VDIR=C:\Users\AS\\binaries\node\versions"
+set "VDIR=C:\Users\AS\.workbuddy\binaries\node\versions"
 set "STORAGE=D:\mscms-ws"
 set "LOGDIR=%STORAGE%\logs"
 set "LOG=%LOGDIR%\autostart.log"

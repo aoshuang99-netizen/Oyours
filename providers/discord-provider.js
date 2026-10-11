@@ -40,16 +40,39 @@ class DiscordProvider extends SocialProvider {
     };
   }
 
+  /**
+   * 凭据**格式**校验（同步、零网络）。
+   * Discord Webhook URL 固定形如
+   * `https://discord.com/api/webhooks/<id>/<token>`（旧版域名 discordapp.com 亦受理）。
+   *
+   * 【2026-09-20 F3 延伸】原 `configStatus()` 里 `authorized: hasCreds` 与 `configured` 冗余，
+   *   占位值会直接假绿。此处补格式闸门，**仅收紧 `authorized`**。
+   */
+  _checkCredFormat(c) {
+    const u = String(c.webhookUrl || '');
+    if (!/^https:\/\/(?:discord|discordapp)\.com\/api\/(?:v\d+\/)?webhooks\/\d+\/[\w-]+$/.test(u)) {
+      return {
+        ok: false,
+        reason: `DISCORD_WEBHOOK_URL 格式无效（当前 ${u.length} 字符，正确形如 https://discord.com/api/webhooks/<id>/<token>）⇒ 请到 Discord 服务器设置 → 集成 → Webhooks 重新复制`,
+      };
+    }
+    return { ok: true };
+  }
+
   configStatus() {
     const c = this._config();
     const hasCreds = !!(c.webhookUrl);
+    const fmt = hasCreds ? this._checkCredFormat(c) : { ok: false, reason: null };
     return {
       identifier: 'discord',
       configured: hasCreds,
-      authorized: hasCreds,
-      reason: hasCreds
-        ? null
-        : '尚未配置 DISCORD_WEBHOOK_URL。免费获取：Discord 服务器设置 → 集成 → Webhooks → 创建 Webhook → 复制 URL（无需开发者门户/付费/审核）',
+      format: fmt.ok ? 'ok' : 'invalid',
+      authorized: hasCreds && fmt.ok,
+      reachable: 'unknown',
+      probeAt: null,
+      reason: !hasCreds
+        ? '尚未配置 DISCORD_WEBHOOK_URL。免费获取：Discord 服务器设置 → 集成 → Webhooks → 创建 Webhook → 复制 URL（无需开发者门户/付费/审核）'
+        : (fmt.ok ? null : fmt.reason),
     };
   }
 

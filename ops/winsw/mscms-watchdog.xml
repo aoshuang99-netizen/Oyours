@@ -14,7 +14,7 @@
       2. mscms-watchdog.exe install
       3. Open services.msc -> set "Log On" to your interactive account (.\AS) so the
          service inherits the same environment as your session (localhost proxy :10808,
-         D:\ paths, C:\Users\AS\...). Do NOT put the  in this XML.
+         D:\ paths, C:\Users\AS\...). Do NOT put the password in this XML.
       4. mscms-watchdog.exe start
   -->
   <id>mscms-watchdog</id>

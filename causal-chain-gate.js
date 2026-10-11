@@ -23,6 +23,13 @@ const PhaseStatus = {
   RUNNING: 'running',
   COMPLETED: 'completed',
   BLOCKED: 'blocked',
+  // [P0-2 修复 · 2026-09-15] 停滞逃生阀标记。
+  //   语义：该阶段在「无任何真实证据」下连续停滞达阈值，被显式跳过放行。
+  //   它**不等于** completed —— 不伪造进度、不补假分、不计入 current；
+  //   但允许后继阶段继续推进，避免整条因果链死锁。
+  //   原实现没有跳过语义：停滞守卫只会无限 start() 同一阶段，
+  //   实测 post.published 因此空转 224 轮 / 12.6 小时（零发布 + 零生成）。
+  SKIPPED: 'skipped',
 };
 
 // 阶段配置
@@ -107,6 +114,25 @@ class CausalChainGate extends EventEmitter {
     this._stallTimer = null;
     this._lastProgressTime = Date.now();
 
+    // [P0-2 修复] 停滞逃生阀计数：phaseName -> 连续停滞次数。
+    //   同一阶段连续停滞达 _stallEscapeThreshold 次后，标记 SKIPPED 并放行后继，
+    //   打破「重启 → 再停滞 → 再重启」的无限循环。
+    //   真实进展（incrementProgress）或阶段完成时会清零该计数。
+    this._stallCounts = new Map();
+    this._stallEscapeThreshold = Number(
+      opts.stallEscapeThreshold != null ? opts.stallEscapeThreshold
+        : (process.env.MSCMS_CAUSAL_STALL_ESCAPE || 3)
+    );
+
+    // [P0-2 修复] 冷启动证据窗口：后 5 阶段（content.generated / post.published /
+    //   visit.recorded / dau.updated / action.execute）的证据源必须落在「近期窗口」内。
+    //   若用全量历史计数，每个周期都会瞬间达标 —— 那等价于补假分，会使门控形同虚设。
+    //   默认 30 分钟，可用 env MSCMS_CAUSAL_EVIDENCE_WINDOW_MS 调整。
+    this._evidenceWindowMs = Number(
+      opts.evidenceWindowMs != null ? opts.evidenceWindowMs
+        : (process.env.MSCMS_CAUSAL_EVIDENCE_WINDOW_MS || 30 * 60 * 1000)
+    );
+
     // 初始化所有阶段
     for (const [name, cfg] of Object.entries(PHASE_CONFIG)) {
       this.phases.set(name, {
@@ -129,6 +155,7 @@ class CausalChainGate extends EventEmitter {
       totalCycles: 0,
       totalAdvancements: 0,
       totalBlocks: 0,
+      totalSkips: 0,   // [P0-2] 逃生阀跳过次数（无真实证据而被放行的阶段数）
       currentCycleStart: null,
     };
   }
@@ -160,6 +187,14 @@ class CausalChainGate extends EventEmitter {
     if (!phase || phase.status === PhaseStatus.COMPLETED || phase.status === PhaseStatus.IDLE) return this;
 
     this._lastProgressTime = Date.now();  // 记录最后进展时间
+
+    // [P0-2 修复] 只有**真实事件驱动**的进展才清零停滞计数。
+    //   冷启动积分（metadata.coldStart=true）不算真实进展 —— 否则
+    //   「停滞重启 → 冷启动补 1 分 → 再次停滞 → 再重启」会无限循环，
+    //   而停滞计数每次都被清零，永远到不了逃生阀阈值（这正是原死锁的形态）。
+    if (!metadata || metadata.coldStart !== true) {
+      this._stallCounts.delete(phaseName);
+    }
 
     const prevCurrent = phase.current;
     phase.current += delta;
@@ -198,6 +233,8 @@ class CausalChainGate extends EventEmitter {
     phase.status = PhaseStatus.COMPLETED;
     phase.completedAt = new Date().toISOString();
     this._lastProgressTime = Date.now();  // 记录进展
+    this._stallCounts.delete(phase.name);  // [P0-2] 阶段达标 → 清停滞计数
+    if (phase.metadata) delete phase.metadata.skipped;  // 达标则撤销 skipped 痕迹
 
     console.log(`[chain-gate] ✅ ${phase.label}(${phase.name}) 达标: ${phase.current}/${phase.target}`);
     this.emit('phase:complete', {
@@ -221,9 +258,15 @@ class CausalChainGate extends EventEmitter {
     if (!phase) return false;
 
     // 检查前置阶段是否完成
+    // [P0-2 修复] SKIPPED 也视为「可放行」：逃生阀跳过的阶段不该继续堵住整条链。
+    //   注意区别：SKIPPED 只放行后继，不改变该阶段自身 current（不补假分）。
     const prerequisites = this._getPrerequisites(phaseName);
     for (const prereq of prerequisites) {
       const p = this.phases.get(prereq);
+      if (p && p.status === PhaseStatus.SKIPPED) {
+        console.warn(`[chain-gate] ⚠️ ${phase.label} 放行：前置 ${p.label} 为 skipped(${p.current}/${p.target})，无真实证据，未补假分`);
+        continue;
+      }
       if (p && p.status !== PhaseStatus.COMPLETED) {
         console.log(`[chain-gate] ⛔ ${phase.label} 阻塞: 前置 ${p.label} 未完成 (${p.current}/${p.target})`);
         phase.status = PhaseStatus.BLOCKED;
@@ -345,21 +388,16 @@ class CausalChainGate extends EventEmitter {
     }
 
     const target = phase.target;
-    let credit = 0;
-    let source = 'none';
+    const { credit, source } = this._collectPhaseEvidence(fromPhase);
 
-    if (fromPhase === 'account.registered') {
-      // 从 DataStore 统计已有账号数
-      credit = this._countExistingAccounts();
-      source = credit > 0 ? `DataStore(${credit} accounts)` : 'bootstrap(1)';
-    } else if (fromPhase === 'account.healthy') {
-      // 统计已成熟的账号数（S2/S3）
-      credit = this._countMatureAccounts();
-      source = credit > 0 ? `DataStore(${credit} mature)` : 'bootstrap(1)';
+    // [P0-2 修复] 移除「credit<1 → 强行补 1 分」的兜底。
+    //   该兜底是死锁的直接成因：post.published target=2，兜底只给 1 分，
+    //   任何路径都到不了 2，阶段永久停在 50%。无真实证据时宁可 0 分，
+    //   由停滞逃生阀标记 skipped 放行（打 WARN 留痕），也不伪造进度。
+    if (credit < 1) {
+      console.warn(`[chain-gate] ❄️ 冷启动: ${fromPhase} 无真实证据 (来源: ${source})，不补分（等真实事件 / 逃生阀放行）`);
+      return;
     }
-
-    // 至少给 1 分保证管线启动
-    if (credit < 1) credit = 1;
 
     const actual = Math.min(credit, target);
     this.incrementProgress(fromPhase, actual, {
@@ -369,6 +407,69 @@ class CausalChainGate extends EventEmitter {
       actual,
     });
     console.log(`[chain-gate] ❄️ 冷启动: ${fromPhase} += ${actual} (来源: ${source}, 目标: ${target})`);
+  }
+
+  // ── 阶段证据源（P0-2 新增）──────────────────────
+  // 每个阶段对应一个**真实**数据源；后 5 阶段只认「近窗口内」的产物，
+  // 避免用全量历史计数把门控变成走过场（那等价于补假分）。
+  _collectPhaseEvidence(phaseName) {
+    const windowMs = this._evidenceWindowMs;
+    const cutoff = Date.now() - windowMs;
+    const tag = `${Math.round(windowMs / 60000)}m`;
+    try {
+      switch (phaseName) {
+        case 'account.registered': {
+          // 累计口径：系统里已注册的账号数（注册是累积资产，不设时间窗）
+          const c = this._countExistingAccounts();
+          return { credit: c, source: c > 0 ? `DataStore(${c} accounts)` : 'none' };
+        }
+        case 'account.healthy': {
+          const c = this._countMatureAccounts();
+          return { credit: c, source: c > 0 ? `DataStore(${c} mature)` : 'none' };
+        }
+        case 'content.generated':
+          // 只认 createdAt：updatedAt 会被状态流转（ready→queued→published）误触，
+          // 导致「发布动作」反过来给「生成阶段」加分。
+          return { credit: this._countRecent('content', cutoff, 'createdAt'), source: `DataStore(content.createdAt@${tag})` };
+        case 'post.published':
+          return { credit: this._countRecent('publish', cutoff, 'published_at', 'createdAt'), source: `DataStore(publish@${tag})` };
+        case 'visit.recorded':
+          return { credit: this._countRecent('visits', cutoff, 'createdAt', 'timestamp'), source: `DataStore(visits@${tag})` };
+        case 'dau.updated':
+          return { credit: this._countRecent('dau_log', cutoff, 'timestamp', 'createdAt'), source: `DataStore(dau_log@${tag})` };
+        case 'action.execute':
+          return { credit: this._countRecent('decision_actions', cutoff, 'timestamp', 'createdAt'), source: `DataStore(decision_actions@${tag})` };
+        default:
+          return { credit: 0, source: 'unsupported-phase' };
+      }
+    } catch (e) {
+      console.warn(`[chain-gate] 证据源统计失败 ${phaseName}: ${e.message}`);
+      return { credit: 0, source: 'error' };
+    }
+  }
+
+  // 统计模块中「时间字段落在 cutoff 之后」的记录数（按主字段优先，命中即计一次）
+  _countRecent(module, cutoffMs, ...timeFields) {
+    if (!this.dataStore) return 0;
+    let result = null;
+    try {
+      result = this.dataStore.list(module, { limit: 100000 });
+    } catch (e) {
+      console.warn(`[chain-gate] 读取模块 ${module} 失败: ${e.message}`);
+      return 0;
+    }
+    const items = (result && result.items) ? result.items : [];
+    let n = 0;
+    for (const it of items) {
+      if (!it) continue;
+      for (const f of timeFields) {
+        const v = it[f];
+        if (!v) continue;
+        const t = Date.parse(v);
+        if (!Number.isNaN(t)) { if (t >= cutoffMs) n++; break; }
+      }
+    }
+    return n;
   }
 
   // 统计已有账号数
@@ -415,22 +516,95 @@ class CausalChainGate extends EventEmitter {
     const limit = this._effectiveStallTimeout();
     this._stallTimer = setInterval(() => {
       const elapsed = Date.now() - this._lastProgressTime;
-      if (elapsed >= limit) {
-        console.error(`[chain-gate] ⚠️ 因果链停滞 ${Math.round(elapsed/1000)}s，自动重启...`);
-        // 找到第一个未完成的阶段（非 IDLE、非 COMPLETED）
-        let restartFrom = 'account.registered';
-        for (const [name, phase] of this.phases) {
-          if (phase.status !== PhaseStatus.COMPLETED) {
-            console.error(`[chain-gate] 停滞在阶段: ${phase.label} (${phase.current}/${phase.target})`);
-            restartFrom = name;
-            break;
-          }
-        }
-        // 从停滞的阶段重启，保留已完成阶段的进度
-        this.start(restartFrom);
-      }
+      if (elapsed < limit) return;
+      this.handleStall(elapsed);
     }, 15000); // 每15秒检查一次
-    console.log(`[chain-gate] 停滞守卫启动 (超时: ${limit/1000}s，含循环冷却 ${(this._cycleDelay||0)/1000}s)`);
+    console.log(`[chain-gate] 停滞守卫启动 (超时: ${limit/1000}s，含循环冷却 ${(this._cycleDelay||0)/1000}s；逃生阀阈值: ${this._stallEscapeThreshold} 次)`);
+  }
+
+  // ── 停滞处理（P0-2 抽出为独立方法，便于单测）──────────────
+  // 返回：{ action: 'cycle' | 'skip' | 'restart', phase?, stallCount? }
+  handleStall(elapsedMs) {
+    console.error(`[chain-gate] ⚠️ 因果链停滞 ${Math.round((elapsedMs || 0)/1000)}s，处理中...`);
+
+    // 找到第一个「既未达标、也未被跳过」的阶段作为重启点
+    //  [P0-2 修复] 必须排除 SKIPPED，否则逃生阀跳过的阶段会被反复选中 → 又回到死循环。
+    let restartFrom = null;
+    for (const [name, phase] of this.phases) {
+      if (phase.status !== PhaseStatus.COMPLETED && phase.status !== PhaseStatus.SKIPPED) {
+        console.error(`[chain-gate] 停滞在阶段: ${phase.label} (${phase.current}/${phase.target})`);
+        restartFrom = name;
+        break;
+      }
+    }
+
+    if (!restartFrom) {
+      // 所有阶段都已达标/跳过 → 没有可重启的阶段，交由循环冷却排定下一周期
+      console.log('[chain-gate] 停滞检查：所有阶段均已达标或跳过，排定下一周期');
+      this._lastProgressTime = Date.now();
+      this._scheduleCycleRestart();
+      return { action: 'cycle' };
+    }
+
+    // ── P0-2 逃生阀：连续停滞升级 ────────────────────────────────
+    // 原实现只会无限 start() 同一阶段：实测 post.published 空转 224 轮 / 12.6 小时。
+    // 现改为计数升级 —— 达阈值即标记 SKIPPED 放行后继，且**不补任何假分**。
+    const n = (this._stallCounts.get(restartFrom) || 0) + 1;
+    this._stallCounts.set(restartFrom, n);
+    const ph = this.phases.get(restartFrom);
+
+    if (this._stallEscapeThreshold > 0 && n >= this._stallEscapeThreshold) {
+      console.error(
+        `[chain-gate] 🚪 逃生阀触发: ${ph.label}(${restartFrom}) 连续停滞 ${n} 次且无真实证据` +
+        ` → 标记 skipped 并放行（进度保持 ${ph.current}/${ph.target}，不补假分）`
+      );
+      ph.status = PhaseStatus.SKIPPED;
+      ph.error = `stalled x${n}, skipped without fake credit`;
+      ph.metadata = {
+        ...ph.metadata,
+        skipped: true,
+        stallCount: n,
+        skippedAt: new Date().toISOString(),
+        skipReason: 'no real evidence within successive stall windows',
+      };
+      this.stats.totalSkips = (this.stats.totalSkips || 0) + 1;
+      this.emit('phase:skipped', {
+        phase: restartFrom,
+        label: ph.label,
+        stallCount: n,
+        current: ph.current,
+        target: ph.target,
+      });
+      this._lastProgressTime = Date.now();
+
+      if (ph.next) {
+        // 放行后继（advanceTo 已支持前置为 SKIPPED 时通过）
+        this.advanceTo(ph.next);
+      } else {
+        // 已是最后一阶段 → 排定下一周期，避免整链永久停摆
+        console.warn('[chain-gate] 末段阶段被跳过 → 排定下一周期');
+        this._scheduleCycleRestart();
+      }
+      return { action: 'skip', phase: restartFrom, stallCount: n };
+    }
+
+    console.error(`[chain-gate] ⏳ 停滞升级 ${n}/${this._stallEscapeThreshold}（连续无真实进展），从 ${ph.label} 重启`);
+    this.start(restartFrom);
+    return { action: 'restart', phase: restartFrom, stallCount: n };
+  }
+
+  // 排定下一周期启动（单一定时器去重 + 冷却窗口）
+  // [P0-2] 从 action.execute 事件处理器中抽出，供逃生阀复用。
+  _scheduleCycleRestart() {
+    if (this._cycleTimer) return false;
+    const delay = this._cycleDelay || 30000;
+    // 冷却窗口是"有意的空闲" → 重置进度计时，避免停滞守卫把冷却误判为停滞
+    this._lastProgressTime = Date.now();
+    this._cycleTimer = setTimeout(() => {
+      this._cycleTimer = null;
+      this.start('account.registered');
+    }, delay);
+    return true;
   }
 
   _stopStallGuard() {
@@ -495,6 +669,10 @@ class CausalChainGate extends EventEmitter {
       // [2026-09-12] 可观测：循环冷却是否已排定（true 表示距下次自启还有 ≤_cycleDelay）
       cycleCooldownPending: !!this._cycleTimer,
       cycleDelayMs: this._cycleDelay,
+      // [P0-2] 可观测：停滞升级计数与逃生阀参数，便于诊断「谁在无证据空转」
+      stallEscapeThreshold: this._stallEscapeThreshold,
+      stallCounts: Object.fromEntries(this._stallCounts),
+      evidenceWindowMs: this._evidenceWindowMs,
     };
   }
 
@@ -567,13 +745,42 @@ class CausalChainGate extends EventEmitter {
       });
     });
 
+    // [ACCEL-2026-09-22 · P0-3] 假达标闸门。
+    //   原判据 `data.currentDAU >= data.targetDAU` 在 targetDAU 被误置为 1 时**恒真**，
+    //   使 dau.updated 阶段连续 14 天「达标」，彻底掩盖了真实 DAU=0 的事实。
+    //   现要求同时满足：① targetDAU 有效(>0) ② 存在真实用户访问(realDAU>0) ③ 达标。
+    //   任一不满足即**不推进**，并明确上报数据不足（INSUFFICIENT_REAL_DATA），
+    //   杜绝用因果链 S5 自驱流量(system)刷 DAU 进度。
+    let _lastDauGateLogTs = 0;
     eventBus.on('dau.updated', 'chain-gate', (data) => {
-      // DAU 仅在达标时推进
-      if (data.currentDAU >= data.targetDAU) {
+      const _tgt = Number(data.targetDAU || 0);
+      const _real = Number((data.realDAU !== undefined && data.realDAU !== null)
+        ? data.realDAU : (data.currentDAU || 0));
+      const _now = Date.now();
+      if (!(_tgt > 0)) {
+        if (_now - _lastDauGateLogTs > 300000) {
+          _lastDauGateLogTs = _now;
+          console.warn('[chain-gate] ⛔ DAU 阶段不推进：INSUFFICIENT_TARGET（未配置 DAU 目标）');
+        }
+        return;
+      }
+      if (!(_real > 0)) {
+        if (_now - _lastDauGateLogTs > 300000) {
+          _lastDauGateLogTs = _now;
+          console.warn('[chain-gate] ⛔ DAU 阶段不推进：INSUFFICIENT_REAL_DATA'
+            + `（真实用户=0 / raw含自驱=${data.rawTodayDAU || 0} / system=${data.systemDAU || 0}`
+            + ` / 目标=${_tgt}）—— 不计入进度，避免自驱流量造成假达标`);
+        }
+        return;
+      }
+      if (_real >= _tgt) {
         this.incrementProgress('dau.updated', 1, {
-          currentDAU: data.currentDAU,
-          targetDAU: data.targetDAU,
+          currentDAU: _real,
+          targetDAU: _tgt,
         });
+      } else if (_now - _lastDauGateLogTs > 300000) {
+        _lastDauGateLogTs = _now;
+        console.log(`[chain-gate] DAU 进度 ${_real}/${_tgt}（未达标，等待真实用户增长）`);
       }
     });
 
@@ -586,14 +793,8 @@ class CausalChainGate extends EventEmitter {
       if (actionPhase && actionPhase.status === PhaseStatus.COMPLETED) {
         // [2026-09-12] 单一定时器去重：一个周期内 action.execute 可能到达多次，
         //   重复排定时器会让冷却失效（周期叠加）。已有待执行冷却时直接返回。
-        if (this._cycleTimer) return;
-        const delay = this._cycleDelay || 30000; // 默认30秒冷却
-        // 冷却窗口是"有意的空闲"→ 重置进度计时，避免停滞守卫把冷却误判为停滞
-        this._lastProgressTime = Date.now();
-        this._cycleTimer = setTimeout(() => {
-          this._cycleTimer = null;
-          this.start('account.registered');
-        }, delay);
+        // [P0-2] 抽出为 _scheduleCycleRestart()，与逃生阀共用同一冷却闸门。
+        this._scheduleCycleRestart();
       }
     });
 

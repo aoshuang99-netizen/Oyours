@@ -7,8 +7,8 @@ REM 触发：当前用户 Startup 文件夹快捷方式（登录时自动运行�
 REM ======================================================================
 
 set WS=C:\Users\AS\WorkBuddy\2026-06-13-19-42-19
-set NODE=C:\Users\AS\\binaries\node\versions\22.22.2\node.exe
-set NODE_PATH=C:\Users\AS\\binaries\node\workspace\node_modules
+set NODE=C:\Users\AS\.workbuddy\binaries\node\versions\22.22.2-6\node.exe
+set NODE_PATH=C:\Users\AS\.workbuddy\binaries\node\workspace\node_modules
 set LOG=%WS%\logs\startup.log
 if not exist "%WS%\logs" mkdir "%WS%\logs"
 

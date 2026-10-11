@@ -19,7 +19,9 @@ const { WebSocket, ProxyAgent } = require('undici');
 const CFG = 'D:/mscms-ws/config/cf-worker-exits.json';
 const BASE_PORT = 20201;
 const HEALTH_PORT = 20880;
-const LOCAL_PROXY = process.env.CF_TUNNEL_LOCAL_PROXY || 'http://127.0.0.1:10808';
+// 注意：v2rayN 的 10808 是 SOCKS5，undici 的 ProxyAgent 只支持 http/https 代理，
+// 指过去必然 ws error。改用 chain-upstream 暴露的 HTTP 入口 10960。
+const LOCAL_PROXY = process.env.CF_TUNNEL_LOCAL_PROXY || 'http://127.0.0.1:10960';
 
 const stats = new Map(); // host -> {ok, fail, lastErr, lastOkAt}
 const dispatcher = new ProxyAgent(LOCAL_PROXY);

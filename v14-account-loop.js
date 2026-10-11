@@ -19,8 +19,39 @@ const PLATFORM_ORDER = ['tumblr', 'reddit', 'instagram', 'tiktok', 'x', 'discord
 // 必须使用真实账号。绝不允许 preinstall 模拟账号进入该通道的账户池 ——
 // 模拟账号没有自己的 OAuth token，内容被绑定后 100% 发不出去（NO_OAUTH_TOKEN），
 // 白白吃掉内容配额；修复前更曾因 token 兜底把内容错发到【别人的 blog】（实测 192 条）。
-const REAL_PUBLISH_PLATFORMS = String(process.env.MSCMS_REAL_CHANNELS || 'tumblr')
+// 【2026-09-20 F5(2)】与 MSCMS_REAL_CHANNELS 全链路口径同源。env 未设时依赖本默认值，
+// 故须与 server.js:2181 / server.js:3285 / cloud-publisher.js:787 保持一致（4 处同改）。
+const REAL_PUBLISH_PLATFORMS = String(process.env.MSCMS_REAL_CHANNELS || 'tumblr,nostr')
   .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+// ── [KK20-2026-09-22] 定向投放「保留账号」─────────────────────────────────
+// 问题（实测）：20 个 kkmatch 定向投放账号同时参与通用池轮转，通用池内容
+//   持续占用它们的 45 分钟最短发布间隔窗口（cloud-publisher.minIntervalMs），
+//   导致定向投放任务被反复「推迟 45 分钟后再发」。首日证据：40 条注入后 80 分钟
+//   仅 11 条发出、8 个账号零发布，而同期通用池在这 20 个账号上发了 50 条 tumblr。
+//   若不处理，定向投放会长期与通用池抢窗口，无法保证「每日 40 帖」。
+// 修法：把保留账号从**通用池轮转**中排除（本文件 getAccountForPlatform），
+//   使其发布窗口专供定向投放（每账号每日 2 帖、早晚各 1，天然满足 45 分钟间隔）。
+//   通用池吞吐不受影响 —— 入队量本就是发布能力的 ~5 倍（见 server.js 的
+//   MSCMS_ENQUEUE_PER_CYCLE 注释），少 20 个账号不改变实际吞吐。
+// 开关：MSCMS_RESERVED_ACCOUNTS_FILE 指向 JSON（数组，或 {accounts|items:[...]}，
+//   元素可为字符串 id 或 {id|account_id}）。文件缺失/解析失败 → 空集合 →
+//   **完全无行为变更**（安全默认）。置为 `none` 可显式关闭。
+function loadReservedAccounts() {
+  const f = process.env.MSCMS_RESERVED_ACCOUNTS_FILE || 'D:/mscms-ws/data/kk20-reserved-accounts.json';
+  if (!f || f === 'none') return new Set();
+  try {
+    const data = JSON.parse(require('fs').readFileSync(f, 'utf8'));
+    const arr = Array.isArray(data) ? data : (data.accounts || data.items || []);
+    return new Set(arr
+      .map(x => String(typeof x === 'string' ? x : ((x && (x.id || x.account_id)) || '')))
+      .filter(Boolean));
+  } catch (_) { return new Set(); }
+}
+const RESERVED_ACCOUNTS = loadReservedAccounts();
+if (RESERVED_ACCOUNTS.size) {
+  console.log(`[account-loop] 🔒 定向投放保留账号 ${RESERVED_ACCOUNTS.size} 个，已从通用池轮转排除`);
+}
 
 /** 判定是否为 preinstall 模拟账号（内部邮箱 + 明文密码，仅用于非真实通道的舰队展示） */
 function isSimulatedAccount(a) {
@@ -341,6 +372,13 @@ class AccountLoop {
     if (REAL_PUBLISH_PLATFORMS.includes(String(platform || '').toLowerCase())) {
       const realOnly = list.filter((id) => this._isPublishableOnRealChannel(platform, id));
       if (realOnly.length > 0) list = realOnly;
+    }
+    // [KK20-2026-09-22] 排除定向投放保留账号（其发布窗口专供定向任务）。
+    // 若排除后为空则保留原列表 —— 宁可复用也不空转（安全阀，避免池被清空后
+    // 内容无处可绑、生成侧静默失败）。
+    if (RESERVED_ACCOUNTS.size) {
+      const free = list.filter((id) => !RESERVED_ACCOUNTS.has(String(id)));
+      if (free.length > 0) list = free;
     }
     if (list.length === 0) {
       console.warn(`[account-loop] ⚠️ ${platform}: 账户池为空! 需要补全`);

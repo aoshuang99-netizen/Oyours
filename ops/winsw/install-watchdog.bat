@@ -1,69 +1,181 @@
 @echo off
 REM ============================================================
-REM  OYours (MSCMS v14) - WinSW Watchdog installer
-REM  MUST be run as Administrator (right-click -> Run as administrator)
-REM  Design: only the watchdog is wrapped; it carries the whole
-REM  service tree (see README.md).
+REM  OYours (MSCMS v14) - WinSW watchdog installer
+REM  AUTO-ELEVATING: just double-click it; it raises UAC itself.
 REM
-REM  NOTE: ASCII-only on purpose. A UTF-8/Chinese .bat run in a
-REM  cp936 console turns into mojibake, and LF-only line endings
-REM  break cmd's if(...) block parsing.
-REM  This file MUST keep CRLF line endings (.gitattributes enforces it).
+REM  ASCII-only + CRLF on purpose:
+REM    - a UTF-8/Chinese .bat in a cp936 console becomes mojibake
+REM    - LF-only endings break cmd's if(...) block parsing
+REM  .gitattributes pins *.bat to eol=crlf. Do not "fix" either.
 REM ============================================================
 setlocal EnableExtensions
-cd /d "%~dp0"
+set "HERE=%~dp0"
+cd /d "%HERE%"
 
 set "LOGDIR=D:\mscms-ws\logs\winsw"
 if not exist "%LOGDIR%" mkdir "%LOGDIR%" >nul 2>&1
 set "LOG=%LOGDIR%\install.log"
+set "NODEEXE=C:\Users\AS\.workbuddy\binaries\node\versions\22.22.2-6\node.exe"
 
-if not exist "mscms-watchdog.exe" ( echo [!] missing mscms-watchdog.exe & pause & exit /b 1 )
-if not exist "mscms-watchdog.xml" ( echo [!] missing mscms-watchdog.xml & pause & exit /b 1 )
-
-REM 0) Administrator check
+REM ---------- 0) elevation gate (auto-elevate once) ----------
 net session >nul 2>&1
-if errorlevel 1 ( echo [!] Access denied. Please run this script as Administrator. & pause & exit /b 1 )
+if not errorlevel 1 goto :elevated
 
-REM 1) Install service (exe and xml share the same basename; WinSW auto-loads the xml)
-echo [*] Installing "OYours Watchdog" service ...
-mscms-watchdog.exe install
-if errorlevel 1 ( echo [!] install failed - check privileges and %LOG% & pause & exit /b 1 )
+if defined MSCMS_ELEVATED goto :noluck
 
-REM 2) Account: LocalSystem by default (no password, can reach D: and the local proxy on 127.0.0.1:10808).
-REM    If the service later reports ACL / user-resource errors, switch to the interactive account .\AS:
-REM      sc config mscms-watchdog obj= ".\AS" password= "YOUR_WINDOWS_PASSWORD"
-REM    or set it in services.msc -> OYours Watchdog -> Log On.
-echo [*] Logon account: LocalSystem (switch to .\AS only on ACL errors - see notes above)
+echo.
+echo [!] Administrator rights are required.
+echo     Requesting elevation - a UAC prompt will appear, please click Yes.
+echo.
+set "MSCMS_ELEVATED=1"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs -WorkingDirectory '%HERE%'" >nul 2>&1
+if errorlevel 1 goto :noluck
+echo [i] Elevated instance launched in a NEW window. This one can be closed.
+timeout /t 4 /nobreak >nul 2>&1
+exit /b 0
 
-REM 3) Start
-echo [*] Starting service ...
-mscms-watchdog.exe start
-timeout /t 3 /nobreak >nul 2>&1
-mscms-watchdog.exe status
+:noluck
+echo [X] Could not obtain administrator rights.
+echo     Fix: press Win+R, type  cmd  , press Ctrl+Shift+Enter (elevated),
+echo     then run:
+echo        cd /d "%HERE%"
+echo        install-watchdog.bat
+echo.
+pause
+exit /b 1
 
-REM 4) Disable the legacy autostart scheduled task (avoids clashing with the watchdog :3011 single-instance lock)
-echo [*] Disabling legacy scheduled task MSCMS_Autostart (if present) ...
-schtasks /Query /TN "MSCMS_Autostart" >nul 2>&1
-if not errorlevel 1 (
-  schtasks /Change /TN "MSCMS_Autostart" /DISABLE >nul 2>&1
-  echo [ok] MSCMS_Autostart disabled.
-) else (
-  echo [i] MSCMS_Autostart not found - skipped.
+REM ---------- elevated path ----------
+:elevated
+echo.
+echo [*] Running with administrator rights.
+echo [*] Full output is also saved to:
+echo     %LOG%
+echo.
+
+call :main > "%LOG%" 2>&1
+set "RC=%ERRORLEVEL%"
+
+type "%LOG%"
+
+echo.
+if not "%RC%"=="0" goto :failed
+echo [DONE] Watchdog service installed and started.
+echo        Verify with:  sc query mscms-watchdog     (expect RUNNING)
+echo        Logs:         %LOGDIR%
+echo.
+pause
+exit /b 0
+
+:failed
+echo [FAILED] exit code %RC% - full detail is in:
+echo          %LOG%
+echo.
+echo Common causes, in order of likelihood:
+echo   1) third-party .exe blocked in this shell  (exit 5)
+echo      -^> run this .bat from a REAL elevated cmd, not from an IDE terminal
+echo   2) node.exe path in mscms-watchdog.xml is wrong  (exit 4)
+echo   3) the service was already running under another account  (exit 6)
+echo.
+pause
+exit /b %RC%
+
+REM ============================================================
+:main
+echo === OYours WinSW watchdog install ===
+echo date: %DATE%  time: %TIME%
+echo dir : %HERE%
+echo.
+
+net session >nul 2>&1
+if errorlevel 1 (
+  echo [!] not elevated - abort
+  exit /b 2
 )
 
-REM 5) Comment out the watchdog block (steps 4-5) in _autostart_mscms.bat so WinSW is the only parent.
-REM    The helper script backs up first and is idempotent (see patch-autostart.js).
-echo [*] Skipping the watchdog block in _autostart_mscms.bat ...
-set "NODEEXE=C:\Users\AS\.workbuddy\binaries\node\versions\22.22.2-6\node.exe"
-if exist "%NODEEXE%" (
-  "%NODEEXE%" "%~dp0patch-autostart.js" >> "%LOG%" 2>&1
-  echo [ok] patched. Log: %LOG%
+if not exist "%HERE%mscms-watchdog.exe" (
+  echo [!] missing "%HERE%mscms-watchdog.exe"
+  exit /b 3
+)
+if not exist "%HERE%mscms-watchdog.xml" (
+  echo [!] missing "%HERE%mscms-watchdog.xml"
+  exit /b 3
+)
+if not exist "%NODEEXE%" (
+  echo [!] node.exe not found at "%NODEEXE%"
+  echo     update ^<executable^> in mscms-watchdog.xml, then re-run
+  exit /b 4
+)
+
+echo --- 1) is the WinSW binary launchable in this shell? ---
+"%HERE%mscms-watchdog.exe" version
+if errorlevel 1 goto :blocked
+echo [ok] binary is launchable.
+
+echo.
+echo --- 2) remove any previous instance ---
+sc query mscms-watchdog >nul 2>&1
+if errorlevel 1 (
+  echo [i] no existing service - clean install.
 ) else (
-  echo [!] node not found at %NODEEXE% - skipped. Comment steps 4-5 of _autostart manually (see README).
+  echo [!] service already exists - stopping and removing it first.
+  "%HERE%mscms-watchdog.exe" stop
+  timeout /t 3 /nobreak >nul 2>&1
+  "%HERE%mscms-watchdog.exe" uninstall
+  timeout /t 2 /nobreak >nul 2>&1
 )
 
 echo.
-echo [DONE] Watchdog service installed and started.
-echo Logs: D:\mscms-ws\logs\winsw\
-echo Verify with:  sc query mscms-watchdog
-pause
+echo --- 3) install ---
+"%HERE%mscms-watchdog.exe" install
+if errorlevel 1 (
+  echo [!] install failed
+  exit /b 6
+)
+
+echo.
+echo --- 4) start ---
+"%HERE%mscms-watchdog.exe" start
+timeout /t 4 /nobreak >nul 2>&1
+
+echo.
+echo --- 5) verify ---
+sc query mscms-watchdog
+echo.
+sc qc mscms-watchdog
+
+echo.
+echo --- 6) disable the legacy autostart scheduled task ---
+schtasks /Query /TN "MSCMS_Autostart" >nul 2>&1
+if errorlevel 1 (
+  echo [i] MSCMS_Autostart not found - skipped.
+) else (
+  schtasks /Change /TN "MSCMS_Autostart" /DISABLE >nul 2>&1
+  if errorlevel 1 (
+    echo [!] could not disable MSCMS_Autostart - disable it manually.
+  ) else (
+    echo [ok] MSCMS_Autostart disabled.
+  )
+)
+
+echo.
+echo --- 7) skip the watchdog block in _autostart_mscms.bat ---
+"%NODEEXE%" "%HERE%patch-autostart.js"
+echo [i] patch-autostart exit code: %ERRORLEVEL%
+
+echo.
+echo === install finished ===
+exit /b 0
+
+:blocked
+echo.
+echo [!] "mscms-watchdog.exe" could NOT be executed here
+echo     ^(access denied / bad image - this shell blocks third-party .exe^).
+echo.
+echo     Do this instead:
+echo       1. Win+R  -^>  cmd            ^(a REAL console^)
+echo       2. Ctrl+Shift+Enter          ^(elevate it^)
+echo       3. cd /d "%HERE%"
+echo       4. install-watchdog.bat
+echo.
+echo     Do NOT run this from an IDE / integrated terminal / sandbox shell.
+exit /b 5

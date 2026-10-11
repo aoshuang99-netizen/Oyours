@@ -3,7 +3,7 @@
  * content-gate.js — 发布前内容门禁（AI 味 + 平台合规 + 重复度）
  * ════════════════════════════════════════════════════════════════════════
  * 定位：`content-deai.js` 是「生成后处理引擎」，但它只挂在 content-pipeline.js 上；
- *而 kk20-daily / hlua40-daily / free--publisher 这三条真实外发路径
+ *而 kk20-daily / hlua40-daily / free-platform-publisher 这三条真实外发路径
  * 【全部绕过】它（实测：grep deai 在这三个脚本里 0 命中）。
  *       ⇒ 引擎写得再好，外发内容一次都没被它处理过。
  *
@@ -11,7 +11,7 @@
  *   只要准备外发，就必须过 gate()。判定为 block 就绝不允许进 publish 队列。
  *
  * 三条红线（任一命中 → BLOCK）：
- *   ① AI 味超标   ai_score >= AI_MAX（默认 25，来自 humanizer 24 条规则）
+ *   ① AI 味超标   ai_score >= AI_MAX（默认 40，来自 humanizer 24 条规则）
  *   ② 平台合规   命中 Tumblr/Mastodon/Nostr 的明令禁止项（成人、垃圾、欺骗）
  *   ③ 重复/模板化  与库内已有内容首段重复（平台判为 spam 的主要依据）
  *
@@ -41,10 +41,10 @@ const RISK_MAX = Number(process.env.GATE_RISK_MAX || 0); // 命中即阻断
 // 而不是 dup > 0（否则每条内容都会与自己匹配 → 100% 误判，实测已踩）。
 const DUP_MAX = Number(process.env.GATE_DUP_MAX || 1);
 
-// ══════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // 规则集：humanizer 24 条（Wikipedia:Signs of AI writing）+ 本项目实战补充
 // 每条规则：{id, cat, re, w(权重), why, fix(整改建议)}
-// ══════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 const RULES = [
   // ── 1. 夸大意义/地位（humanizer §1）──
   { id: 'H01', cat: 'inflated', w: 6, re: /\b(serves as|stands as|is a testament to|is a reminder of)\b/gi, why: '拔高事物意义', fix: '直接说它是什么' },
@@ -63,7 +63,7 @@ const RULES = [
   { id: 'H08', cat: 'promo', w: 5, re: /\b(boasts a|commitment to|exemplifies)\b/gi, why: '宣传语式动词', fix: '改成 is / has' },
 
   // ── 5. 套路式"挑战与展望"（§6）──
-  { id: 'H09', cat: 'formulaic', w: 8, re: /\b(despite (its|these)[^.]*?(faces several s|s)|future outlook|s and legacy)\b/gi, why: 'AI 固定章节结构', fix: '直接写具体做了什么' },
+  { id: 'H09', cat: 'formulaic', w: 8, re: /\b(despite (its|these)[^.]*?(faces several challenges|challenges)|future outlook|challenges and legacy)\b/gi, why: 'AI 固定章节结构', fix: '直接写具体做了什么' },
 
   // ── 6. AI 高频词（§7）──
   { id: 'H10', cat: 'vocab', w: 4, re: /\b(delve|delving)\b/gi, why: 'AI 标志词', fix: '用 dig into / look at' },
@@ -122,9 +122,9 @@ const RULES = [
   { id: 'X03', cat: 'proj', w: 8, re: /[\u4e00-\u9fa5]/g, why: '中文正文发到英文平台（Tumblr 英文标签流）', fix: '改写为英文', cjk: true },
 ];
 
-// ══════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // 平台合规红线（明令禁止项 —— 命中即 BLOCK，无阈值）
-// ══════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 const PLATFORM_BAN = [
   // 成人 —— Tumblr 对 adult blog 有年龄隔离，未标记会被直接隐藏
   //⚠️ 语境豁免（2026-10-09 实测修正）：裸 \b 匹配造成大量误杀 ——
@@ -146,17 +146,17 @@ const PLATFORM_BAN = [
   // ⚠️ hack 语境区分（实测）：「hack into / hacking OpenAI / hack the system」
   // 绝大多数是技术讨论语境（AI 安全科普），不是攻击教程 ⇒ 一律 soft，不阻断。
   // 真正该拦的是「破解软件/密码」这类明确指向盗版或未授权访问的组合。
-  { re: /\b(hack(ing)? (into|someone'?s account|)| hack|hacked (account|email|server))\b/gi, w: 'hack', why: '入侵/未授权访问（技术语境，需人工确认）', soft: true },
-  { re: /\bcrack(ed|ing)?\s+(the\s+)?(|wifi|software|license|drm|psn|xbox)\b/gi, w: 'hack', why: '破解软件/密码' },
+  { re: /\b(hack(ing)? (into|someone'?s account|accounts)|password hack|hacked (account|email|server))\b/gi, w: 'hack', why: '入侵/未授权访问（技术语境，需人工确认）', soft: true },
+  { re: /\bcrack(ed|ing)?\s+(the\s+)?(password|wifi|software|license|drm|psn|xbox)\b/gi, w: 'hack', why: '破解软件/密码' },
   { re: /\b(mlm|recruit(ing)? (people|others)|pyramid scheme|downline)\b/gi, w: 'mlm', why: '传销，平台严禁' },
   // 伪装/引流违规（Tumblr 明令：伪装成他人 / 诱导外链）
   { re: /https?:\/\/(web|api2|cdn)\.alua\.com\/\S+\.mp4/gi, w: 'cdn-raw', why: '外发直链裸 CDN 视频地址，非正常落地页，Tumblr 判为垃圾外链', block: true },
-  { re: /\b(click here|dm me||whatsapp)\b.{0,20}\b(link|in bio|comment)\b/gi, w: 'bait-link', why: '诱导式引流，平台降权' },
+  { re: /\b(click here|dm me|telegram|whatsapp)\b.{0,20}\b(link|in bio|comment)\b/gi, w: 'bait-link', why: '诱导式引流，平台降权' },
 ];
 
-// ══════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // 检测主函数
-// ══════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 function detectAI(body, title) {
   const text = (title ? title + '\n' : '') + String(body || '');
   const hits = [];
@@ -165,7 +165,7 @@ function detectAI(body, title) {
   for (const r of RULES) {
     const m = text.match(r.re);
     if (!m || !m.length) continue;
-    const n = r.perChar ? m.length : m.length;
+    let n = r.perChar ? m.length : m.length;
     // CJK 只罚一次（整段中文不算 100 分）
     const w = r.cjk ? r.w : r.w * Math.min(n, r.perChar ? 6 : 3);
     score += w;
@@ -191,9 +191,9 @@ function detectAI(body, title) {
     }
   }
   // 全篇无第一人称 & 无情绪 = 无灵魂
-  const personal = (text.match(/\b(I|me|my|mine|we|us|our|I've|I'd|I'm)\b/gi) || []);
+  const personal = (text.match(/\b(I|me|my|mine|we|us|our|I've|I'd|I'm)\b/gi) || []).length;
   const words = text.split(/\s+/).length;
-  if (words > 25 && personal.length === 0) {
+  if (words > 25 && personal === 0) {
     score += 8; hits.push({ id: 'S03', cat: 'soul', n: 1, w: 8, why: '零第一人称/零观点，读起来像通稿', fix: '加入个人观察或取舍' });
   }
   // 短文本
@@ -241,7 +241,7 @@ function gate(content, dupMap) {
   if (dup > DUP_MAX) reasons.push({ code: 'DUPLICATE', detail: `与库内 ${dup} 条内容首段重复` });
 
   return {
-    id: content.id, status: content.status || '', body: content.body || '',
+    id: content.id, status: content.status || '', platform: content.platform || '',
     title: String(title).slice(0, 70), len: ai.len, words: ai.words,
     ai_score: ai.score, ai_hits: ai.hits, personal: ai.personal,
     risk_hits: risk, hard_risk: hardRisk.length, dup,
@@ -250,9 +250,9 @@ function gate(content, dupMap) {
   };
 }
 
-// ══════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // CLI
-// ══════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 function loadContent() {
   try { const v = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'content.json'), 'utf8')); return Array.isArray(v) ? v : Object.values(v); }
   catch (e) { console.error('读 content.json 失败:', e.message); return []; }

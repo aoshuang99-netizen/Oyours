@@ -21,6 +21,171 @@ const net = require('net');
 //   发布代理退化为单一中继 10808（27 个 CF 出口形同虚设，回到「唯一出口 IP 只有 1 个」）。
 //   修掉这个 ReferenceError 后，27 个出口才真正进入发布轮换。
 const path = require('path');
+// [P2-B5] 真实媒体判定（单一事实源）
+const _mediaRef = require('./content-media-ref.js');
+
+// ── 出口选择（2026-09-15 S0 修复）─────────────────────
+/**
+ * 出口选择：把「账号」稳定映射到出口池的一个位置，重试时顺序轮换。
+ *
+ * 【实测根因 · 2026-09-15】原实现为 `proxies[(attempt - 1) % proxies.length]`
+ * —— 把出口绑在「重试序号」上，而不是「账号」上：
+ *   · 图文通道 maxMediaRetries = 3 ⇒ 永远只命中 proxies[0..2]
+ *   · 文字降级 maxTextRetries = 5 ⇒ 只多碰到第 4、5 条
+ *   · 池内 41 条存活出口（netstat 实测 :20201~:20241 全 LISTENING）中，
+ *     **第 4 条之后的 38 条代码路径不可达**
+ * 后果：139 个可发布账号的首发请求全部压在同一个 IP 上 ⇒ Tumblr 按 IP 限流
+ * ⇒ 9 个账号全线 `429 Limit Exceeded` ⇒ 队列排空 ⇒ 零发布 26 小时
+ * （`publish.json` 停在 2026-09-14T15:59:35，而 content.json 有 tumblr ready 3439 条）。
+ *
+ * 现状：139 账号 / 41 出口 ≈ 3.4 账号/出口（修前 46 账号/出口）。
+ * 注意：`hashStr` 在发布器进程外（server.js）定义，本模块不可直接引用，故内联实现。
+ */
+function exitHashIndex(seed, len) {
+  if (!len || len <= 0) return 0;
+  const s = String(seed == null ? '' : seed);
+  let h = 2166136261;                    // FNV-1a 32bit，避免简单取模聚簇
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h) % len;
+}
+
+/** 按账号绑定出口，重试时顺序轮换（attempt 从 1 起） */
+function pickExitForAccount(proxies, accountId, attempt) {
+  if (!proxies || !proxies.length) return null;
+  const base = exitHashIndex(accountId, proxies.length);
+  return proxies[(base + Math.max(0, attempt - 1)) % proxies.length];
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// N2（2026-09-15）：Tumblr token 失效黑名单 —— 发布前预检，失效账号直接跳过
+// ──────────────────────────────────────────────────────────────────────────
+// 背景：S0 修好出口选择、429 归零之后，401 立刻成为发布失败的首要来源。
+//   一个 token 已失效的账号，每次发布要白烧 8 次请求（图文 3 + 文字降级 5）
+//   且 100% 失败 —— 既浪费配额（出口被无意义占用）、又把日志刷成噪音墙，
+//   真正的错误反而被淹掉。
+//
+// 语义边界（不要扩大解释）：
+//   · 401 = 该账号的 OAuth token 已被平台撤销，**只能重新授权**。
+//     换出口 / 重试 / 等待 / 换内容 全部无效 —— 所以「跳过」是唯一正确动作。
+//   · 本名单**只影响发布**，不影响养号与采集：401 只证明「不能写这个 blog」，
+//     并不代表账号整体报废（浏览/点赞类动作可能仍然可用）。
+//   · 名单带 TTL（默认 12h）。过期自动失效 → 重新授权后**无需人工摘除**，
+//     下一个周期自动恢复发布。
+//   · 名单文件用 `_` 前缀命名：`data-store.js` 的 `_loadAll()` 明确跳过 `_` 前缀，
+//     因此它不会被当成一个业务模块加载（不会污染 DataStore 目录）。
+//
+// 名单来源有两条，互为补充：
+//   ① 离线体检：`node tools/tumblr-token-audit.js --json --save-deadlist`
+//   ② 在线自愈：发布过程中真实收到 401 → 自动登记并落盘（见 `markTokenDead`）
+// ══════════════════════════════════════════════════════════════════════════
+const DEAD_TOKEN_TTL_MS = Number(process.env.MSCMS_TOKEN_DEAD_TTL_MS || 12 * 3600 * 1000);
+const DEADLIST_FILE = process.env.MSCMS_TOKEN_DEADLIST
+  || path.join(process.env.MSCMS_DATA_DIR || 'D:/mscms-ws/data', '_tumblr_token_deadlist.json');
+
+// P1-D 正文复用台账（模块级固化路径：测试在 require 前设 MSCMS_DATA_DIR 即可隔离）
+const BODY_REUSE_FILE = process.env.MSCMS_BODY_REUSE_FILE
+  || path.join(process.env.MSCMS_DATA_DIR || 'D:/mscms-ws/data', '_published_body_fp.jsonl');
+
+/** 从内存态 {id:{reason,status,at}} 判断某账号当前是否处于「token 失效」状态（TTL 内） */
+function isDeadInMap(map, accountId, nowMs) {
+  if (!map || !accountId) return null;
+  const rec = map.get ? map.get(String(accountId)) : map[String(accountId)];
+  if (!rec) return null;
+  const at = Number(rec.at || rec.checkedAt || 0);
+  if (!at) return null;
+  const now = nowMs || Date.now();
+  if (now - at > DEAD_TOKEN_TTL_MS) return null;   // 过期 → 自动放行（重新授权后自愈）
+  return rec;
+}
+
+/**
+ * 从异常里判定「是不是 token 失效(401)」。
+ *
+ * 为什么不能只看 `err.status`：发布链路有**两条**抛错路径，形态不一致 ——
+ *   · `tumblr-publisher._oauthRequest()`  → `err.status = r.status`  ✅ 有属性
+ *   · `tumblr-publisher.postPhoto/postText()` → `throw new Error('Tumblr 发布失败 401: {…}')`
+ *     **只有 message 里带状态码，没有 status 属性** ❌
+ * 所以必须「属性优先 + message 兜底」双重判定，否则在线自愈永远登记不上。
+ */
+/**
+ * 提取「真实 HTTP 状态码」。优先级：
+ *   err.status 属性  >  err.body.meta.status  >  message 前缀中的 3 位状态码
+ *
+ * 【为什么必须限定取码位置】发布链路两条抛错路径形态不同：
+ *   · `tumblr-publisher._oauthRequest()`  → `err.status = r.status`  ✅ 有属性
+ *   · `tumblr-publisher.postPhoto()`      → `new Error('Tumblr 发布失败 429: {…}')`
+ *     **只有 message 带状态码，没有 status 属性** ❌
+ * 因此 message 兜底**只在冒号前的头部**按「空格 + 3 位数字」取，
+ * 绝不在全文搜数字 —— 否则响应体里的 `"status":429` / `code:1034`
+ * 等任意数字都会被误当成状态码。
+ */
+function extractErrStatus(err) {
+  if (!err) return 0;
+  const direct = Number(err.status);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const bm = err.body && err.body.meta ? Number(err.body.meta.status) : NaN;
+  if (Number.isFinite(bm) && bm > 0) return bm;
+  const head = String(err.message || '').split(':')[0];
+  const hits = head.match(/(?:^|\s)(\d{3})(?=\s|$)/g);
+  if (hits && hits.length) return Number(hits[hits.length - 1].trim());
+  return 0;
+}
+
+function detectTokenDeadError(err) {
+  if (!err) return false;
+
+  // 【2026-09-20 F1 修复】429 限流 / 网络抖动**与 token 无关**，绝不登记为失效。
+  //   修复前实测：黑名单 49 条中 37 条（75.5%）实为 429 限流，根因两处叠加 ——
+  //     ① 调用方文案硬编码「返回 401」，而 `/\b401\b/` 恰好匹配自己写的这句话；
+  //     ② `something flubbed` 语义兜底命中了 Tumblr **429 限流响应体**
+  //        （限流与撤销共用同一句兜底文案 ⇒ 它不能作为 token 失效判据）。
+  //   后果：TTL 内 30 条生效黑名单里 18 条是误杀，13 个账号误杀后仍成功发布过。
+  if (err.isRateLimited) return false;
+  if (err.isNetworkError) return false;
+
+  const st = extractErrStatus(err);
+  if (st === 429) return false;  // 限流 → 交给退避重试
+  if (st === 403) return false;  // 权限 / 出口问题，非 token 被撤销
+  if (st === 0) return false;    // 网络层未拿到响应
+  if (st === 401) return true;   // 唯一可直接判死的状态码
+
+  // 平台显式错误码：Tumblr `code:1034` = token 被撤销（比任何文案都可靠）
+  const body = err.body || {};
+  const codes = (Array.isArray(body.errors) ? body.errors : [])
+    .map((e) => e && e.code)
+    .filter((v) => v != null)
+    .map(Number);
+  if (codes.includes(1034)) return true;
+
+  // 文案兜底：**仅在完全拿不到状态码时**才启用，且先显式排除限流文案。
+  const m = String(err.message || '');
+  if (/limit\s+exceeded|rate\s*limit|too\s+many\s+requests|\b429\b/i.test(m)) return false;
+  return /unauthorized|not\s+authorized|invalid\s*(or\s+expired\s*)?token|token\s+(has\s+been\s+)?(revoked|expired)/i.test(m);
+}
+
+/** 原子写名单文件（失败只告警，绝不影响发布主流程） */
+function writeDeadListFile(map) {
+  try {
+    const obj = {};
+    for (const [k, v] of map.entries()) obj[k] = v;
+    const tmp = DEADLIST_FILE + '.tmp_' + Date.now();
+    fs.mkdirSync(path.dirname(DEADLIST_FILE), { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify({
+      updatedAt: new Date().toISOString(),
+      ttlHours: Math.round(DEAD_TOKEN_TTL_MS / 3600000),
+      count: map.size,
+      dead: obj,
+    }, null, 2), 'utf8');
+    fs.renameSync(tmp, DEADLIST_FILE);
+    return true;
+  } catch (e) {
+    console.warn(`[cloud-publisher] ⚠️ token 黑名单写盘失败: ${e.message}`);
+    return false;
+  }
+}
 
 // ── 发布状态 ─────────────────────────────────────────
 const PublishStatus = {
@@ -161,6 +326,85 @@ const PlatformPublishConfig = {
 
 // ── 云手机发布引擎 ───────────────────────────────────
 class CloudPublisher extends EventEmitter {
+  // ══════════════════════════════════════════════════════════════════
+  //  P1-D 跨账号正文复用闸门（依据正文指纹 body_fp，禁用 id 查重）
+  // ══════════════════════════════════════════════════════════════════
+  /** 加载台账（jsonl 追加式，刻意不进 DataStore._loadAll，避免与 5s flush 冲突） */
+  _loadBodyReuse() {
+    if (this._bodyReuseLoaded) return;
+    this._bodyReuseLoaded = true;
+    this._bodyReuse = new Map();
+    try {
+      const f = BODY_REUSE_FILE;
+      if (!fs.existsSync(f)) return;
+      const lines = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean);
+      for (const ln of lines) {
+        try {
+          const o = JSON.parse(ln);
+          if (o && o.fp && o.accountId) {
+            let set = this._bodyReuse.get(o.fp);
+            if (!set) { set = new Set(); this._bodyReuse.set(o.fp, set); }
+            set.add(o.accountId);
+          }
+        } catch (e) { /* 跳过坏行 */ }
+      }
+      console.log(`[cloud-publisher] 正文复用台账已加载: ${this._bodyReuse.size} 个指纹`);
+    } catch (e) { /* 读取失败视为空台账 */ }
+  }
+
+  /**
+   * 复用判定
+   * @returns {{blocked:boolean, reason:string, usedBy?:number}}
+   * 模式 env MSCMS_DEDUP_CROSS_ACCOUNT = hard(默认) | soft | off
+   * 安全阀 env MSCMS_DEDUP_BLOCK_MAX（默认 5）：连续拦截达阈值即降级放行并告警
+   */
+  _checkBodyReuse(fp, accountId) {
+    if (!fp || !accountId) return { blocked: false, reason: "no_fp" };
+    this._loadBodyReuse();
+    const mode = String(process.env.MSCMS_DEDUP_CROSS_ACCOUNT || 'hard').toLowerCase();
+    if (mode === 'off') return { blocked: false, reason: 'disabled' };
+    const used = this._bodyReuse.get(fp);
+    if (!used || used.size === 0) { this._reuseBlockStreak = 0; return { blocked: false, reason: 'first_use' }; }
+    if (used.has(accountId)) { this._reuseBlockStreak = 0; return { blocked: false, reason: 'same_account' }; }
+    const usedBy = used.size;
+    if (mode === 'soft') {
+      console.warn(`[cloud-publisher] ⚠️ 跨账号复用(soft 放行): fp=${fp} 已被 ${usedBy} 个账号发布`);
+      return { blocked: false, reason: 'soft_pass' };
+    }
+    this._reuseBlockStreak = (this._reuseBlockStreak || 0) + 1;
+    const limit = Number(process.env.MSCMS_DEDUP_BLOCK_MAX || 5);
+    if (this._reuseBlockStreak > limit) {
+      console.warn(`[cloud-publisher] ⚠️ 复用拦截安全阀触发(${this._reuseBlockStreak}>${limit})：降级放行 —— 内容源不足，请优先扩容内容池(P2)`);
+      this.emit('publish:reuse.starved', { streak: this._reuseBlockStreak, fp, usedBy });
+      this._reuseBlockStreak = 0;
+      return { blocked: false, reason: 'safety_valve' };
+    }
+    return { blocked: true, reason: 'cross_account_reuse', usedBy };
+  }
+
+  /** 记录某正文已被某账号成功发布 */
+  _recordBodyReuse(fp, accountId) {
+    if (!fp || !accountId) return;
+    this._loadBodyReuse();
+    let set = this._bodyReuse.get(fp);
+    if (!set) { set = new Set(); this._bodyReuse.set(fp, set); }
+    set.add(accountId);
+    this._reuseBlockStreak = 0;
+    try {
+      const f = BODY_REUSE_FILE;
+      fs.appendFileSync(f, JSON.stringify({ fp, accountId, at: new Date().toISOString() }) + '\n', 'utf8');
+    } catch (e) { /* 落盘失败不影响发布 */ }
+  }
+
+  /** 由 task 取指纹并登记 */
+  _recordBodyReuseFromTask(task) {
+    try {
+      const fp = task?.content?.body_fp
+        || require('./content-tagger.js').bodyFingerprint(task?.content?.body || task?.content?.text || task?.content?.caption);
+      this._recordBodyReuse(fp, task?.account?.id || 'main');
+    } catch (e) { /* ignore */ }
+  }
+
   constructor(opts = {}) {
     super();
     this.deviceManager = opts.deviceManager || null;
@@ -168,6 +412,22 @@ class CloudPublisher extends EventEmitter {
     this.contentRules = opts.contentRules || null;
     this.tumblrPublisher = opts.tumblrPublisher || null;
     this.dataStore = opts.dataStore || null;
+
+    // ── [B1] 多平台 provider 通道 ────────────────────────────────
+    // 背景：providers/ 下已有 9 个 provider（nostr/bluesky/mastodon/telegram/…），
+    // 但 cloud-publisher **零引用** —— 即「已写未接线」，导致除 tumblr 外的平台
+    // 一律落到 NO_REAL_PUBLISH_CHANNEL。
+    // 此处懒加载 SocialProviderManager，把具备真实发布能力的 provider 接进主链路。
+    // 懒加载 + try/catch：provider 层任何问题都不得影响 tumblr 既有发布。
+    this._providerMgr = null;
+    // 允许通过 provider 通道发布的平台白名单（与 MSCMS_REAL_CHANNELS 的交集生效）
+    // 【2026-09-20 F5】本项与 MSCMS_REAL_CHANNELS 是**两个不同变量**，默认值本就不同，非缺陷：
+    //   · MSCMS_REAL_CHANNELS   = 全链路放行的平台（含走原生通道的 tumblr）
+    //   · MSCMS_PROVIDER_CHANNELS = 其中**走 providers/ 通道**发布的子集（tumblr 有专用原生实现，不在此列）
+    //   发布条件 = realChannels.includes(platform) && providerChannels.includes(platform)。
+    //   ⇒ 新增 provider 平台时（如 mastodon）两个变量都要加。
+    this._providerChannels = (process.env.MSCMS_PROVIDER_CHANNELS || 'nostr')
+      .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
     // ── 媒体解析器（由 content-media-bridge 注入）────────────────────
     // 背景：内容管线产出的正文是纯文本，媒体（配图/视频）由桥接异步生成并写入
@@ -199,6 +459,14 @@ class CloudPublisher extends EventEmitter {
     this.processing = false;
     this._processorInterval = null;
 
+    // ── N2：Tumblr token 失效黑名单（发布前预检，见文件头注释）────────────
+    /** @type {Map<string,{reason:string,status:number,at:number,source:string}>} */
+    this._deadTokens = new Map();
+    this._deadListMtime = 0;
+    this._deadListInterval = null;
+    this._deadSkipLogged = new Map();   // accountId → 上次打「跳过」日志的时间戳（节流，避免刷屏）
+    this._loadDeadList(true);           // 启动即加载（文件不存在时静默为空）
+
     // 平台配额冷却：命中每日限额/限流后暂停发布，避免无效重试刷屏并耗尽账号信誉。
     // _quotaPausedUntil 为毫秒时间戳；0 = 未冷却。冷却期内任务被推迟而非失败（不消耗重试次数）。
     this._quotaPausedUntil = 0;
@@ -226,6 +494,9 @@ class CloudPublisher extends EventEmitter {
       totalFailed: 0,
       totalRetries: 0,
       avgPublishTime: 0,
+      // N2：因 token 失效被直接跳过的任务数（零外部请求），便于一眼区分
+      //     「真失败」与「明知会失败所以跳过」——不这样拆开看会误以为发布质量在恶化。
+      skippedDeadToken: 0,
       byPlatform: {},
     };
   }
@@ -261,24 +532,76 @@ class CloudPublisher extends EventEmitter {
     //   由 S4 按配额/间隔重新排期；已被真实发布过的内容由 MySQL 24h (账号,内容)
     //   去重闸门与 status='published' 双重拦下，不会重复外发。
     setTimeout(() => { try { this._recoverStaleQueued(); } catch (e) { console.warn('[cloud-publisher] 孤儿 queued 回收失败:', e.message); } }, 20000);
+
+    // 【P0-3 修复 · 2026-09-15】把「仅启动时回收一次」改为**周期性回收**。
+    //   原实现只在 start() 里排一个 20s 定时器跑一次，随后再不执行：
+    //   只要进程不重启，孤儿 queued 就永远没人回收。实测 09-12~09-15 连续运行期间
+    //   累积 418 条僵尸（其中 415 条连 failed_count / last_error 都没有 —— 既没成功也没失败），
+    //   而 S4 只挑 status='ready'，这些内容就此永久沉底。
+    //   周期默认 10 分钟；MSCMS_QUEUED_RECLAIM_INTERVAL_MS=0 可关闭。
+    const reclaimEvery = Number(
+      process.env.MSCMS_QUEUED_RECLAIM_INTERVAL_MS != null
+        ? process.env.MSCMS_QUEUED_RECLAIM_INTERVAL_MS
+        : 10 * 60 * 1000
+    );
+    if (reclaimEvery > 0) {
+      this._reclaimInterval = setInterval(() => {
+        try { this._recoverStaleQueued(); } catch (e) { console.warn('[cloud-publisher] 周期回收孤儿 queued 失败:', e.message); }
+      }, reclaimEvery);
+      console.log(`[cloud-publisher] 🧹 孤儿 queued 周期回收已启用（每 ${Math.round(reclaimEvery/60000)} 分钟）`);
+    }
+
+    // 【N2 新增】token 黑名单热重载。
+    // 为什么必须周期读：名单有两个写入方 —— 本进程（在线 401 自动登记）与
+    // 离线体检工具 `tools/tumblr-token-audit.js --save-deadlist`（外部进程）。
+    // 只在进程启动时读一次的话，外部体检结果要等下次重启才生效（实测重启用时 ~80s，
+    // 期间 401 会继续空烧），故按 mtime 变化热重载，默认每 60s 一次。
+    const deadReloadEvery = Number(
+      process.env.MSCMS_TOKEN_DEADLIST_RELOAD_MS != null
+        ? process.env.MSCMS_TOKEN_DEADLIST_RELOAD_MS
+        : 60000
+    );
+    if (deadReloadEvery > 0) {
+      this._deadListInterval = setInterval(() => {
+        try { this._loadDeadList(false); } catch (_) { /* 已在内部告警 */ }
+      }, deadReloadEvery);
+    }
+    this._loadDeadList(true);
+    if (this._deadTokens.size === 0) {
+      console.log(`[cloud-publisher] 🔒 token 黑名单：当前为空（${DEADLIST_FILE}）`);
+    }
     this.emit('started');
   }
 
   // 把因进程重启而失去队列的 'queued' 内容放回 'ready'
+  // [P0-3 修复] 增加可见性：把「因超过 24h 被跳过」的存量僵尸显式报出来。
+  //   原实现在此静默 continue，既不日志也不计数 —— 这正是 412 条 >24h 僵尸
+  //   在系统里沉了 3 天而无人察觉的原因。
   _recoverStaleQueued() {
     if (!this.dataStore || !this.dataStore.list) return;
     const res = this.dataStore.list('content', { filter: { status: 'queued' }, limit: 2000 });
     const items = Array.isArray(res) ? res : (res && res.items) || [];
-    const cutoff = Date.now() - 30 * 60 * 1000;
+    // 【2026-10-09 修复 live-lock】原 cutoff 固定 30 分钟，而最小发布间隔是 45 分钟
+    //（minIntervalMs，默认 MSCMS_MIN_PUBLISH_INTERVAL_MS=2700000）。
+    // ⇒ 内容入队排队等窗口时，_recoverStaleQueued()（周期 10min）必然在窗口开启前
+    //    把它打回 ready ⇒ 回 ready 后又因 ENQUEUE_PER_CYCLE 限额长期饥饿，
+    //    实测 requeued_at 精确等于 queued_at + 30min，是铁证。
+    // 修法：cutoff 必须 > 最小发布间隔，否则回收器就成了自己拆自己台的机制。
+    const _miMs = Number(this.minIntervalMs || 2700000);
+    const recoverAfterMs = Math.max(_miMs * 2, 90 * 60 * 1000);
+    const cutoff = Date.now() - recoverAfterMs;
     const tooOld = Date.now() - 24 * 3600 * 1000;
     let back = 0;
+    let skippedOld = 0;
+    let skippedFresh = 0;
     for (const c of items) {
       if (!c || !c.id) continue;
       const t = Date.parse(c.queued_at || c.createdAt || '');
-      if (!isNaN(t) && t > cutoff) continue;      // 30 分钟内入队的当作仍在途，不动
+      // 只要还在"一个发布间隔 + 缓冲"的合理排队窗口内，就认为仍在途，不动。
+      if (!isNaN(t) && t > cutoff) { skippedFresh++; continue; }
       // 只回收 24 小时内的：超过 24h 的内容已脱离 MySQL (账号,内容) 去重窗口，
       // 复活它们有重复外发风险，保持 queued 交给人工/清理脚本处理。
-      if (!isNaN(t) && t < tooOld) continue;
+      if (!isNaN(t) && t < tooOld) { skippedOld++; continue; }
       try {
         this.dataStore.update('content', c.id, {
           status: 'ready',
@@ -288,12 +611,124 @@ class CloudPublisher extends EventEmitter {
         back++;
       } catch (_) {}
     }
-    if (back) console.log(`[cloud-publisher] ♻️ 启动回收孤儿 queued 内容 ${back} 条 → 放回 ready（重启导致队列丢失，非内容问题）`);
+    if (back) console.log(`[cloud-publisher] ♻️ 回收孤儿 queued 内容 ${back} 条 → 放回 ready（阈值 ${Math.round(recoverAfterMs / 60000)}min > 最小发布间隔 ${Math.round(_miMs / 60000)}min）`);
+    if (skippedFresh) {
+      // 静默 continue 会让人误以为"没有排队"，实为正常等待。加一行计数便于对账。
+      console.log(`[cloud-publisher] ⏳ queued 在途 ${skippedFresh} 条（未超 ${Math.round(recoverAfterMs / 60000)}min 回收阈值，正常排队等待发布窗口）`);
+    }
+    if (skippedOld) {
+      console.warn(
+        `[cloud-publisher] 🧟 存量僵尸 queued ${skippedOld} 条已超过 24h，自动回收**刻意跳过**（重复外发风险）；` +
+        `请用 tools/reclaim-stale-queued.js 做「从未外发」证据核验后回收`
+      );
+    }
+  }
+
+  // ── N2：token 失效黑名单的加载 / 判定 / 登记 / 摘除 ────────────────────
+
+  /**
+   * 加载黑名单文件。默认按 mtime 变化才真正重读 —— 发布热路径上会被频繁调用，
+   * 每 10s 无脑读盘既浪费 IO 也容易被误当成卡顿。
+   * @param {boolean} force 忽略 mtime 缓存，强制重读
+   */
+  _loadDeadList(force = false) {
+    try {
+      const st = fs.statSync(DEADLIST_FILE);
+      if (!force && st.mtimeMs === this._deadListMtime) return this._deadTokens;
+      const raw = JSON.parse(fs.readFileSync(DEADLIST_FILE, 'utf8'));
+      const dead = (raw && raw.dead) || {};
+      const next = new Map();
+      const now = Date.now();
+      let expired = 0;
+      for (const [id, rec] of Object.entries(dead)) {
+        if (!rec) continue;
+        const at = Number(rec.at || rec.checkedAt || 0);
+        if (!at || now - at > DEAD_TOKEN_TTL_MS) { expired++; continue; }  // TTL 过期 → 自动放行
+        next.set(String(id), { ...rec, at });
+      }
+      const added = next.size - this._deadTokens.size;
+      this._deadTokens = next;
+      this._deadListMtime = st.mtimeMs;
+      // 能走到这里就说明「首次加载 或 文件 mtime 已变化」—— 正是需要被人看见的时刻。
+      // （早先以 `added !== 0` 为门槛，导致「外部体检改了名单内容但数量没变」时静默生效，
+      //   排查时看不出名单到底更没更新。）
+      console.log(`[cloud-publisher] 🔒 token 黑名单已加载：${next.size} 个账号被跳过`
+        + `（较上次 ${added >= 0 ? '+' : ''}${added}）`
+        + (expired ? `（另有 ${expired} 个已过 TTL 自动放行）` : '')
+        + ` ← ${DEADLIST_FILE}`);
+      return next;
+    } catch (e) {
+      if (e && e.code !== 'ENOENT') {
+        if (force) console.warn(`[cloud-publisher] ⚠️ token 黑名单读取失败: ${e.message}`);
+      }
+      if (force) {
+        this._deadListMtime = 0;
+        this._deadTokens = new Map();
+      }
+      return this._deadTokens;
+    }
+  }
+
+  /** 该账号当前是否处于「token 失效」状态；返回记录对象或 null */
+  isTokenDead(accountId) {
+    return isDeadInMap(this._deadTokens, accountId, Date.now());
+  }
+
+  /** 黑名单账号 id 快照（供 server.js 入队侧过滤用） */
+  deadTokenIds() {
+    const out = new Set();
+    for (const id of this._deadTokens.keys()) {
+      if (this.isTokenDead(id)) out.add(id);
+    }
+    return out;
+  }
+
+  /**
+   * 登记一个失效 token（幂等）。已在名单内且信息未变时不重复写盘。
+   * @param {string} accountId
+   * @param {string} reason 人类可读原因
+   * @param {number} [status] HTTP 状态码（401 等）
+   * @param {string} [source] 'online-401' | 'audit' | 'manual'
+   */
+  markTokenDead(accountId, reason, status = 401, source = 'online-401') {
+    const id = String(accountId || '').trim();
+    if (!id) return false;
+    const prev = this._deadTokens.get(id);
+    // 幂等：同一账号在 TTL 内重复登记不重写盘（避免每次重试都落一次盘）
+    if (prev && Date.now() - Number(prev.at || 0) < DEAD_TOKEN_TTL_MS
+        && prev.status === status && prev.source === source) {
+      return false;
+    }
+    this._deadTokens.set(id, { reason: String(reason || 'TOKEN_DEAD').slice(0, 200), status, at: Date.now(), source });
+    writeDeadListFile(this._deadTokens);
+    console.warn(`[cloud-publisher] 🔒 已登记失效 token：${id}（${status} / ${source}）→ 后续发布直接跳过；待重新 OAuth 授权，或过 ${Math.round(DEAD_TOKEN_TTL_MS / 3600000)}h TTL 后自动放行`);
+    return true;
+  }
+
+  /** 摘除（重新授权成功后调用） */
+  clearDeadToken(accountId) {
+    const id = String(accountId || '').trim();
+    if (!this._deadTokens.delete(id)) return false;
+    writeDeadListFile(this._deadTokens);
+    console.log(`[cloud-publisher] 🔓 已从 token 黑名单移除：${id}（恢复发布）`);
+    return true;
+  }
+
+  /** 热路径用的节流日志：同一账号 10 分钟内只打一次「跳过」 */
+  _logDeadSkip(accountId, reason) {
+    const now = Date.now();
+    const last = this._deadSkipLogged.get(accountId) || 0;
+    if (now - last < 10 * 60 * 1000) return false;
+    this._deadSkipLogged.set(accountId, now);
+    console.warn(`[cloud-publisher] 🔒 跳过发布（token 已失效，重试无效）：${accountId} — ${reason}`);
+    return true;
   }
 
   stop() {
     this.processing = false;
     if (this._processorInterval) clearInterval(this._processorInterval);
+    if (this._reclaimInterval) { clearInterval(this._reclaimInterval); this._reclaimInterval = null; }  // [P0-3]
+    if (this._deadListInterval) { clearInterval(this._deadListInterval); this._deadListInterval = null; } // [N2]
     this.emit('stopped');
   }
 
@@ -354,7 +789,15 @@ class CloudPublisher extends EventEmitter {
     //       97% 的发布资源被浪费在无通道平台上。
     // 以 Tumblr 为主的闭环拉练：默认只放行 tumblr，后续接入新通道时用
     // MSCMS_REAL_CHANNELS=tumblr,bluesky 扩展即可，无需改代码。
-    const realChannels = (process.env.MSCMS_REAL_CHANNELS || 'tumblr')
+    // 【B1 2026-09-20】默认闭环通道从 'tumblr' 扩展为 'tumblr,nostr'。
+    // nostr 已于 2026-09-20 完成真实发布验收（publish_url = https://njump.me/<eventId>），
+    // 凭据为本地生成的 nsec（零账号/零第三方/零成本），3 个公共 relay 经 default-relay 全通。
+    // 回滚方式：设 MSCMS_REAL_CHANNELS=tumblr，或把此处默认值改回 'tumblr'。
+    // 【2026-09-20 F5 修复】此处默认值必须与 server.js 的 REAL_PUBLISH_PLATFORMS **逐字一致**。
+    //   修复前：本处 'tumblr,nostr' 而 server.js 为 'tumblr' ⇒ 同一变量两套默认值，
+    //   nostr 账号会被 server.js 判成「非真实账号」而发布器却允许其入队，
+    //   形成「通道开着但账号被判假」的隐形断层。三处（含 _providerChannels）须同步修改。
+    const realChannels = (process.env.MSCMS_REAL_CHANNELS || 'tumblr,nostr')
       .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     if (!realChannels.includes(String(task.platform || '').toLowerCase())) {
       task.status = PublishStatus.FAILED;
@@ -626,6 +1069,65 @@ class CloudPublisher extends EventEmitter {
   }
 
   // 执行发布
+  // ── [B1] provider 通道：判定 / 懒加载 / 发布 ──────────────
+  /** 该平台是否可走 provider 通道（须同时在 _providerChannels 白名单内） */
+  _isProviderChannel(platform) {
+    return this._providerChannels.includes(String(platform || '').toLowerCase());
+  }
+
+  /** 懒加载 SocialProviderManager；失败返回 null，绝不影响 tumblr 主链路 */
+  _getProviderMgr() {
+    if (this._providerMgr) return this._providerMgr;
+    try {
+      const { SocialProviderManager } = require('./social-provider-manager.js');
+      this._providerMgr = new SocialProviderManager({
+        dataStore: this.dataStore,
+        tumblrPublisher: this.tumblrPublisher,
+      });
+    } catch (e) {
+      console.warn('[cloud-publisher] provider 管理器加载失败: ' + e.message);
+      this._providerMgr = null;
+    }
+    return this._providerMgr;
+  }
+
+  /**
+   * 经 provider 通道发布（当前用于 nostr）。
+   * @returns {{ok:boolean, url:string|null, id:string|null, error:string|null, response?:object}}
+   * 失败时 url 恒为 null —— 绝不编造链接。
+   */
+  async _publishViaProvider(platform, text, task) {
+    const mgr = this._getProviderMgr();
+    if (!mgr) return { ok: false, url: null, id: null, error: 'PROVIDER_MGR_UNAVAILABLE' };
+
+    let provider;
+    try { provider = mgr.getProvider(platform); }
+    catch (e) { return { ok: false, url: null, id: null, error: 'GET_PROVIDER_FAIL: ' + e.message }; }
+    if (!provider) return { ok: false, url: null, id: null, error: `PROVIDER_NOT_FOUND: ${platform}` };
+
+    let st = {};
+    try { st = provider.configStatus() || {}; } catch (e) { st = {}; }
+    if (!st.configured) {
+      return { ok: false, url: null, id: null, error: `PROVIDER_NOT_CONFIGURED: ${platform} — ${st.reason || '凭据未配置'}` };
+    }
+
+    const body = String(text || '').trim();
+    if (!body) return { ok: false, url: null, id: null, error: 'EMPTY_CONTENT' };
+
+    let res;
+    try { res = await provider.publishPost(body, [], {}); }
+    catch (e) { return { ok: false, url: null, id: null, error: 'PUBLISH_THROW: ' + e.message }; }
+
+    const ok = !!(res && typeof res.isSuccess === 'function' && res.isSuccess());
+    return {
+      ok,
+      url: (res && res.url) || null,
+      id: (res && (res.id || res.postId)) || null,
+      error: (res && res.error) || (ok ? null : 'UNKNOWN_PROVIDER_ERROR'),
+      response: res,
+    };
+  }
+
   async _executePublish(task) {
     const platform = task.platform;
     const config = PlatformPublishConfig[platform];
@@ -657,13 +1159,52 @@ class CloudPublisher extends EventEmitter {
       }
     }
 
+    // ── N2（2026-09-15）：token 失效预检 —— 失效账号直接跳过，零外部请求 ──
+    // 401 = token 已被平台撤销，只能重新 OAuth 授权；继续跑完 8 次重试
+    // （图文 3 + 文字降级 5）100% 失败，纯粹浪费出口与配额、并把日志刷成噪音墙。
+    // 刻意放在 totalAttempts++ 之前：被跳过不算「一次发布尝试」，不污染平均耗时。
+    if (platform === 'tumblr') {
+      try { this._loadDeadList(false); } catch (_) { /* 内部已告警 */ }
+      const deadAcctId = (task.account && task.account.id) || task.accountId || null;
+      const dead = deadAcctId ? this.isTokenDead(deadAcctId) : null;
+      if (dead) {
+        task.real = false;
+        task.publishUrl = null;
+        task.status = PublishStatus.FAILED;
+        task.source = 'token_dead';
+        task.error = `TOKEN_DEAD_SKIPPED: account=${deadAcctId} token 已失效 → 需重新 OAuth 授权（跳过，不重试）`;
+        task.simulated = false;
+        task.publishNote = '该账号 token 已被平台撤销（401）；换出口/重试/换内容均无效，故直接跳过，不消耗出口与重试次数';
+        this.publishHistory.push({
+          taskId: task.id, accountId: deadAcctId, deviceId: 'web_direct',
+          platform, status: 'unpublished', source: task.source,
+          causalPhase: this._causalPhase(task.account && task.account.id),
+          publishedAt: new Date().toISOString(), url: null,
+          // 本块位于 startTime 声明之前（刻意提前到 totalAttempts++ 之前，
+          // 让「被跳过」不被算作一次发布尝试），故耗时记 0 —— 确实没执行任何动作。
+          duration: 0, real: false,
+        });
+        this.stats.totalFailed++;
+        this.stats.skippedDeadToken = (this.stats.skippedDeadToken || 0) + 1;
+        this._updatePlatformStats(platform, 'failed');
+        this.emit('publish:unpublished', { task, reason: task.error, skippedDeadToken: true });
+        this._logDeadSkip(String(deadAcctId), task.error);
+        return;
+      }
+    }
+
     // 发布前刷新代理存活性：剔除未监听的代理，避免重试全部打在死链路上
     await this._refreshProxyHealth();
 
     // 【修复】totalAttempts 只在这里递增一次（避免两次重复计数）
     this.stats.totalAttempts++;
 
-    if (!config) {
+    // 【2026-09-21 P0】provider 通道平台（nostr/bluesky/mastodon/telegram/discord/devto/hashnode/github）
+    // 在 PlatformPublishConfig 里**没有**条目 —— 那张表是**浏览器自动化选择器**配置，与 API provider 无关。
+    // 旧逻辑在此直接判 Unsupported 并 return，而 provider 分支排在本行之后（约 :1530）
+    // ⇒ **provider 分支永远不可达**。实证：nostr 凭据 authorized=true 却从未被调用过一次。
+    // 修法：provider 通道平台跳过该校验，交给下游 _isProviderChannel 分支处理。
+    if (!config && !this._isProviderChannel(platform)) {
       task.status = PublishStatus.FAILED;
       task.error = `Unsupported platform: ${platform}`;
       this.stats.totalFailed++;
@@ -736,17 +1277,56 @@ class CloudPublisher extends EventEmitter {
         // 绝不生成 hlua.cc.cd/content/... 伪造链接污染流量统计（D3 修复）。
         if (platform === 'tumblr' && this.tumblrPublisher) {
           try {
+            // ── P1-B1 发布侧标签兜底 ───────────────────────────────────
+            // 存量内容（12,608 条历史记录）无 tags 字段，直接发布会恒传空标签。
+            // 此处按 title/正文/平台规则派生一次，保证「空标签发布 = 0」。
+            let publishTags = Array.isArray(task.content?.tags) ? task.content.tags
+              : (Array.isArray(task.content?.hashtags) ? task.content.hashtags : []);
+            if (!publishTags.length) {
+              try {
+                publishTags = require('./content-tagger.js').deriveTags({
+                  topic: task.content?.topic || null,
+                  title: task.content?.title,
+                  body: task.content?.body || task.content?.text || task.content?.caption,
+                  tone: task.content?.tone,
+                  target_audience: task.content?.target_audience,
+                  platform,
+                });
+                if (publishTags.length) console.log(`[cloud-publisher] 标签派生(存量内容) ${task.id}: ${publishTags.join(",")}`);
+              } catch (e) { publishTags = []; }
+            }
+            // ── P1-D 跨账号正文复用闸门（决策①：同正文硬禁跨账号复用）──────
+            // 背景：实测 3,529 条已发布内容覆盖 147 账号，可关联部分重复率 51.4%，
+            //       单篇正文最多被 31 个账号发布 → 平台侧等同 spam。
+            // 判定依据：正文指纹 body_fp（禁用 id —— id 曾被 content_direct_<ts>_<i>
+            //       兜底，导致查重恒 miss）。
+            // 安全阀：连续拦截达阈值即降级放行并告警（内容源不足时避免零发布）。
+            try {
+              const _dFp = task.content?.body_fp
+                || require("./content-tagger.js").bodyFingerprint(task.content?.body || task.content?.text || task.content?.caption);
+              const _dRes = this._checkBodyReuse(_dFp, task.account?.id || "main");
+              if (_dRes.blocked) {
+                task.status = PublishStatus.FAILED;
+                task.error = `正文跨账号复用被拦截(${_dRes.reason})`;
+                this.stats.totalFailed++;
+                this.emit('publish:failed', { task, reason: _dRes.reason });
+                console.warn(`[cloud-publisher] 🚫 拦下跨账号复用: task=${task.id} fp=${_dFp} 已被 ${_dRes.usedBy} 个账号发布`);
+                return;
+              }
+            } catch (e) {
+              console.warn(`[cloud-publisher] 复用闸门异常(放行): ${e.message}`);
+            }
             const authorized = this.tumblrPublisher.getStatus().authorized;
             const vrRec = (this.dataStore && task.content?.id)
               ? this.dataStore.get('video_render', task.content.id) : null;
             const filePath = (vrRec && vrRec.filePath) || (task.content && task.content.video_url_local) || null;
             if (authorized && filePath && fs.existsSync(filePath)) {
-              const caption = [task.content.title, Array.isArray(task.content.tags) ? task.content.tags.join(' ') : (task.content.tags || '')]
+              const caption = [task.content.title, publishTags.join(' ')]
                 .filter(Boolean).join('\n');
               const result = await this.tumblrPublisher.publishVideo({
                 filePath,
                 caption,
-                tags: Array.isArray(task.content.tags) ? task.content.tags.map(t => String(t).replace(/^#/, '')) : [],
+                tags: publishTags.map((t) => String(t).replace(/^#/, '')),
                 state: 'published'
               });
               task.publishUrl = result.postUrl;
@@ -765,6 +1345,7 @@ class CloudPublisher extends EventEmitter {
               });
               this.stats.totalSuccess++;
               this._updatePlatformStats(platform, 'success');
+              this._recordBodyReuseFromTask(task);
               this.emit('publish:success', task);
               console.log(`[cloud-publisher] ✅ Tumblr 真实发布成功: ${task.id} (${result.postUrl})`);
               return;
@@ -804,12 +1385,14 @@ class CloudPublisher extends EventEmitter {
                 // 用前刷新存活性（缓存 60s）：剔除未监听的代理，避免重试打在死链路上
                 const mediaProxies = await this._refreshProxyHealth();
                 for (let attempt = 1; attempt <= maxMediaRetries; attempt++) {
-                  const mpx = mediaProxies.length ? mediaProxies[(attempt - 1) % mediaProxies.length] : null;
+                  // S0：出口按「账号」绑定 + 重试顺序轮换（原为按 attempt 取，只用前 3 条）
+                  const mpx = pickExitForAccount(mediaProxies, accountId, attempt);
+                  if (attempt === 1) console.log(`[cloud-publisher] 出口绑定(图文) account=${accountId} → ${mpx}（池 ${mediaProxies.length} 条，base_idx=${exitHashIndex(accountId, mediaProxies.length)}）`);
                   if (mpx) this.tumblrPublisher.setProxyResolver(() => mpx);
                   try {
                     const result = await this._tumblrExclusive(() => this.tumblrPublisher.postPhoto(blogName, {
                       caption: textBody,
-                      tags: Array.isArray(task.content.tags) ? task.content.tags.map((t) => String(t).replace(/^#/, '')) : [],
+                      tags: publishTags.map((t) => String(t).replace(/^#/, '')),
                       filePath: media.path,
                       state: 'published',
                     }, accountId));
@@ -831,6 +1414,7 @@ class CloudPublisher extends EventEmitter {
                       });
                       this.stats.totalSuccess++;
                       this._updatePlatformStats(platform, 'success');
+                      this._recordBodyReuseFromTask(task);
                       this.emit('publish:success', task);
                       console.log(`[cloud-publisher] ✅ Tumblr 真实发布成功(图文): ${task.id} (${result.postUrl}) ← ${media.path}`);
                       setTimeout(() => {
@@ -840,6 +1424,26 @@ class CloudPublisher extends EventEmitter {
                     }
                   } catch (photoErr) {
                     console.warn(`[cloud-publisher] Tumblr 图文发布失败(${attempt}/${maxMediaRetries}): ${photoErr.message.slice(0, 120)}`);
+                    // N2：401 = token 被撤销，重试 100% 无意义 → 立即登记黑名单并跳出重试循环。
+                    // 不登记的话，后面队列里该账号的每条内容都要再空烧 8 次请求。
+                    if (detectTokenDeadError(photoErr)) {
+                      // 【2026-09-20 F2】状态码与文案一律取自**真实错误**，不再硬编码 401。
+                      // 修复前此处恒写「返回 401」且恒传 status=401 —— 该自证文案反过来
+                      // 又被旧 detectTokenDeadError 的 /\b401\b/ 规则读到，形成闭环误判。
+                      const deadSt = extractErrStatus(photoErr) || 401;
+                      this.markTokenDead(accountId, `图文发布失败(HTTP ${deadSt})：${String(photoErr.message).slice(0, 140)}`, deadSt, 'online-401');
+                      break;
+                    }
+                    // 【KK20-2026-09-22】配额/限流短路（图文通道）。
+                    // 背景：本环原先只对 401 break，撞 429 时会继续烧满 3 次图文，再进入下方
+                    //   文字降级环烧 5 次 ⇒ 单条内容对同一 blog 连打 8 次 POST。实测 21:32 之后
+                    //   429 从 0 暴涨到 62 次 —— 这个放大器一边被限流一边还在灌请求，把限流"喂"得更久。
+                    // 与文字环（下方同文件 try/catch 内）保持同构：立即抛出 → 由外层 catch 记录真实
+                    //   错误 → 由 finally 的 _maybeSetQuotaCooldown 触发【该账号】30 分钟退避。
+                    if (/8023|daily\s*post\s*limit|rate\s*limit|quota|too\s*many\s*requests|\b429\b/i.test(String(photoErr.message || ''))) {
+                      console.warn(`[cloud-publisher] ⏸ 图文通道命中配额/限流（${String(photoErr.message).slice(0, 80)}），立即结束重试以激活 cooldown`);
+                      throw photoErr;
+                    }
                     if (attempt < maxMediaRetries) await new Promise((r) => setTimeout(r, mediaRetryBaseMs * attempt));
                   }
                 }
@@ -854,13 +1458,15 @@ class CloudPublisher extends EventEmitter {
               // 轮换后即使某条链路抖动也能自愈（10808 直连 / 7890 经 Clash 转发）。
               const proxies = await this._refreshProxyHealth();
               for (let attempt = 1; attempt <= maxTextRetries; attempt++) {
-                const px = proxies.length ? proxies[(attempt - 1) % proxies.length] : null;
+                // S0：出口按「账号」绑定 + 重试顺序轮换（原为按 attempt 取，只会碰前 5 条）
+                const px = pickExitForAccount(proxies, accountId, attempt);
+                if (attempt === 1) console.log(`[cloud-publisher] 出口绑定(文字) account=${accountId} → ${px}（池 ${proxies.length} 条，base_idx=${exitHashIndex(accountId, proxies.length)}）`);
                 if (px) this.tumblrPublisher.setProxyResolver(() => px);
               try {
                 const result = await this._tumblrExclusive(() => this.tumblrPublisher.postText(blogName, {
                   title: task.content.title || '',
                   body: textBody,
-                  tags: Array.isArray(task.content.tags) ? task.content.tags.map((t) => String(t).replace(/^#/, '')) : [],
+                  tags: publishTags.map((t) => String(t).replace(/^#/, '')),
                   state: 'published',
                 }, accountId));
                 if (result && result.postUrl) {
@@ -880,6 +1486,7 @@ class CloudPublisher extends EventEmitter {
                   });
                   this.stats.totalSuccess++;
                   this._updatePlatformStats(platform, 'success');
+                  this._recordBodyReuseFromTask(task);
                   this.emit('publish:success', task);
                   console.log(`[cloud-publisher] ✅ Tumblr 真实发布成功(文字降级): ${task.id} (${result.postUrl})`);
                   // P0-D：异步回收真实互动数据（延迟等待平台统计生效，不阻塞发布主流程）
@@ -891,6 +1498,13 @@ class CloudPublisher extends EventEmitter {
               } catch (textErr) {
                 const errMsg = String(textErr.message || '').slice(0, 200);
                 console.warn(`[cloud-publisher] Tumblr 文字发布降级失败(${attempt}/${maxTextRetries}): ${textErr.message}`);
+                // N2：401 = token 被撤销 → 登记黑名单 + 跳出重试循环；后续该账号的发布一律直接跳过。
+                if (detectTokenDeadError(textErr)) {
+                  // 【2026-09-20 F2】同图文通道：状态码与文案取自真实错误，不再硬编码 401。
+                  const deadSt = extractErrStatus(textErr) || 401;
+                  this.markTokenDead(accountId, `文字发布失败(HTTP ${deadSt})：${errMsg.slice(0, 140)}`, deadSt, 'online-401');
+                  break;
+                }
                 // 【S5 攻坚 2026-09-05】配额/限流错误立即写入 task.error 并抛出，跳出退避循环，
                 //   让外层 catch (e) + finally 块的 _maybeSetQuotaCooldown(task.error, task) 生效。
                 //   【2026-09-12 P0】该方法已改为分层：只退避该账号，多账号同时中招才全局暂停。
@@ -924,6 +1538,15 @@ class CloudPublisher extends EventEmitter {
                   ? '该账号已有 OAuth token 但 token 记录缺 blog 名 → 执行 tools/tumblr-backfill-blogname.js 回填后即可发布'
                   : '该账号未完成 Tumblr OAuth 授权 → 诚实标记未发布（不借用他人 token 发到别人 blog）')
                 : '本地视频缺失且无可用正文 → 无法真实发布，诚实标记为未发布');
+
+            // N2：若本次失败的真实原因其实是 token 失效（上面已登记黑名单），
+            // 就把归因覆盖成准确的那一个 —— 否则会打出 'NO_PUBLISHABLE_BODY'，
+            // 让人去查正文，而正文其实是好的，白白误导排查方向。
+            if (accountId && this.isTokenDead(accountId)) {
+              task.source = 'token_dead';
+              task.error = `TOKEN_DEAD: account=${accountId} token 已失效（发布返回 401）→ 需重新 OAuth 授权`;
+              task.publishNote = '该账号 token 已被平台撤销；重试/换出口/换内容均无效 → 已登记黑名单，后续发布直接跳过';
+            }
           } catch (e) {
             console.error(`[cloud-publisher] Tumblr 真实发布失败，诚实标记未发布: ${e.message}`);
             task.real = false;
@@ -931,6 +1554,56 @@ class CloudPublisher extends EventEmitter {
             task.status = PublishStatus.FAILED;
             task.error = 'TUMBLR_PUBLISH_ERROR: ' + e.message.slice(0, 80);
             task.publishNote = `Tumblr 发布异常，诚实标记未发布：${e.message.slice(0, 80)}`;
+          }
+        } else if (this._isProviderChannel(platform) && this._getProviderMgr()) {
+          // ── [B1] provider 通道真实发布（当前接线：nostr）───────────────
+          // 与 tumblr 分支同等纪律：只有 provider 返回真实 url 才算成功，
+          // 失败一律诚实标记未发布，绝不生成伪造链接。
+          try {
+            const _pText = task.content?.body || task.content?.text || task.content?.caption
+              || task.content?.title || '';
+            const _r = await this._publishViaProvider(platform, _pText, task);
+            if (_r.ok) {
+              task.real = true;
+              task.publishUrl = _r.url || null;
+              task.status = PublishStatus.SUCCESS;
+              task.source = 'provider_channel';
+              task.publishNote = `经 provider 通道真实发布（${platform}）`;
+              task.providerPostId = _r.id || null;
+              task.publishedAt = new Date().toISOString();
+              task.publishDuration = Date.now() - startTime;
+              task.simulated = false;
+              // 与 tumblr 成功路径**完全对齐**的落库：publish_url 必须进入 publishHistory
+              // （B1 验收判据：「发布成功后 publish.json 出现对应 publish_url」）
+              this.publishHistory.push({
+                taskId: task.id, accountId: task.account?.id, deviceId: 'web_direct',
+                platform, status: 'success', source: task.source,
+                causalPhase: this._causalPhase(task.account?.id), publishedAt: task.publishedAt,
+                url: task.publishUrl, duration: task.publishDuration, real: true,
+              });
+              this.stats.totalSuccess++;
+              this._updatePlatformStats(platform, 'success');
+              this._recordBodyReuseFromTask(task);
+              this.emit('publish:success', task);
+              console.log(`[cloud-publisher] ✅ provider 通道真实发布成功 ${platform}: ${task.publishUrl}`);
+              // ⚠️ 必须 return：否则会继续下落到设备发布路径（_publishViaDevice）造成**重复发布**
+              return;
+            } else {
+              task.real = false;
+              task.publishUrl = null;
+              task.status = PublishStatus.FAILED;
+              task.source = 'provider_channel_failed';
+              task.error = `PROVIDER_PUBLISH_FAILED: ${platform} — ${_r.error || 'unknown'}`;
+              task.publishNote = 'provider 通道发布失败，诚实标记未发布（不生成伪造链接）';
+              console.warn(`[cloud-publisher] ⚠️ provider 通道失败 ${platform}: ${_r.error}`);
+            }
+          } catch (e) {
+            task.real = false;
+            task.publishUrl = null;
+            task.status = PublishStatus.FAILED;
+            task.source = 'provider_channel_failed';
+            task.error = 'PROVIDER_PUBLISH_ERROR: ' + e.message.slice(0, 80);
+            task.publishNote = 'provider 通道异常，诚实标记未发布';
           }
         } else {
           // 两类情形分开标记，便于运维一眼定位：
@@ -1132,8 +1805,48 @@ class CloudPublisher extends EventEmitter {
 
   // 发布前安全检查
   _performSafetyCheck(task) {
+    // ── [ACCEL-2026-09-22 · P0-2] provider 通道独立配额命名空间 ────────────────
+    // 背景（反向耦合实证）：provider 平台（nostr 等）在设计上没有自己的账号池，
+    //   内容只能复用 tumblr 账号承载。而原配额记账按 **accountId** 聚合
+    //   ⇒ nostr 每投 1 条就吃掉承载 tumblr 账号 1/12 日配额，并重置其 45 分钟间隔窗口。
+    //   实测：1 个账号承载全部 225 条 nostr 内容时，该账号配额被瞬间打满，
+    //     后续 tumblr 任务全部被判「超出配额 (12/12)」推迟，队列 depth 从 4 单调爬到 43，
+    //     而并发槽 active=0/3 全程为 0 —— 任务被无限推迟、从未真正执行。
+    // 修法：provider 通道改用独立命名空间 `provider:<平台>` 记账 + 独立额度/间隔，
+    //   并**跳过** tumblr 养号规则（nurturingRules.canPerform）与账号级发布间隔。
+    //   落库端（server.js 入队处）写入同一命名空间，两端口径自洽。
+    // tumblr（_provCh=false）路径**逐字不变**，零行为变更。
+    // 回滚：MSCMS_PROVIDER_DAILY_MAX=12 + MSCMS_PROVIDER_MIN_INTERVAL_MS=2700000。
+    const _provCh = this._isProviderChannel(task.platform);
+    let _provNs = null;
+    if (_provCh) {
+      _provNs = `provider:${String(task.platform || '').toLowerCase()}`;
+      const _pMax = Math.max(1, Number(process.env.MSCMS_PROVIDER_DAILY_MAX || 200));
+      const _pIvMs = Math.max(1000, Number(process.env.MSCMS_PROVIDER_MIN_INTERVAL_MS || 120000));
+      const _pUsed = this._getDailyPostCount(_provNs);
+      if (_pUsed >= _pMax) {
+        return {
+          passed: false,
+          deferMs: this._nextQuotaReset() - Date.now(),
+          reason: `provider 通道日额度已满 (${_pUsed}/${_pMax}) [${_provNs}]`,
+        };
+      }
+      const _pLast = this._getLastPublishTime(_provNs);
+      if (_pLast && (Date.now() - _pLast) < _pIvMs) {
+        const _pElapsedMin = Math.round((Date.now() - _pLast) / 60000);
+        const _pBase = _pIvMs - (Date.now() - _pLast);
+        // 同上加 0~60% 抖动，避免同批多帖被推迟到同一时刻形成集中连发
+        return {
+          passed: false,
+          deferMs: Math.round(_pBase * (1 + Math.random() * 0.6)),
+          reason: `provider 通道间隔未到（距上次 ${_pElapsedMin} 分钟 < ${Math.round(_pIvMs / 60000)} 分钟）[${_provNs}]`,
+        };
+      }
+    }
+
     // 1. 检查养号阶段是否允许发帖 + 该账号今日配额
-    if (this.nurturingRules) {
+    //    [_provCh=true 时跳过：provider 通道已在上面用独立命名空间判过额度]
+    if (this.nurturingRules && !_provCh) {
       // 修复：原先不传账号年龄 -> 走全局单例的 accountAge=0（注册期），post 配额恒为 0，
       // 导致「超过每日配额 (0/0)」把全站发布全部冻结。这里改为按账号真实年龄 + 该账号今日已发数判定。
       const ageDays = this._accountAgeDays(task.account);
@@ -1167,17 +1880,22 @@ class CloudPublisher extends EventEmitter {
       const checker = this.contentRules;
       const checkResult = checker.checkContent(task.content, {
         accountAge: task.account.age || 30,
-        dailyPostCount: this._getDailyPostCount(task.account.id),
+        // [ACCEL-2026-09-22 · P0-2] provider 通道按 provider 计数（与配额记账同源），
+        //   避免把承载账号（tumblr）的发帖数误当成 provider 通道的日发帖数。
+        dailyPostCount: _provCh ? this._getDailyPostCount(_provNs) : this._getDailyPostCount(task.account.id),
       });
       if (!checkResult.passed) {
         return { passed: false, reason: `Content compliance failed: ${checkResult.warnings.join('; ')}` };
       }
     }
 
-    // 3. 检查发布间隔
+    // 3. 检查发布间隔（账号级）
     // 这是【节奏控制】而非违规：未到间隔就排到后面去，不消耗失败次数、不烧内容。
-    const lastPublish = this._getLastPublishTime(task.account.id);
-    if (lastPublish && (Date.now() - lastPublish) < this.minIntervalMs) {
+    // [ACCEL-2026-09-22 · P0-2] provider 通道**跳过账号级间隔** —— 它已在上面按
+    //   `provider:<平台>` 命名空间判过独立间隔，若再叠加承载账号的 45 分钟窗口，
+    //   provider 与账号会互相锁定（两者交替重置对方的窗口）。
+    const lastPublish = _provCh ? null : this._getLastPublishTime(task.account.id);
+    if (!_provCh && lastPublish && (Date.now() - lastPublish) < this.minIntervalMs) {
       const elapsedMin = Math.round((Date.now() - lastPublish) / 60000);
       const base = this.minIntervalMs - (Date.now() - lastPublish);
       // 加 0~60% 抖动：同一账号若一次入队多帖，避免它们被推迟到同一时刻形成「集中连发」
@@ -1211,10 +1929,22 @@ class CloudPublisher extends EventEmitter {
    */
   async _resolveMediaForPublish(task) {
     try {
-      const direct = task.content?.media_path || task.content?.preview_url || null;
-      if (typeof direct === 'string' && direct && !/\.json$/i.test(direct)) {
-        const p = direct.replace(/\\/g, '/');
-        if (fs.existsSync(p)) return { path: p, type: /\.mp4$/i.test(p) ? 'video' : 'image' };
+      // [P2-B5] 媒体一律以真实媒体字段为准。原实现 `media_path || preview_url`
+      // 的兜底顺序不当：media_path 缺失时会落到 preview_url（存档 JSON 路径）上。
+      // 现改为候选列表逐个探盘，preview_url 置于末位且由 isRealMediaRef 过滤 .json。
+      const _cands = [
+        task.content?.media_path,
+        task.content?.image_path,
+        task.content?.video_path,
+        task.content?.media_url,
+        task.content?.image_url,
+        task.content?.preview_url,
+      ];
+      for (const _cand of _cands) {
+        if (!_mediaRef.isRealMediaRef(_cand)) continue;
+        const p = String(_cand).replace(/\\/g, '/');
+        if (!fs.existsSync(p)) continue;
+        return { path: p, type: /\.mp4$/i.test(p) ? 'video' : 'image' };
       }
 
       // 等待策略（吞吐权衡）：
@@ -1458,12 +2188,39 @@ class CloudPublisher extends EventEmitter {
   }
 
   // 辅助方法
+  /**
+   * [ACCEL-2026-09-22 · P0-2] 解析 provider 配额命名空间。
+   *   'provider:nostr' → 'nostr'；其他一律返回 null（走账号级原有语义）。
+   *   为什么用「按平台统计」而非「改写 publish.account_id」：
+   *     改写落库口径会破坏 content.account_id == publish.account_id 的自包含可验证性，
+   *     也会让 JSON 与 MySQL(matrix_posts_published) 两个事实源分歧。
+   *     按 platform 维度统计则**零数据变更**，即可让 provider 与承载账号各自独立记账。
+   */
+  _parseProvNs(key) {
+    const s = String(key || '');
+    const prefix = 'provider:';
+    // 大小写不敏感：命名空间由内部按小写生成，但外部（env / 手工构造的 key）
+    // 可能传入 'PROVIDER:Nostr'，须一并归一，避免静默退化成账号级记账。
+    if (s.slice(0, prefix.length).toLowerCase() !== prefix) return null;
+    const p = s.slice(prefix.length).trim().toLowerCase();
+    return p || null;
+  }
+
   _getLastPublishTime(accountId) {
     // 【2026-09-10 修复】原来只查内存 publishHistory → 重启后恒为 null，
     // 发布间隔闸门等于失效（重启即可连发）。现同时合并磁盘发布记录取最大值。
+    // [ACCEL-2026-09-22 · P0-2] 支持 `provider:<平台>` 命名空间：
+    //   · accountId = 'provider:nostr' → 按 **platform 维度**统计（provider 独立间隔窗口）
+    //   · 普通账号 id → 按 account_id 统计，但**排除 provider 通道平台**的记录，
+    //     使承载账号（tumblr）的 45 分钟窗口不再被 nostr 发帖重置（切断反向耦合）。
+    const _ns = this._parseProvNs(accountId);
+    const _hit = (rec) => _ns
+      ? (String(rec.platform || '').toLowerCase() === _ns)
+      : (String(rec.accountId || rec.account_id || '') === String(accountId)
+         && !this._isProviderChannel(rec.platform));
     let last = null;
     for (const h of this.publishHistory) {
-      if (String(h.accountId) !== String(accountId)) continue;
+      if (!_hit(h)) continue;
       const t = new Date(h.publishedAt).getTime();
       if (!isNaN(t) && (last === null || t > last)) last = t;
     }
@@ -1472,8 +2229,7 @@ class CloudPublisher extends EventEmitter {
         const res = this.dataStore.list('publish', { limit: 20000 });
         const items = Array.isArray(res) ? res : (res && res.items) || [];
         for (const p of items) {
-          const aid = p.account_id || p.accountId;
-          if (String(aid) !== String(accountId)) continue;
+          if (!_hit(p)) continue;
           const url = p.publish_url || p.publishUrl || '';
           if (!/^https?:\/\//i.test(String(url))) continue;
           const t = new Date(p.published_at || p.publishedAt).getTime();
@@ -1500,10 +2256,20 @@ class CloudPublisher extends EventEmitter {
     const seen = new Set();
     let n = 0;
     const sameDay = (v) => { const d = new Date(v); return !isNaN(d) && d.toDateString() === today; };
+    // [ACCEL-2026-09-22 · P0-2] provider 命名空间支持（与 _getLastPublishTime 同源语义）：
+    //   · 'provider:nostr' → 统计 platform=nostr 的今日成功帖（provider 独立日额度）
+    //   · 普通账号 id → 统计 account_id 匹配且**平台不属于 provider 通道**的记录
+    //     ⇒ 承载账号（tumblr）的 12 帖日配额不再被 nostr 帖吃干（切断反向耦合，
+    //        这正是「队列 depth 4→43 单调爬升、active=0/3 全程为 0」的根因）。
+    const _ns = this._parseProvNs(accountId);
+    const _hit = (rec) => _ns
+      ? (String(rec.platform || '').toLowerCase() === _ns)
+      : (String(rec.accountId || rec.account_id || '') === String(accountId)
+         && !this._isProviderChannel(rec.platform));
 
     // ① 本次进程内已成功真实发布的记录
     for (const h of this.publishHistory) {
-      if (String(h.accountId) !== String(accountId)) continue;
+      if (!_hit(h)) continue;
       if (h.status !== 'success' || h.real === false) continue;
       const k = h.taskId || `${h.accountId}|${h.publishedAt}`;
       if (seen.has(k)) continue;
@@ -1520,8 +2286,8 @@ class CloudPublisher extends EventEmitter {
         const res = this.dataStore.list('publish', { limit: 20000 });
         const items = Array.isArray(res) ? res : (res && res.items) || [];
         for (const p of items) {
+          if (!_hit(p)) continue;
           const aid = p.account_id || p.accountId;
-          if (String(aid) !== String(accountId)) continue;
           const url = p.publish_url || p.publishUrl || '';
           if (!/^https?:\/\//i.test(String(url))) continue;
           const k = p.id || `${aid}|${p.published_at}`;
@@ -1677,4 +2443,9 @@ class CloudPublisher extends EventEmitter {
   }
 }
 
-module.exports = { CloudPublisher, PlatformPublishConfig, PublishStatus };
+module.exports = {
+  CloudPublisher, PlatformPublishConfig, PublishStatus,
+  exitHashIndex, pickExitForAccount,
+  // N2：token 失效黑名单 —— 供 server.js 入队侧过滤、工具与单测复用
+  detectTokenDeadError, extractErrStatus, isDeadInMap, DEADLIST_FILE, DEAD_TOKEN_TTL_MS,
+};
