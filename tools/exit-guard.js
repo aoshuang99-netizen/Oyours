@@ -38,7 +38,13 @@ const RELAY_SCRIPT = path.join(ROOT, 'tools', 'bd-tls-forwarder.js');
 // 仅在显式指定时才覆盖转发器端口（否则用 bd-tls-forwarder.js 自带的兼容超集）
 const RELAY_PORTS_ENV = process.env.BD_RELAY_PORTS ? String(process.env.BD_RELAY_PORTS) : null;
 const RELAY_PRIMARY = Number(process.env.MSCMS_OUTBOUND_PROXY_PORT || 10809);
-const PROBE_HOST = process.env.EXIT_PROBE_HOST || 'api.tumblr.com';
+// ⚠️ 探活目标必须是【不受出网闸门管控】的主机。
+//   出网闸门（bd-tls-forwarder 的 bd-relay-control.json）会对 api.tumblr.com
+//   在冷却期返回"200 后立刻关闭"：用它做探活既会掩盖真实故障，一旦闸门改为
+//   回 429 还会让 exit-guard 连续判"转发器假死"→ 无限重启（而重启后的转发器
+//   仍被闸门拦）。故探活改用恒可达且非闸门管控的 example.com；
+//   转发器进程本身的存活另由 portOpen 判定。
+const PROBE_HOST = process.env.EXIT_PROBE_HOST || 'example.com';
 const PROBE_PORT = Number(process.env.EXIT_PROBE_PORT || 443);
 const PROBE_TIMEOUT_MS = Number(process.env.EXIT_PROBE_TIMEOUT_MS || 8000);
 const HEALTH_PORT = Number(process.env.EXIT_GUARD_HEALTH_PORT || 20779);

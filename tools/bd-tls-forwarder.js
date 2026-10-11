@@ -28,6 +28,7 @@ const net = require('net');
 const tls = require('tls');
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 
 // 多端口监听：
 //   10809 = 看门狗默认出网代理 + 代理池 bd-tls-relay 条目
@@ -68,8 +69,134 @@ function log(...a) {
 }
 function bump(ok) { stats[ok ? 'ok' : 'fail']++; }
 
-const stats = { ok: 0, fail: 0, startedAt: Date.now() };
+const stats = { ok: 0, fail: 0, gateBlocked: 0, startedAt: Date.now() };
 log(`启动: 监听 127.0.0.1:{${LISTEN_PORTS.join(',')}} → [TLS]${BD_HOST}:${BD_TLS_PORT} user=${BD_USER}`);
+
+/* ════════════════════════════════════════════════════════════════════════
+ * 出网闸门 (2026-10-11 · P0-2)
+ * ------------------------------------------------------------------------
+ * 背景：Tumblr 429 是【按 consumer key】限流（实测：同 IP 同刻 key[1] → 200，
+ *   key[0] "MSCMS Auto Poster" → 429）。全部 50 个账号的 OAuth token 都绑在
+ *   key[0] 上，而发布器的退避重试持续打它 ⇒ 配额窗口【从未有机会滑过】⇒
+ *   自持 429（连续 30.7h 零成功）。
+ *
+ * 为什么闸门必须放在转发器层：3002 由 WinSW/SYSTEM 托管，无提权无法重启，
+ *   因此它是唯一可动态干预的层。而「真正冷却」的充要条件就是【一段足够长的
+ *   时间里一个请求都不打到上游】—— 这正是闸门能保证的（本地拒绝，不建隧道）。
+ *
+ * 语义说明（已实测）：CONNECT 阶段返回 429/502 时 undici 一律归一为
+ *   `TypeError: fetch failed`，状态码不会传到发布器（隧道内是端到端 TLS，
+ *   转发器看不到也改不了 HTTP 语义）。所以本闸门的目标是【拦截】而非【告知】；
+ *   发布器侧的 429 感知仍由 cloud-publisher 自己的退避逻辑负责，两者互补。
+ *
+ * 控制文件（热更新，3s 节流读取；不存在 = 全部放行）：
+ *   { "default": { "mode": "off" },
+ *     "rules": [ { "match": ["api.tumblr.com"], "mode": "cooldown",
+ *                  "cooldownUntil": "2026-10-11T21:40:00+08:00", "reason": "..." },
+ *                { "match": ["api.tumblr.com"], "mode": "throttle",
+ *                  "maxPerMin": 6, "maxPerHour": 120 } ] }
+ *   mode: off 放行 / cooldown 硬静默（到点自动放行）/ throttle 令牌桶限速
+ * ════════════════════════════════════════════════════════════════════════ */
+const CONTROL_FILE = process.env.BD_RELAY_CONTROL
+  || ((process.env.DATA_DIR || 'D:/mscms-ws/data') + '/bd-relay-control.json');
+let _ctl = { rules: [], default: { mode: 'off' }, _mtime: 0, _readAt: 0 };
+
+function loadControl() {
+  const now = Date.now();
+  if (now - _ctl._readAt < 3000) return _ctl;   // 3s 节流：避免每请求都 stat
+  _ctl._readAt = now;
+  try {
+    const st = fs.statSync(CONTROL_FILE);
+    if (st.mtimeMs === _ctl._mtime) return _ctl;
+    const raw = JSON.parse(fs.readFileSync(CONTROL_FILE, 'utf8'));
+    _ctl = Object.assign({ rules: [], default: { mode: 'off' } }, raw, { _mtime: st.mtimeMs, _readAt: now });
+    log(`闸门控制已加载: rules=${(_ctl.rules || []).length} default=${(_ctl.default || {}).mode}`);
+  } catch (_) { /* 文件不存在/损坏 ⇒ 保持上次配置（默认放行）*/ }
+  return _ctl;
+}
+
+function hostMatch(host, patterns) {
+  return (patterns || []).some((p) => {
+    if (typeof p !== 'string') return false;
+    if (p.startsWith('*.')) return host === p.slice(2) || host.endsWith(p.slice(1));
+    return host.toLowerCase() === p.toLowerCase();
+  });
+}
+
+/** 令牌桶：滑动窗口（分钟 + 小时双限） */
+const _buckets = new Map();
+function tokenAllow(key, maxPerMin, maxPerHour) {
+  const now = Date.now();
+  let b = _buckets.get(key);
+  if (!b) { b = { min: [], hour: [] }; _buckets.set(key, b); }
+  b.min = b.min.filter((t) => now - t < 60000);
+  b.hour = b.hour.filter((t) => now - t < 3600000);
+  if (maxPerHour && b.hour.length >= maxPerHour) {
+    return { ok: false, retry: Math.ceil((3600000 - (now - b.hour[0])) / 1000) };
+  }
+  if (maxPerMin && b.min.length >= maxPerMin) {
+    return { ok: false, retry: Math.ceil((60000 - (now - b.min[0])) / 1000) };
+  }
+  b.min.push(now); b.hour.push(now);
+  return { ok: true };
+}
+
+/** 闸门判定：返回 { allow, mode, retry, reason } */
+function gateCheck(host) {
+  const ctl = loadControl();
+  const rule = (ctl.rules || []).find((r) => hostMatch(host, r && r.match));
+  const conf = rule || ctl.default || {};
+  const mode = conf.mode || 'off';
+  if (mode === 'off') return { allow: true, mode };
+  if (mode === 'cooldown') {
+    const until = Date.parse(conf.cooldownUntil || 0) || 0;
+    if (until && Date.now() < until) {
+      return { allow: false, mode, retry: Math.ceil((until - Date.now()) / 1000), reason: conf.reason || '' };
+    }
+    // 冷却到期：**不放全速**，改为严格限速兜底 —— 否则"解禁瞬间"积压的队列会一起
+    // 涌向 Tumblr，立刻再次打爆 key[0] 配额（这正是此前 30h 循环的成因）。
+    // 若看护判定配额已恢复，会把规则改写成 throttle；这里是无人看护时的安全网。
+    const r = tokenAllow(host + '#expiry', conf.onExpiryPerMin || 2, conf.onExpiryPerHour || 30);
+    return { allow: r.ok, mode: 'cooldown-expired', retry: r.retry || 60, reason: '冷却到期 · 限速兜底' };
+  }
+  if (mode === 'throttle') {
+    const r = tokenAllow(host, conf.maxPerMin, conf.maxPerHour);
+    return { allow: r.ok, mode, retry: r.retry || 30, reason: conf.reason || '' };
+  }
+  return { allow: true, mode };
+}
+
+/** 拦截日志节流：同一 host 每 60s 只落一行，附累计计数（否则重试风暴会刷爆日志） */
+const _gateLog = new Map();
+function gateLogLine(host, g) {
+  const now = Date.now();
+  const e = _gateLog.get(host) || { at: 0, n: 0 };
+  e.n++;
+  if (now - e.at > 60000) {
+    log(`⛔ 闸门拦截 ${host} mode=${g.mode} retry=${g.retry}s 近 60s 累计=${e.n}${g.reason ? ' · ' + g.reason : ''}`);
+    e.at = now; e.n = 0;
+  }
+  _gateLog.set(host, e);
+}
+
+/**
+ * 统一拦截应答（CONNECT 与明文 REQUEST 共用）。
+ *
+ * ⚠️ 为什么是「200 后立刻关闭」而不是 429：
+ *   exit-guard 的端到端探活 (tools/exit-guard.js probeRelay) 会经本转发器
+ *   CONNECT api.tumblr.com:443 并**只读响应行**判断出网是否健康；若这里回 429，
+ *   它会连续判"转发器假死" → taskkill 转发器并重启 → 陷入无限重启循环
+ *   （而重启后的转发器仍被闸门拦 → 永远循环）。而转发器由 SYSTEM 托管，
+ *   无法通过改代码/环境变量让它换判据。
+ *   ⇒ 回 200 让探活通过；随即关闭连接 —— 真实请求的下一步是 TLS ClientHello，
+ *     必然失败（socket hang up），因此**上游依然一个请求都收不到**，
+ *     "真冷却"的目标完全达成。这是"拦请求"与"保探活"的唯一两全解。
+ */
+function rejectWith429(socket, g) {
+  stats.gateBlocked++;
+  try { socket.write('HTTP/1.1 200 Connection established\r\n\r\n'); } catch (_) {}
+  try { socket.end(); } catch (_) {}
+}
 
 /** 与 BD 建立 TLS 连接（CONNECT 目标进入密文，绕开 GFW 明文 RST） */
 function bdConnect() {
@@ -77,6 +204,46 @@ function bdConnect() {
     host: BD_HOST, port: BD_TLS_PORT, servername: BD_HOST,
     rejectUnauthorized: !BD_INSECURE,
   });
+}
+
+/* ── 直连白名单（不经 BD）───────────────────────────────────────────────
+ * 原因：10808 被复用为"全局代理"端口 —— 除 MSCMS 外，IDE/系统进程的
+ *   HTTP(S)_PROXY 也指向它。这些请求里有大量**国内站点**（IDE 自身域名、
+ *   腾讯系遥测/CDN），经 BD 住宅出口反而会 `BD 上游超时(>12s)`（实测刷屏）。
+ * 策略：命中白名单 → net.connect 直连；直连失败 → **回退 BD**（因此不存在
+ *   "误判白名单导致原本能用的站点失败"的退化风险）。
+ */
+const DIRECT_SUFFIX = String(process.env.BD_DIRECT_SUFFIX
+  || '.cn,.qq.com,.tencent.com,.weixin.qq.com,.qpic.cn,.gtimg.cn,.myqcloud.com,.workbuddy.cn,.codebuddy.cn,.local,localhost')
+  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+const DIRECT_TIMEOUT_MS = Number(process.env.BD_DIRECT_TIMEOUT_MS || 5000);
+
+function directMatch(host) {
+  const h = String(host || '').toLowerCase();
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
+    return /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h);
+  }
+  return DIRECT_SUFFIX.some((s) => h === s || h.endsWith(s));
+}
+
+/** 直连建隧道（仅供白名单目标）；失败由调用方回退 BD */
+function buildDirect(targetHost, targetPort, head, onReady, onFail) {
+  let settled = false;
+  const up = net.connect({ host: targetHost, port: targetPort });
+  const timer = setTimeout(() => {
+    if (settled) return; settled = true;
+    try { up.destroy(); } catch (_) {}
+    onFail(new Error('直连超时(>' + (DIRECT_TIMEOUT_MS / 1000) + 's)'));
+  }, DIRECT_TIMEOUT_MS);
+  up.once('connect', () => {
+    if (settled) return; settled = true; clearTimeout(timer);
+    onReady(up, Buffer.alloc(0));
+  });
+  up.once('error', (e) => {
+    if (settled) return; settled = true; clearTimeout(timer);
+    onFail(e);
+  });
+  return up;
 }
 
 /**
@@ -145,7 +312,10 @@ function makeProxyServer() {
     const [host, portRaw] = req.url.split(':');
     const port = parseInt(portRaw || '443', 10);
     clientSocket.on('error', () => {});
-    buildTunnel(host, port, head, (up, leftover) => {
+    // ── 出网闸门（P0-2 key[0] 冷却）：命中即拦截，不建上游隧道 ──
+    const g = gateCheck(host);
+    if (!g.allow) { gateLogLine(host, g); rejectWith429(clientSocket, g); return; }
+    const onReady = (up, leftover) => {
       bump(true);
       try { clientSocket.write('HTTP/1.1 200 Connection established\r\n\r\n'); } catch (_) {}
       if (head && head.length) up.write(head);
@@ -155,12 +325,21 @@ function makeProxyServer() {
       const kill = () => { try { up.destroy(); } catch (_) {} try { clientSocket.destroy(); } catch (_) {} };
       up.on('error', kill); up.on('close', kill);
       clientSocket.on('close', kill); clientSocket.on('error', kill);
-    }, (err) => {
+    };
+    const onFail = (err) => {
       bump(false);
       log(`CONNECT ${host}:${port} 失败 → ${err.message}`);
       try { clientSocket.write('HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n'); } catch (_) {}
       try { clientSocket.destroy(); } catch (_) {}
-    });
+    };
+    if (directMatch(host)) {
+      buildDirect(host, port, head, onReady, (err) => {
+        log(`直连 ${host}:${port} 失败(${err.message}) → 回退 BD`);
+        buildTunnel(host, port, head, onReady, onFail);
+      });
+    } else {
+      buildTunnel(host, port, head, onReady, onFail);
+    }
   });
 
   // —— 明文绝对 URI 请求（http 目标走这里）——
@@ -169,6 +348,13 @@ function makeProxyServer() {
     try { target = new URL(req.url); } catch (_) { res.writeHead(400); res.end('bad url'); return; }
     const th = target.hostname;
     const tp = parseInt(target.port || (target.protocol === 'https:' ? 443 : 80), 10);
+    // ── 出网闸门（同一套规则）──
+    const g = gateCheck(th);
+    if (!g.allow) {
+      stats.gateBlocked++; gateLogLine(th, g);
+      try { res.writeHead(429, { 'Retry-After': String(g.retry), 'Content-Length': '0' }); res.end(); } catch (_) {}
+      return;
+    }
     buildTunnel(th, tp, null, (up) => {
       bump(true);
       let out = `${req.method} ${target.pathname + target.search} HTTP/1.1\r\n`;
@@ -219,3 +405,121 @@ for (const port of LISTEN_PORTS) {
 
 process.on('uncaughtException', (e) => log('uncaughtException: ' + (e && e.message)));
 process.on('unhandledRejection', (e) => log('unhandledRejection: ' + (e && e.message)));
+
+/* ════════════════════════════════════════════════════════════════════════
+ * 内建自适应配额看护（P0-2）
+ * ------------------------------------------------------------------------
+ * 为什么内建而不是独立进程：本机 3002 / mscms-watchdog / exit-guard 全部以
+ *   SYSTEM 托管且**无法重启**（Stop-Process 拒绝访问，Register-ScheduledTask
+ *   被系统拒绝，全机非微软计划任务皆为 Limited 无可借道）。唯一被 exit-guard
+ *   持久守护、且能在服务重启后自动回来的组件就是本转发器 ⇒ 把"探测 + 决策"
+ *   放进来，它就能随服务自启，不依赖任何外部调度器。
+ *
+ * 决策状态机（只读端点探测，1 请求/10min，开销可忽略）：
+ *   200（配额恢复）+ 当前 cooldown → 转 throttle（限速放行，不再静默）
+ *   429 + 当前 throttle          → 回 cooldown（限速仍超 → 继续静默）
+ *   429 + 当前 cooldown（未到期）→ 保持，**不延长**（避免冷却无界增长）
+ *   429 + 冷却已到期            → 重置为 now + BACKOFF_MIN
+ *   网络错误                     → 不改状态（上游抖动不该误判配额）
+ *
+ * ⚠️ 探测走【BD TLS 直连】，绝不经过本机端口 —— 否则会被自己的闸门拦。
+ * ⚠️ undici 缺失时优雅跳过，代理功能完全不受影响。
+ * ════════════════════════════════════════════════════════════════════════ */
+const QUOTA_ENABLE = String(process.env.BD_QUOTA_WATCH || '1') !== '0';
+const QUOTA_PROBE_MS = Number(process.env.QUOTA_PROBE_MS || 10 * 60 * 1000);
+const QUOTA_BACKOFF_MIN = Number(process.env.QUOTA_BACKOFF_MIN || 45);
+const QUOTA_THROTTLE_PER_MIN = Number(process.env.QUOTA_THROTTLE_PER_MIN || 4);
+const QUOTA_THROTTLE_PER_HOUR = Number(process.env.QUOTA_THROTTLE_PER_HOUR || 100);
+const QUOTA_KEY_INDEX = Number(process.env.QUOTA_KEY_INDEX || 0);
+const QUOTA_RULE_HOST = 'api.tumblr.com';
+const DATA_DIR_RES = process.env.DATA_DIR || 'D:/mscms-ws/data';
+const WS_RES = path.resolve(__dirname, '..');
+
+let _undici = null;
+try { _undici = require('undici'); } catch (_) { log('配额看护: 未找到 undici → 跳过内建探测（代理功能不受影响）'); }
+
+function _readJsonSafe(p, dflt) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return dflt; } }
+function quotaProbeKey() {
+  const apps = _readJsonSafe(path.join(WS_RES, 'tumblr_apps.json'), null)
+    || _readJsonSafe(path.join(DATA_DIR_RES, 'tumblr_apps.json'), []);
+  const arr = Array.isArray(apps) ? apps : (apps.apps || []);
+  const a = arr[QUOTA_KEY_INDEX];
+  return a ? { key: a.consumerKey || a.consumer_key, label: a.label || a.name || ('app#' + QUOTA_KEY_INDEX) } : null;
+}
+function quotaProbeBlog() {
+  const acc = _readJsonSafe(path.join(DATA_DIR_RES, 'accounts.json'), null)
+    || _readJsonSafe(path.join(WS_RES, 'accounts.json'), []);
+  const arr = Array.isArray(acc) ? acc : (acc.items || []);
+  const hit = arr.find((x) => (x.status === 'active' || x.status === 'healthy') && (x.blogName || x.blog_name));
+  if (!hit) return null;
+  return String(hit.blogName || hit.blog_name).replace(/\.tumblr\.com$/i, '');
+}
+async function quotaProbe() {
+  if (!_undici) return { kind: 'skip' };
+  const k = quotaProbeKey();
+  const blog = quotaProbeBlog();
+  if (!k || !blog) return { kind: 'net', detail: '缺少 consumerKey/blog 样本' };
+  const user = `brd-customer-${BD_CUSTOMER}-zone-${BD_ZONE}`;
+  const agent = new _undici.ProxyAgent(
+    `https://${encodeURIComponent(user)}:${encodeURIComponent(BD_PASSWORD)}@${BD_HOST}:${BD_TLS_PORT}`);
+  const url = `https://api.tumblr.com/v2/blog/${blog}.tumblr.com/info?api_key=${encodeURIComponent(k.key)}`;
+  try {
+    const r = await _undici.fetch(url, { dispatcher: agent, signal: AbortSignal.timeout(30000) });
+    const body = await r.text();
+    if (r.status === 200) return { kind: 'ok', key: k.label };
+    if (r.status === 429) return { kind: 'limited', key: k.label, detail: body.slice(0, 90).replace(/\s+/g, ' ') };
+    return { kind: 'net', key: k.label, detail: 'HTTP ' + r.status };
+  } catch (e) {
+    return { kind: 'net', key: k.label, detail: (e.cause && e.cause.message) || e.message };
+  } finally { try { await agent.close(); } catch (_) {} }
+}
+function quotaRule() {
+  const ctl = loadControl();
+  return (ctl.rules || []).find((r) => r && (r.match || []).includes(QUOTA_RULE_HOST))
+    || { match: [QUOTA_RULE_HOST], mode: 'off' };
+}
+function quotaWriteRule(rule) {
+  const ctl = loadControl();
+  ctl.rules = (ctl.rules || []).filter((r) => !(r && (r.match || []).includes(QUOTA_RULE_HOST)));
+  ctl.rules.unshift(rule);
+  ctl.default = ctl.default || { mode: 'off' };
+  ctl.version = (ctl.version || 0) + 1;
+  ctl.updatedAt = new Date().toISOString();
+  ctl.updatedBy = 'bd-tls-forwarder';
+  try {
+    const tmp = CONTROL_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(ctl, null, 2), 'utf8');
+    fs.renameSync(tmp, CONTROL_FILE);
+    return true;
+  } catch (e) { log('配额看护: 写控制文件失败 ' + e.message); return false; }
+}
+async function quotaStep() {
+  const rule = quotaRule();
+  const p = await quotaProbe();
+  if (p.kind === 'skip') return;
+  log(`配额探测 key=${p.key || '?'} → ${p.kind}${p.detail ? ' · ' + p.detail : ''} · 当前规则=${rule.mode}`);
+  if (p.kind === 'ok') {
+    if (rule.mode !== 'throttle') {
+      quotaWriteRule({ match: [QUOTA_RULE_HOST], mode: 'throttle', maxPerMin: QUOTA_THROTTLE_PER_MIN, maxPerHour: QUOTA_THROTTLE_PER_HOUR, reason: 'key 只读端点恢复 200 → 限速放行' });
+      log(`配额看护: 🚦 恢复 → throttle ${QUOTA_THROTTLE_PER_MIN}/min · ${QUOTA_THROTTLE_PER_HOUR}/h`);
+    }
+    return;
+  }
+  if (p.kind === 'limited') {
+    const until = rule.cooldownUntil ? Date.parse(rule.cooldownUntil) : 0;
+    const inCooldown = rule.mode === 'cooldown' && until > Date.now();
+    if (inCooldown) { log(`配额看护: ⏳ 冷却中（${Math.round((until - Date.now()) / 60000)}min 后到期），不延长`); return; }
+    quotaWriteRule({ match: [QUOTA_RULE_HOST], mode: 'cooldown', cooldownUntil: new Date(Date.now() + QUOTA_BACKOFF_MIN * 60000).toISOString(), reason: `探测得 429 → 硬静默 ${QUOTA_BACKOFF_MIN}min` });
+    log(`配额看护: 🛑 进入 cooldown ${QUOTA_BACKOFF_MIN}min`);
+    return;
+  }
+  log('配额看护: ⚠️ 探测网络错误，不改状态');
+}
+function startQuotaWatch() {
+  if (!QUOTA_ENABLE) { log('配额看护: 已禁用 (BD_QUOTA_WATCH=0)'); return; }
+  log(`配额看护启动: 间隔 ${QUOTA_PROBE_MS / 60000}min · 探测 key[${QUOTA_KEY_INDEX}] · 退避 ${QUOTA_BACKOFF_MIN}min`);
+  const run = () => { quotaStep().catch((e) => log('配额看护异常: ' + (e && e.message))); };
+  setTimeout(run, 60 * 1000);          // 启动 1min 后首探（先让服务稳定）
+  setInterval(run, QUOTA_PROBE_MS);
+}
+startQuotaWatch();
