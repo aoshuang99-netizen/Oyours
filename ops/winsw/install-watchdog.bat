@@ -106,6 +106,19 @@ if not exist "%NODEEXE%" (
   exit /b 4
 )
 
+echo.
+echo --- 0) stop the LEGACY (non-service) watchdog stack on :3002/:3005/:3010/:3011 ---
+schtasks /Change /TN "MSCMS_Autostart" /DISABLE >nul 2>&1
+echo [i] MSCMS_Autostart disabled (rc=%ERRORLEVEL%)
+for %%P in (3002 3005 3010 3011) do (
+  for /f "tokens=5" %%a in ('netstat -ano ^| findstr /C:":%%P " ^| findstr "LISTENING"') do (
+    echo [i] killing legacy pid %%a on :%%P
+    taskkill /pid %%a /f >nul 2>&1
+  )
+)
+echo [i] waiting for ports to free ...
+timeout /t 3 /nobreak >nul 2>&1
+
 echo --- 1) is the WinSW binary launchable in this shell? ---
 "%HERE%mscms-watchdog.exe" version
 if errorlevel 1 goto :blocked
