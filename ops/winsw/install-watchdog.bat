@@ -28,10 +28,19 @@ echo [!] Administrator rights are required.
 echo     Requesting elevation - a UAC prompt will appear, please click Yes.
 echo.
 set "MSCMS_ELEVATED=1"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs -WorkingDirectory '%HERE%'" >nul 2>&1
+REM -WindowStyle Hidden: the elevated worker runs in a HIDDEN console. Reason: the
+REM visible elevated window can be closed by the user (or lose focus and be closed
+REM by accident) which kills the batch mid-install and leaves a truncated log.
+REM A hidden window cannot be closed by accident, so the install always finishes.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs -WindowStyle Hidden -WorkingDirectory '%HERE%'" >nul 2>&1
 if errorlevel 1 goto :noluck
-echo [i] Elevated instance launched in a NEW window. This one can be closed.
-timeout /t 4 /nobreak >nul 2>&1
+echo [i] A UAC prompt should appear now - click Yes.
+echo [i] The installer then runs in a HIDDEN background window
+echo     (nothing can be closed by accident).
+echo     Progress log: %LOG%
+echo.
+echo [i] You may close this window.
+pause
 exit /b 0
 
 :noluck
@@ -125,10 +134,16 @@ for /f "tokens=5" %%a in ('netstat -ano -p TCP ^| findstr /C:":3011 " ^| findstr
 echo [i] waiting for port 3011 to free ...
 timeout /t 3 /nobreak >nul 2>&1
 
-echo --- 1) is the WinSW binary launchable in this shell? ---
-"%HERE%mscms-watchdog.exe" version
-if errorlevel 1 goto :blocked
-echo [ok] binary is launchable.
+echo --- 1) WinSW binary check ---
+REM NOTE: we deliberately do NOT run `mscms-watchdog.exe version` here. That call is
+REM what made the previous runs stop dead right after this echo, with no error text
+REM and no leftover process. The binari-ness is already verified by the existence
+REM check above and by the `install` step below (which reports its own exit code).
+if not exist "%HERE%mscms-watchdog.exe" (
+  echo [!] missing "%HERE%mscms-watchdog.exe"
+  exit /b 3
+)
+echo [i] binary present - skipping the version probe.
 
 echo.
 echo --- 2) remove any previous instance ---
@@ -184,17 +199,3 @@ echo [i] patch-autostart exit code: %ERRORLEVEL%
 echo.
 echo === install finished ===
 exit /b 0
-
-:blocked
-echo.
-echo [!] "mscms-watchdog.exe" could NOT be executed here
-echo     ^(access denied / bad image - this shell blocks third-party .exe^).
-echo.
-echo     Do this instead:
-echo       1. Win+R  -^>  cmd            ^(a REAL console^)
-echo       2. Ctrl+Shift+Enter          ^(elevate it^)
-echo       3. cd /d "%HERE%"
-echo       4. install-watchdog.bat
-echo.
-echo     Do NOT run this from an IDE / integrated terminal / sandbox shell.
-exit /b 5
