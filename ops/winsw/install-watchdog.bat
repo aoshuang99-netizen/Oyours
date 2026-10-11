@@ -107,16 +107,20 @@ if not exist "%NODEEXE%" (
 )
 
 echo.
-echo --- 0) stop the LEGACY (non-service) watchdog stack on :3002/:3005/:3010/:3011 ---
+echo --- 0) hand over from the LEGACY (non-service) watchdog ---
 schtasks /Change /TN "MSCMS_Autostart" /DISABLE >nul 2>&1
 echo [i] MSCMS_Autostart disabled (rc=%ERRORLEVEL%)
-for %%P in (3002 3005 3010 3011) do (
-  for /f "tokens=5" %%a in ('netstat -ano ^| findstr /C:":%%P " ^| findstr "LISTENING"') do (
-    echo [i] killing legacy pid %%a on :%%P
-    taskkill /pid %%a /f >nul 2>&1
-  )
+REM Kill ONLY the legacy watchdog: it holds the single-instance lock on :3011,
+REM which would make the new WinSW watchdog exit immediately (see mscms-watchdog.js
+REM lock.listen(3011)). The child services (3002/3005/3010) are intentionally LEFT
+REM RUNNING: the watchdog adopts any port that is already LISTENING, so there is
+REM NO downtime and no 13-minute cold boot of 3002.
+REM NOTE: taskkill WITHOUT /T, so the detached child processes survive.
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /C:":3011 " ^| findstr "LISTENING"') do (
+  echo [i] stopping legacy watchdog pid %%a (holder of :3011)
+  taskkill /pid %%a /f >nul 2>&1
 )
-echo [i] waiting for ports to free ...
+echo [i] waiting for :3011 to free ...
 timeout /t 3 /nobreak >nul 2>&1
 
 echo --- 1) is the WinSW binary launchable in this shell? ---
