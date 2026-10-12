@@ -4,6 +4,9 @@
 # Exit code = number of failed checks (0 = all pass).
 #
 # Usage:  powershell -NoProfile -ExecutionPolicy Bypass -File _p0_verify.ps1
+#
+# ASCII-only on purpose: Windows PowerShell 5.1 reads this file as ANSI, so any
+# non-ASCII literal would be silently mangled and the checks would never match.
 
 $ErrorActionPreference = 'Continue'
 $fail = 0
@@ -13,6 +16,11 @@ function Say([string]$tag, [string]$msg) {
   if ($tag -eq 'PASS') { $script:pass++; Write-Host ("  [PASS] " + $msg) }
   elseif ($tag -eq 'FAIL') { $script:fail++; Write-Host ("  [FAIL] " + $msg) }
   else { Write-Host ("         " + $msg) }
+}
+
+function AsciiOnly([string]$s) {
+  if ($null -eq $s) { return '' }
+  return ($s -replace '[^\x20-\x7E]', '?')
 }
 
 function Get-ListenerPid([int]$port) {
@@ -39,10 +47,11 @@ Write-Host "=================================================================="
 Write-Host ""
 Write-Host "[1] watchdog :3011 (carrier of the P0-4 / P0-2 fixes)"
 $pidW = Get-ListenerPid 3011
+$ctrlStart = $null
 if ($pidW -gt 0) {
   Say PASS "port 3011 LISTENING pid=$pidW"
   $iw = Get-ProcInfo $pidW
-  if ($iw) { Say INFO ("started = " + $iw.CreationDate) }
+  if ($iw) { $ctrlStart = $iw.CreationDate; Say INFO ("started = " + $iw.CreationDate) }
 } else {
   Say FAIL "port 3011 NOT listening -- watchdog is down (WinSW should auto-restart within 10-20s)"
 }
@@ -51,10 +60,13 @@ if ($pidW -gt 0) {
 Write-Host ""
 Write-Host "[2] main :3002 (heap cap + RSS)"
 $pidM = Get-ListenerPid 3002
+$startM = $null
 if ($pidM -gt 0) {
   Say PASS "port 3002 LISTENING pid=$pidM"
   $im = Get-ProcInfo $pidM
   if ($im) {
+    $startM = $im.CreationDate
+    Say INFO ("started = " + $im.CreationDate)
     if ($im.CommandLine -match 'max-old-space-size=(\d+)') {
       Say PASS ("heap cap ACTIVE --max-old-space-size=" + $Matches[1] + "MB")
     } else {
@@ -75,6 +87,24 @@ if ($pidM -gt 0) {
   } catch { Say FAIL ("HTTP probe failed: " + $_.Exception.Message) }
 } else {
   Say FAIL "port 3002 NOT listening -- main service is down"
+}
+
+# ------------------------------------------- 2b. is the committed code LIVE?
+# Iron rule: "the file was changed" is NOT "the change took effect".
+# The only honest test is: did the running process start AFTER the file was written?
+Write-Host ""
+Write-Host "[2b] 3002 code freshness -- file changed is NOT change is live"
+$DUP = 'D:\MSCMS-Desktop\resources\http-client.js'
+if ($pidM -gt 0 -and (Test-Path $DUP)) {
+  $fmt = Get-Item $DUP
+  Say INFO ("http-client.js mtime = " + $fmt.LastWriteTime + "  size = " + $fmt.Length + " bytes")
+  if ($startM -and $startM -gt $fmt.LastWriteTime) {
+    Say PASS "3002 started AFTER http-client.js was updated -- the P0-5 fix is live"
+  } else {
+    Say FAIL "3002 started BEFORE http-client.js was updated -- restart 3002 for the P0-5 fix"
+  }
+} else {
+  Say INFO "skipped (3002 down, or D: copy missing)"
 }
 
 # ---------------------------------------------------------------- 3. relay
@@ -138,6 +168,31 @@ Get-Process node -ErrorAction SilentlyContinue | ForEach-Object { $agg += $_.Wor
 $agg = [math]::Round($agg / 1MB, 0)
 Say INFO ("aggregate node RSS = " + $agg + " MB")
 if ($agg -gt 5000) { Say FAIL "aggregate node RSS above 5000 MB" } else { Say PASS "aggregate node RSS ok" }
+
+# ----------------------------------------- 5b. P0-5 agent-cache observability
+# The fix is observable by design: http-client.js prints one line every ~20 min
+#   [http-client] agent-cache size=<n>/24 created=<n> retired=<n> ...
+# If that line exists, the NEW code is definitely running AND the cache is bounded.
+Write-Host ""
+Write-Host "[5b] 3002 agent-cache diagnostics (P0-5 root fix: bounded LRU + release)"
+try {
+  $newest = Get-ChildItem -Path 'D:\mscms-ws\logs' -Filter 'server-3002-*.log' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if ($newest) {
+    Say INFO ("log = " + $newest.Name)
+    $hit = Select-String -Path $newest.FullName -Pattern '[http-client] agent' -SimpleMatch -ErrorAction SilentlyContinue |
+           Select-Object -Last 1
+    if ($hit) {
+      Say PASS ("found: " + (AsciiOnly $hit.Line.Trim()))
+    } else {
+      Say INFO "diagnostic line not emitted yet (the first one appears ~20 min after 3002 restarts)"
+    }
+    $pc = @(Select-String -Path $newest.FullName -Pattern '[proxy-circuit]' -SimpleMatch -ErrorAction SilentlyContinue)
+    Say INFO ("[proxy-circuit] lines in this log = " + $pc.Count + "  (after the fix: at most ~40 per 5 min window)")
+  } else {
+    Say INFO "no server-3002 log file found"
+  }
+} catch { Say INFO ("log scan failed: " + $_.Exception.Message) }
 
 # ---------------------------------------------------------------- summary
 Write-Host ""

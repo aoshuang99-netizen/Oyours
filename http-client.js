@@ -81,18 +81,89 @@ if (proxy) {
 
 // 每调用方代理缓存：实现「按账号/按浏览器」分配不同出口 IP（429 限流根因缓解）。
 // 默认（不传 proxyUrl）仍走全局 proxyAgent，完全向后兼容。
-const _agentCache = new Map();
+//
+// ── 🔴 2026-10-12 P0-5：3002 内存黑洞根治（真凶就在本段）──────────────────
+// 事故：3002 RSS 7.4h 涨到 3.9GB（本实例 04:00:12Z 启 → 11:20Z 实测 3,902MB），
+//   顶到 Node 默认堆顶 + 把 16GB 物理内存压到 free 0.5GB ⇒ 其它进程报
+//   `页面文件太小`(0x800705AF) / `spawn EBUSY`，整机丧失响应能力；
+//   在此之前已两次误归因（Ollama CPU 抢占、MsMpEng 416%）——那些都只是伴随现象。
+// 归因（实证）：本实例日志（79,332 行）里 `[proxy-circuit] ⛔ 出口 X 连续失败`
+//   出现 23,664 次，涉及 **3,767 个不同出口 URL**；而旧实现每见到一个新出口就
+//   `new ProxyAgent(proxyUrl)` 并塞进 `_agentCache` —— 【无上限、无淘汰、永不 close()】。
+//   undici 的 ProxyAgent 自带 Pool / Client / connector / keep-alive socket / timer，
+//   3,902MB ÷ 3,767 ≈ 1.06MB/个 —— 与实测增量吻合（≈1GB/h，池子轮换越快涨得越快）。
+//   出口为什么这么多：池子里混入了免费代理（`proxy-pool.json` 有
+//   `"source":"free-proxy-pool"`，实测含 `http://0.0.0.0:80`、`http://47.252.18.37:6379`
+//   这类根本不是 HTTP 代理的地址），池子持续轮换 ⇒ 缓存只增不减 ⇒ RSS 单向爬升。
+// 修法：LRU 上限 + 淘汰即释放底层 socket/timer。
+//   · MAX_PROXY_AGENTS 默认 24：足够「按账号/按浏览器分散出口」，不再无限膨胀；
+//   · 命中即移到队尾（真 LRU），超限淘汰队首；
+//   · 释放走「先 graceful close()、90s 后硬 destroy()」两段式 ——
+//     close() 会等在途请求跑完（不打断业务），destroy() 兜住「socket 卡死导致
+//     close() 永不 settle」的场景，保证内存一定回收；
+//   · 出口被熔断时立即 retire（死出口没必要继续占坑）。
+// 可观测量：每 30min 打一行
+//   `[http-client] agent缓存 size=… created=… retired=… 熔断表=…`
+//   修复后 size 应恒 ≤ 24、retired 与 created 同步增长、RSS 不再单向爬升。
+// 回滚：`MSCMS_MAX_PROXY_AGENTS=0` 恢复旧的「无上限」行为（仅排障用）。
+const MAX_PROXY_AGENTS = (() => {
+  const v = Number(process.env.MSCMS_MAX_PROXY_AGENTS);
+  if (Number.isFinite(v) && v <= 0) return Infinity;          // 显式 0/负数 = 关闭上限（回滚开关）
+  return Number.isFinite(v) && v >= 4 ? Math.floor(v) : 24;
+})();
+const AGENT_DESTROY_AFTER_MS = Number(process.env.MSCMS_AGENT_DESTROY_AFTER_MS || 90 * 1000);
+const _agentCache = new Map();   // proxyUrl -> ProxyAgent（LRU：队首最旧）
+const _retiring = [];            // [{a, dueAt}] 已 graceful close、等待硬 destroy 兜底
+let _agentCreated = 0, _agentRetired = 0;
+
+function _hardDestroy(a) {
+  try {
+    if (a && typeof a.destroy === 'function') {
+      const p = a.destroy(); if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+  } catch (_) { /* 释放失败不影响请求路径 */ }
+}
+
+/** 退休一个 Agent：先 graceful close()（等在途请求跑完），并登记 90s 后硬 destroy 兜底 */
+function _retireAgent(a) {
+  if (!a) return;
+  _agentRetired++;
+  try {
+    if (typeof a.close === 'function') { const p = a.close(); if (p && typeof p.catch === 'function') p.catch(() => {}); }
+    else { _hardDestroy(a); return; }
+  } catch (_) { _hardDestroy(a); return; }
+  _retiring.push({ a, dueAt: Date.now() + AGENT_DESTROY_AFTER_MS });
+  // 抖动期兜底：退休队列也不允许无界
+  while (_retiring.length > 128) _hardDestroy(_retiring.shift().a);
+}
+
+function _evictAgent(proxyUrl) {
+  const a = _agentCache.get(proxyUrl);
+  if (!a) return false;
+  _agentCache.delete(proxyUrl);
+  _retireAgent(a);
+  return true;
+}
+
 function _agentFor(proxyUrl) {
   if (!proxyUrl) return proxyAgent;
-  if (_agentCache.has(proxyUrl)) return _agentCache.get(proxyUrl);
+  const hit = _agentCache.get(proxyUrl);
+  if (hit) { _agentCache.delete(proxyUrl); _agentCache.set(proxyUrl, hit); return hit; }  // LRU touch
+  let a;
   try {
-    const a = new ProxyAgent(proxyUrl);
-    _agentCache.set(proxyUrl, a);
-    return a;
+    a = new ProxyAgent(proxyUrl);
   } catch (e) {
     console.error(`[http-client] 代理 ${proxyUrl} 初始化失败，回退全局代理:`, e.message);
     return proxyAgent;
   }
+  _agentCache.set(proxyUrl, a);
+  _agentCreated++;
+  while (_agentCache.size > MAX_PROXY_AGENTS) {
+    const oldest = _agentCache.keys().next().value;
+    if (oldest === undefined || oldest === proxyUrl) break;   // 上限极小时别把刚建好的淘汰掉
+    _evictAgent(oldest);
+  }
+  return a;
 }
 
 /**
@@ -237,21 +308,81 @@ const _DEAD_PROXY_FAILS = new Map();   // proxyUrl -> 连续失败次数
 const _DEAD_PROXY_UNTIL = new Map();  // proxyUrl -> 熔断截止时间戳
 const PROXY_CIRCUIT_THRESHOLD = Number(process.env.MSCMS_PROXY_CIRCUIT_THRESHOLD || 2);
 const PROXY_CIRCUIT_COOLDOWN_MS = Number(process.env.MSCMS_PROXY_CIRCUIT_COOLDOWN_MS || 5 * 60 * 1000);
+// 熔断表硬上限（2026-10-12 P0-5）：免费代理池（tools/free-proxy-pool.js）会持续轮换出
+//   成千上万个无效出口，这两个 Map 若不加约束同样是慢泄漏。上限内按插入序淘汰最旧。
+const PROXY_CIRCUIT_MAX = Math.max(64, Number(process.env.MSCMS_PROXY_CIRCUIT_MAX || 4096));
 
 function _proxyCircuitOpen(proxyUrl) {
   const until = _DEAD_PROXY_UNTIL.get(proxyUrl) || 0;
   return Date.now() < until;
 }
+
+// ── 熔断日志限流（2026-10-12 P0-5）──────────────────────────────────────
+// 背景：本实例 79,332 行日志里有 23,664 行（29.8%）都是同一句
+//   `[proxy-circuit] ⛔ 出口 X 连续失败 2 次 → 熔断 5 分钟`，涉及 3,767 个出口。
+//   真故障（MySQL 断连 / 语法错 / 出口全灭）会被彻底淹没 —— 这正是 10-10「宕机
+//   10.3h 无人定位」的同一个坑。故保留 `[proxy-circuit]` 前缀（既有 grep 不受影响），
+//   但改成「窗口内前 N 条逐条 + 其余聚合成一条汇总」，信号不丢、噪声降 95%+。
+const CIRCUIT_LOG_WINDOW_MS = Number(process.env.MSCMS_CIRCUIT_LOG_WINDOW_MS || 5 * 60 * 1000);
+const CIRCUIT_LOG_BUDGET = Number(process.env.MSCMS_CIRCUIT_LOG_BUDGET || 40);
+let _circuitWinStart = Date.now(), _circuitWinCount = 0, _circuitSuppressed = 0, _circuitTotal = 0;
+
+function _circuitLog(proxyUrl, n) {
+  _circuitTotal++;
+  const now = Date.now();
+  if (now - _circuitWinStart >= CIRCUIT_LOG_WINDOW_MS) {
+    if (_circuitSuppressed > 0) {
+      console.warn(`[proxy-circuit] （上一 ${Math.round(CIRCUIT_LOG_WINDOW_MS / 60000)}min 窗口另有 ${_circuitSuppressed} 次熔断已聚合，累计 ${_circuitTotal} 次）`);
+    }
+    _circuitWinStart = now; _circuitWinCount = 0; _circuitSuppressed = 0;
+  }
+  if (_circuitWinCount < CIRCUIT_LOG_BUDGET) {
+    _circuitWinCount++;
+    console.warn(`[proxy-circuit] ⛔ 出口 ${proxyUrl} 连续失败 ${n} 次 → 熔断 ${Math.round(PROXY_CIRCUIT_COOLDOWN_MS / 60000)} 分钟，改走全局代理`);
+  } else {
+    _circuitSuppressed++;
+  }
+}
+
 function _noteProxyFail(proxyUrl) {
   const n = (_DEAD_PROXY_FAILS.get(proxyUrl) || 0) + 1;
   _DEAD_PROXY_FAILS.set(proxyUrl, n);
   if (n >= PROXY_CIRCUIT_THRESHOLD && !_proxyCircuitOpen(proxyUrl)) {
     _DEAD_PROXY_UNTIL.set(proxyUrl, Date.now() + PROXY_CIRCUIT_COOLDOWN_MS);
     _DEAD_PROXY_FAILS.set(proxyUrl, 0);
-    console.warn(`[proxy-circuit] ⛔ 出口 ${proxyUrl} 连续失败 ${n} 次 → 熔断 ${Math.round(PROXY_CIRCUIT_COOLDOWN_MS / 60000)} 分钟，改走全局代理`);
+    // 2026-10-12 P0-5：判定死亡的出口立刻释放它占用的 undici Agent
+    //   —— 这是 3.9GB RSS 的主要来源，死出口没有任何理由继续占坑。
+    _evictAgent(proxyUrl);
+    _circuitLog(proxyUrl, n);
+    if (_DEAD_PROXY_UNTIL.size > PROXY_CIRCUIT_MAX) {
+      const k = _DEAD_PROXY_UNTIL.keys().next().value;
+      if (k !== undefined) { _DEAD_PROXY_UNTIL.delete(k); _DEAD_PROXY_FAILS.delete(k); }
+    }
   }
 }
-function _noteProxyOk(proxyUrl) { _DEAD_PROXY_FAILS.set(proxyUrl, 0); }
+// 成功即删键（旧实现只把值写成 0、键永久保留 ⇒ 3,767 个出口 = 3,767 个常驻键）
+function _noteProxyOk(proxyUrl) { _DEAD_PROXY_FAILS.delete(proxyUrl); }
+
+// ── 后台回收器（2026-10-12 P0-5）────────────────────────────────────────
+// ① 硬 destroy 已 graceful close 的 Agent（兜住「socket 卡死 ⇒ close() 永不 settle」）
+// ② 清掉过期熔断项与归零计数，把两张表钉在真实规模上
+// ③ 输出可观测量，让「修复是否生效」可被机器判定（而不是靠感觉）
+const REAP_MS = Math.max(100, Number(process.env.MSCMS_AGENT_REAP_MS || 15000));
+const DIAG_EVERY_TICKS = Math.max(1, Math.round(Number(process.env.MSCMS_AGENT_DIAG_MS || 20 * 60 * 1000) / REAP_MS));
+let _diagTicks = 0;
+function _reapNow() {
+  const now = Date.now();
+  for (let i = _retiring.length - 1; i >= 0; i--) {
+    if (_retiring[i].dueAt <= now) { _hardDestroy(_retiring[i].a); _retiring.splice(i, 1); }
+  }
+  for (const k of [..._DEAD_PROXY_UNTIL.keys()]) if ((_DEAD_PROXY_UNTIL.get(k) || 0) <= now) _DEAD_PROXY_UNTIL.delete(k);
+  for (const k of [..._DEAD_PROXY_FAILS.keys()]) if (!_DEAD_PROXY_FAILS.get(k)) _DEAD_PROXY_FAILS.delete(k);
+  _diagTicks++;
+  if (_diagTicks % DIAG_EVERY_TICKS !== 0) return;
+  console.log(`[http-client] agent缓存 size=${_agentCache.size}/${MAX_PROXY_AGENTS === Infinity ? '∞' : MAX_PROXY_AGENTS} created=${_agentCreated} retired=${_agentRetired} 待硬销毁=${_retiring.length} 熔断表=${_DEAD_PROXY_UNTIL.size} 熔断累计=${_circuitTotal}`);
+}
+const _reapTimer = setInterval(_reapNow, REAP_MS);
+if (typeof _reapTimer.unref === 'function') _reapTimer.unref();
 
 async function fetchExt(url, opts = {}, proxyUrl) {
   // ⛔ 熔断中的出口直接跳过，不再浪费 20s 超时
