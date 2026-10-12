@@ -214,7 +214,16 @@ function bdConnect() {
  *   "误判白名单导致原本能用的站点失败"的退化风险）。
  */
 const DIRECT_SUFFIX = String(process.env.BD_DIRECT_SUFFIX
-  || '.cn,.qq.com,.tencent.com,.weixin.qq.com,.qpic.cn,.gtimg.cn,.myqcloud.com,.workbuddy.cn,.codebuddy.cn,.local,localhost')
+  || '.cn,.qq.com,.tencent.com,.weixin.qq.com,.qpic.cn,.gtimg.cn,.myqcloud.com,.workbuddy.cn,.codebuddy.cn,.local,localhost'
+    // 【2026-10-12 P0-5】把系统/IDE 后台噪声分流到直连。
+    //   实测 vz-*.b-cdn.net（BunnyCDN）/ v10.events.data.microsoft.com（微软遥测）/
+    //   optimizationguide-pa.googleapis.com 等与业务无关的域名，会以
+    //   `BD 上游超时(>12s)` 持续占满转发器的上游并发槽，把 git push / api.tumblr.com
+    //   等关键请求挤到超时（现象：push 挂 15min 无输出）。
+    //   走直连：国内可达的直达；国外不可达的 5s 后**自动回退 BD**（零退化）。
+    //   净效果 = 把 BD 并发槽让给关键流量。
+    //   ⚠️ 严禁把 api.tumblr.com / github.com 放进本白名单（它们必须经 BD TLS）。
+    + ',.b-cdn.net,.microsoft.com,.msedge.net,.windowsupdate.com,.live.com,.office.com,.bing.com,.msn.com,.googleapis.com,.gstatic.com,.google.com,.gvt1.com,.googleusercontent.com')
   .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const DIRECT_TIMEOUT_MS = Number(process.env.BD_DIRECT_TIMEOUT_MS || 5000);
 

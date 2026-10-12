@@ -161,7 +161,17 @@ const SERVICES = [
     // 2026-09-05：改用 D 盘桌面安装包内的 server.js（与 MSCMS v14 Desktop.exe 同源），
     //   否则看门狗从工作区拉起实例会长期占住 3002，导致桌面应用永远 EADDRINUSE。
     //   注意：工作区 server.js 改动后需重新同步到 D:\MSCMS-Desktop\resources 才生效。
-    cmd: NODE, args: ['server.js'], cwd: 'D:\\MSCMS-Desktop\\resources',
+    // 【2026-10-12 P0-5 内存黑洞】显式钉死 V8 老生代上限。
+    //   实测：3002 RSS 从 2.76GB(10-11) 涨到 4007MB(10-12)，而 Node 在 16GB 机器上的
+    //   **默认堆上限 ≈4GB** ⇒ 已顶到天花板。后果不是"自己 OOM 退出"这么干净，而是：
+    //   V8 在堆顶附近反复做 full GC ⇒ 事件循环被占满 ⇒ 探活 HTTP 0（看门狗记为"假活"）；
+    //   同时 RSS 挤压 16GB 物理内存 ⇒ 其它进程申请内存失败（实测 PowerShell/spawn 报
+    //   `页面文件太小` / `spawnSync cmd.exe EBUSY`）。**这才是 P0-4 的真根因**，
+    //   而 CPU 抢占（MsMpEng 416%）只是伴随现象。
+    //   显式 3GB 的效果：① 提前 GC，避免长时间停顿；② 真到上限时快速崩溃，
+    //   由看门狗 60s 内拉起（可控），而不是把整机拖进资源枯竭（不可控）。
+    //   回滚：删掉本参数即可。
+    cmd: NODE, args: ['--max-old-space-size=3072', 'server.js'], cwd: 'D:\\MSCMS-Desktop\\resources',
     // 2026-09-06：PUBLIC_DOMAIN 改为 mscms.lokfeel.com —— hlua.cc.cd 对 /api/v14/* 超时
     //   （该域指向另一 zone/端口），登录页与生成的公网链接应指向真正可用的 v14 入口。
     // 【2026-09-12 解发布瓶颈】单账号日发帖上限 6 → 12。
