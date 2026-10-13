@@ -11021,6 +11021,25 @@ async function initV14Schema() {
     console.log(`[server] MySQL pool → ${process.env.MYSQL_HOST || '127.0.0.1'}:${process.env.MYSQL_PORT || '3307'}/${process.env.MYSQL_DB || 'affiliate_system'}`);
     // 预初始化 v14 模块
     initV14();
+    // ── P0-5c：把 DataStore 规模接进 http-client 的内存诊断行 ──
+    //   目的：把「heapUsed 涨到 800MB」拆成「合法数据体量」与「真实泄漏」两部分。
+    //   http-client 不感知 DataStore，故由这里反向注册一个只读探针（惰性取值）。
+    try {
+      const { setDiagExtra } = require('./http-client');
+      setDiagExtra(() => {
+        const ds = v14Modules && v14Modules.dataStore;
+        if (!ds || !ds._cache) return null;
+        let recs = 0, hist = 0, tomb = 0;
+        const top = [];
+        for (const [m, map] of ds._cache) { const n = map.size; recs += n; top.push([m, n]); }
+        if (ds._history) for (const arr of ds._history.values()) hist += arr.length;
+        if (ds._tombstones) for (const mm of ds._tombstones.values()) tomb += mm.size;
+        top.sort((a, b) => b[1] - a[1]);
+        const top5 = top.slice(0, 5).map(([m, n]) => m + '=' + n).join(',');
+        return 'ds模块=' + ds._cache.size + ' 记录=' + recs + ' 历史=' + hist + ' 墓碑=' + tomb + ' TOP5[' + top5 + ']';
+      });
+      console.log('[diag] DataStore 规模探针已挂载 → http-client 诊断行');
+    } catch (e) { console.error('[diag] 探针挂载失败:', e.message); }
     // ── Phase 6 / #534 挂载实时 WS 推送中心（事件总线 → /ws/v14） ──
     if (v14Modules && v14Modules.realtimeHub) {
       try { v14Modules.realtimeHub.attach(server); }
@@ -12931,5 +12950,19 @@ app.get('/api/v14/auth/snapshot', (req, res) => {
   if (!am) return res.status(503).json({ ok: false, error: 'auth_not_initialized' });
   res.json(am.snapshot());
 });
+
+// ── 代理一键运维端点（2026-10-13）────────────────────────────────────
+// 体检 exit-guard + 切池(3005 activate) + 实测每个出口的 Tumblr 可达性与真实出口 IP
+// + 有条件把池镜像到发布器实际读取的 D 盘并热生效（清 cloud-publisher 的 _proxyCache）。
+// 详见 ops-oneclick.js 顶部注释（说明为何「按了没生效」是两个缺口叠加）。
+try {
+  const { registerOpsRoutes } = require('./ops-oneclick.js');
+  registerOpsRoutes(app, {
+    getCloudPublisher: () => (v14Modules && v14Modules.cloudPublisher) || null,
+  });
+  console.log('[ops] 代理一键运维端点已挂载：POST /api/ops/proxy-oneclick, GET /api/ops/proxy-status');
+} catch (e) {
+  console.error('[ops] 代理运维端点挂载失败:', e.message);
+}
 
 module.exports = { app, pool };

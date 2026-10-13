@@ -369,7 +369,17 @@ function _noteProxyOk(proxyUrl) { _DEAD_PROXY_FAILS.delete(proxyUrl); }
 // ③ 输出可观测量，让「修复是否生效」可被机器判定（而不是靠感觉）
 const REAP_MS = Math.max(100, Number(process.env.MSCMS_AGENT_REAP_MS || 15000));
 const DIAG_EVERY_TICKS = Math.max(1, Math.round(Number(process.env.MSCMS_AGENT_DIAG_MS || 20 * 60 * 1000) / REAP_MS));
+// P0-5c（2026-10-13）：启动后前 DENSE_FOR_MS 内改用 DENSE_EVERY_MS 的加密节奏打点。
+//   原因：RSS/heap 是 V8 锯齿（实测 879MB → 608MB 一分钟内回落），20min 粒度两点算不出斜率；
+//   而「是否收敛」只有在冷启动窗口里才看得清。窗口过后自动回到 20min 稳态节奏。
+const DENSE_FOR_MS = Math.max(0, Number(process.env.MSCMS_AGENT_DIAG_DENSE_FOR_MS || 30 * 60 * 1000));
+const DENSE_TICKS = Math.max(1, Math.round(Number(process.env.MSCMS_AGENT_DIAG_DENSE_EVERY_MS || 2 * 60 * 1000) / REAP_MS));
+const _BOOT_AT = Date.now();
 let _diagTicks = 0;
+// 外部注入的「集合规模探针」：http-client 不该知道 DataStore / proxy-pool 的存在，
+//   故由 server.js 通过 setDiagExtra(fn) 反向注册，返回一段附加文本（或 null）。
+let _diagExtra = null;
+function setDiagExtra(fn) { _diagExtra = (typeof fn === 'function') ? fn : null; }
 function _reapNow() {
   const now = Date.now();
   for (let i = _retiring.length - 1; i >= 0; i--) {
@@ -378,20 +388,33 @@ function _reapNow() {
   for (const k of [..._DEAD_PROXY_UNTIL.keys()]) if ((_DEAD_PROXY_UNTIL.get(k) || 0) <= now) _DEAD_PROXY_UNTIL.delete(k);
   for (const k of [..._DEAD_PROXY_FAILS.keys()]) if (!_DEAD_PROXY_FAILS.get(k)) _DEAD_PROXY_FAILS.delete(k);
   _diagTicks++;
-  if (_diagTicks % DIAG_EVERY_TICKS !== 0) return;
+  const _dense = (now - _BOOT_AT) < DENSE_FOR_MS;
+  const _every = _dense ? DENSE_TICKS : DIAG_EVERY_TICKS;
+  if (_diagTicks % _every !== 0) return;
   // P0-5b（2026-10-13）：诊断行加入真实内存构成 —— 只报 Map 大小无法解释
   //   「size 恒 ≤24 但 RSS 仍涨到 3.9GB」。heapUsed 增长 ⇒ JS 对象泄漏（查 Map/闭包）；
   //   external/arrayBuffers 增长 ⇒ undici socket/buffer 未归还（查 agent destroy 路径）。
   const _mu = process.memoryUsage();
   const _mb = (x) => Math.round((x || 0) / 1048576);
-  console.log(`[http-client] agent缓存 size=${_agentCache.size}/${MAX_PROXY_AGENTS === Infinity ? '∞' : MAX_PROXY_AGENTS} created=${_agentCreated} retired=${_agentRetired} 待硬销毁=${_retiring.length} 熔断表=${_DEAD_PROXY_UNTIL.size} 熔断累计=${_circuitTotal} | rss=${_mb(_mu.rss)}MB heapUsed=${_mb(_mu.heapUsed)}MB heapTotal=${_mb(_mu.heapTotal)}MB external=${_mb(_mu.external)}MB arrayBuffers=${_mb(_mu.arrayBuffers)}MB`);
+  let _extra = '';
+  if (_diagExtra) {
+    try { const r = _diagExtra(); if (r) _extra = ` | ${r}`; }
+    catch (e) { _extra = ` | extra-error=${e.message}`; }
+  }
+  const _upMin = ((now - _BOOT_AT) / 60000).toFixed(1);
+  console.log(`[http-client] agent缓存 size=${_agentCache.size}/${MAX_PROXY_AGENTS === Infinity ? '∞' : MAX_PROXY_AGENTS} created=${_agentCreated} retired=${_agentRetired} 待硬销毁=${_retiring.length} 熔断表=${_DEAD_PROXY_UNTIL.size} 熔断累计=${_circuitTotal} | up=${_upMin}min rss=${_mb(_mu.rss)}MB heapUsed=${_mb(_mu.heapUsed)}MB heapTotal=${_mb(_mu.heapTotal)}MB external=${_mb(_mu.external)}MB arrayBuffers=${_mb(_mu.arrayBuffers)}MB${_extra}`);
 }
 const _reapTimer = setInterval(_reapNow, REAP_MS);
 if (typeof _reapTimer.unref === 'function') _reapTimer.unref();
 
 async function fetchExt(url, opts = {}, proxyUrl) {
-  // ⛔ 熔断中的出口直接跳过，不再浪费 20s 超时
-  if (proxyUrl && !BD_UNLOCKER_RE.test(proxyUrl) && _proxyCircuitOpen(proxyUrl)) {
+  // ⛔ 熔断中的出口直接跳过，不再浪费 20s 超时。
+  //    ⚠️ 2026-10-13 注意：这会把「经该出口」静默变成「经全局代理」——
+  //    用于健康检查时会让探针张口说谎（测的不是那个出口）。运维探针须传
+  //    `opts.bypassCircuit = true` 才能拿到该出口的真实结论。
+  const _bypassCircuit = opts.bypassCircuit === true;
+  if (_bypassCircuit) delete opts.bypassCircuit;
+  if (proxyUrl && !_bypassCircuit && !BD_UNLOCKER_RE.test(proxyUrl) && _proxyCircuitOpen(proxyUrl)) {
     proxyUrl = null;   // 回落全局代理
   }
   // ① 显式指定 bdunlocker 出口
@@ -446,4 +469,4 @@ async function ping(url, timeoutMs = 8000) {
   }
 }
 
-module.exports = { fetchExt, ping, proxyUrl: proxy, hasProxy: !!proxyAgent };
+module.exports = { fetchExt, ping, proxyUrl: proxy, hasProxy: !!proxyAgent, setDiagExtra, isProxyCircuitOpen: _proxyCircuitOpen };

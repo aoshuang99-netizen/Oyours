@@ -108,7 +108,7 @@ function req(port, method, urlPath, body, timeout) {
   // 【2026-10-13 修正】原实现用 netstatPid 判「pid 变了没」，但本机 netstat 常静默返空
   //   （实测 tcp=UP 却 pidOn3002=- 连续 5 分钟）⇒ 明明重启成功却报 NO_NEW_PID。
   //   改为两阶段端口判定：端口「先 down 后 up」即新实例，不依赖 netstat。
-  let sawDown = false, newPid = null;
+  let sawDown = false, restored = false, newPid = null;
   for (let i = 1; i <= 120; i++) {
     await sleep(5000);
     const up = await tcpOpen(3002);
@@ -117,6 +117,7 @@ function req(port, method, urlPath, body, timeout) {
       if (!sawDown) console.log(`${ts()} [poll ${i}] ${el}s 3002 端口已释放（旧进程退出），等看门狗重拉…`);
       sawDown = true;
     } else if (sawDown) {
+      restored = true;
       newPid = netstatPid(3002);
       console.log(`${ts()} [poll ${i}] ${el}s ✅ 3002 已恢复监听（端口先 down 后 up）pid=${newPid || '(netstat 未解析到，但端口已 UP)'}`);
       break;
@@ -131,7 +132,8 @@ function req(port, method, urlPath, body, timeout) {
     console.log(`${ts()} [6] 已复位 ${path.basename(PID_FILE)} = []`);
   } catch (e) { console.log('   复位失败: ' + e.message); }
 
-  console.log(`${ts()} [7] 结果: ${newPid ? ('NEW_PID=' + newPid) : 'NO_NEW_PID（10 分钟内未见新实例）'}`);
+  // 判据以「端口先 down 后 up」为准（restored），netstat 只作 pid 的 best-effort 展示
+  console.log(`${ts()} [7] 结果: ${restored ? ('RESTARTED' + (newPid ? ' pid=' + newPid : ' pid=未解析(netstat 空，端口已 UP 即成功)')) : 'FAILED（10 分钟内未见「先 down 后 up」）'}`);
   const r = await Promise.race([pending, sleep(2000).then(() => ({ note: 'activate 仍在执行' }))]);
   console.log(`${ts()} [8] activate -> ` + JSON.stringify(r).slice(0, 300));
   process.exit(0);
