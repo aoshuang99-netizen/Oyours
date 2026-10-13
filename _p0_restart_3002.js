@@ -105,15 +105,24 @@ function req(port, method, urlPath, body, timeout) {
   pending.then((r) => console.log(`${ts()} [5b] activate 返回 -> ` + JSON.stringify(r).slice(0, 400)));
 
   // ── 轮询 ──
-  let prevGone = 0, newPid = null;
-  for (let i = 1; i <= 60; i++) {
+  // 【2026-10-13 修正】原实现用 netstatPid 判「pid 变了没」，但本机 netstat 常静默返空
+  //   （实测 tcp=UP 却 pidOn3002=- 连续 5 分钟）⇒ 明明重启成功却报 NO_NEW_PID。
+  //   改为两阶段端口判定：端口「先 down 后 up」即新实例，不依赖 netstat。
+  let sawDown = false, newPid = null;
+  for (let i = 1; i <= 120; i++) {
     await sleep(5000);
-    const cur = netstatPid(3002);
     const up = await tcpOpen(3002);
     const el = Math.round((Date.now() - t0) / 1000);
-    if (!cur && !up) { prevGone++; if (prevGone <= 3) console.log(`${ts()} [poll ${i}] ${el}s 3002 端口已释放（进程已退出），等看门狗重拉…`); }
-    else if (cur && cur !== target) { newPid = cur; console.log(`${ts()} [poll ${i}] ${el}s ✅ 3002 已换新实例 pid ${target} → ${cur}`); break; }
-    else if (i % 6 === 0) console.log(`${ts()} [poll ${i}] ${el}s tcp=${up ? 'UP' : 'down'} pidOn3002=${cur || '-'}`);
+    if (!up) {
+      if (!sawDown) console.log(`${ts()} [poll ${i}] ${el}s 3002 端口已释放（旧进程退出），等看门狗重拉…`);
+      sawDown = true;
+    } else if (sawDown) {
+      newPid = netstatPid(3002);
+      console.log(`${ts()} [poll ${i}] ${el}s ✅ 3002 已恢复监听（端口先 down 后 up）pid=${newPid || '(netstat 未解析到，但端口已 UP)'}`);
+      break;
+    } else if (i % 6 === 0) {
+      console.log(`${ts()} [poll ${i}] ${el}s tcp=UP（尚未见到 down，可能未杀成功或目标已换）`);
+    }
   }
 
   // ── 恢复 pid 文件（不覆盖 writePool 的结果时再恢复）──
