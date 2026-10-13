@@ -1,33 +1,40 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * BD Tumblr 配额看护 (2026-10-11 · P0-2) —— key[0] 自适应冷却状态机
+ * BD Tumblr 配额看护（2026-10-11 立 · 2026-10-13 重大修正）
  * ============================================================================
  * 与 tools/bd-tls-forwarder.js 的「出网闸门」配对：
  *   转发器负责【执行】闸门（cooldown 硬静默 / throttle 令牌桶），
  *   本脚本负责【决策】—— 探测 key[0] 的真实配额状态，改写控制文件。
  *
- * 为什么需要它：Tumblr 429 是【按 consumer key】限流（实测同 IP 同刻
- *   key[1] → 200，key[0] "MSCMS Auto Poster" → 429）。全部 50 账号的 OAuth
- *   token 都绑 key[0]，发布器持续退避重试 ⇒ 配额窗口从未滑过 ⇒ 自持 429
- *   （连续 30.7h 零成功）。发布器自带的「≥3 账号/10min 升级全局暂停」只有
- *   约 8 分钟，**远短于配额窗口**，因此必须由外部提供足够长的硬静默。
+ * 🔴 2026-10-13 修正（旧版 45min 固定退避是错的，会把一次配额耗尽放大成 8h+ 停摆）
+ *   Tumblr 的限流是【按 consumer key】，且响应头给出精确窗口（200 与 429 都带）：
+ *     x-ratelimit-perhour-limit = 1000 / -remaining / -reset(秒)
+ *     x-ratelimit-perday-limit  = 5000 / -remaining / -reset(秒)
+ *   实测（同刻同 IP、经 BD TLS 直连，绕开本机闸门）：
+ *     key[0] MSCMS Auto Poster → 429，perday-remaining = 0，perday-reset ≈ 22442s
+ *     key[1] Explore API       → 200 / 401（签名不匹配时），perday-remaining = 3851
+ *   ⇒ 出口链路、IP、GFW 全部无辜；**日配额耗尽**才是 429 的唯一原因。
+ *   ⇒ 旧版退避 45min ≪ 日窗口 6.2h ⇒ 冷却到期探测必然仍 429 ⇒ 再 45min ⇒
+ *     **自持死循环**（bd-relay-control.json version 已累到 36）。
+ *   ⇒ 现改为：退避时长由 reset 头驱动（smartBackoff），且**绝不允许被缩短**。
  *
- * 状态机（每 PROBE_MS 探一次，只读端点，单次 1 请求，开销可忽略）：
- *   cooldown + 探测 200  → 切 throttle（放行但限速，防止再次洪峰）
- *   cooldown + 探测 429  → 冷却延长 BACKOFF_MIN（上限 MAX_COOLDOWN_MIN）
- *   throttle + 探测 429  → 回 cooldown（说明限速仍偏高）
- *   throttle + 探测 200  → 保持（不放宽，观察发布侧真实结果）
- *   探测网络错误        → 不改状态（上游抖动不该误判配额）
+ * 状态机（冷却剩余 >30min 时跳过探测，避免探测风暴）：
+ *   200 + cooldown            → throttle（按小时余量收紧速率）
+ *   429 + throttle            → 回 cooldown
+ *   429 + cooldown(未到期)     → 现存冷却短于按 reset 算出的目标 ⇒ 升级；否则保持
+ *   429 + 冷却已到期           → cooldown = now + smartBackoff
+ *   网络错误                   → 不改状态（上游抖动不该误判配额）
  *
  * ⚠️ 探测必须【直连 BD TLS 33335】，不能走本地转发器 —— 否则会被自己的
- *    闸门 429 拦截，永远测不出真状态。
+ *    闸门拦（闸门回「200 Connection established 后立刻关闭」，表现为 fetch failed）。
  *
  * 用法：
  *   node tools/bd-tumblr-quota-watch.js                 # 常驻自适应
  *   node tools/bd-tumblr-quota-watch.js --once          # 单次探测（不改状态）
+ *   node tools/bd-tumblr-quota-watch.js --rl            # 只打印配额快照（人读）
  *   node tools/bd-tumblr-quota-watch.js --status        # 打印控制文件
- *   node tools/bd-tumblr-quota-watch.js --cooldown 60   # 手动设冷却 60 分钟
+ *   node tools/bd-tumblr-quota-watch.js --cooldown 380  # 手动设冷却 N 分钟
  *   node tools/bd-tumblr-quota-watch.js --throttle 6 120# 手动设限速
  * ============================================================================
  */
@@ -51,8 +58,8 @@ const BD_TLS_PORT = process.env.BD_TLS_PORT || '33335';
 
 // ── 策略参数 ──
 const PROBE_MS = Number(process.env.QUOTA_PROBE_MS || 10 * 60 * 1000);
-const BACKOFF_MIN = Number(process.env.QUOTA_BACKOFF_MIN || 45);
-const MAX_COOLDOWN_MIN = Number(process.env.QUOTA_MAX_COOLDOWN_MIN || 240);
+const BACKOFF_MIN = Number(process.env.QUOTA_BACKOFF_MIN || 45);          // 仅在无 reset 头时兜底
+const MAX_COOLDOWN_MIN = Number(process.env.QUOTA_MAX_COOLDOWN_MIN || 1440);
 const THROTTLE_PER_MIN = Number(process.env.QUOTA_THROTTLE_PER_MIN || 6);
 const THROTTLE_PER_HOUR = Number(process.env.QUOTA_THROTTLE_PER_HOUR || 120);
 const KEY_INDEX = Number(process.env.QUOTA_KEY_INDEX || 0);   // 0 = MSCMS Auto Poster
@@ -93,6 +100,32 @@ function upsertRule(ctl, rule) {
   return ctl;
 }
 
+// ── 配额快照（Tumblr 在 200 与 429 上都给）──
+function rlOf(r) {
+  const num = (n) => { const v = r.headers.get(n); return (v === null || v === undefined) ? null : Number(v); };
+  const rl = {
+    hourLimit: num('x-ratelimit-perhour-limit'), hourRemain: num('x-ratelimit-perhour-remaining'), hourReset: num('x-ratelimit-perhour-reset'),
+    dayLimit: num('x-ratelimit-perday-limit'), dayRemain: num('x-ratelimit-perday-remaining'), dayReset: num('x-ratelimit-perday-reset'),
+  };
+  return (rl.hourLimit === null && rl.dayLimit === null) ? null : rl;
+}
+function rlText(rl) {
+  if (!rl) return '无配额头';
+  const mm = (s) => (s === null ? '?' : Math.round(s / 60) + 'min');
+  return `h ${rl.hourRemain}/${rl.hourLimit} (reset ${mm(rl.hourReset)}) · d ${rl.dayRemain}/${rl.dayLimit} (reset ${mm(rl.dayReset)})`;
+}
+/** 退避时长：由 Tumblr 的 reset 头驱动，而不是拍脑袋的固定值（加 120s 缓冲防擦边 429）*/
+function smartBackoff(rl) {
+  const BUF = 120 * 1000;
+  if (rl && rl.dayRemain !== null && rl.dayRemain <= 0 && rl.dayReset > 0) {
+    return { ms: Math.min(rl.dayReset * 1000 + BUF, 24 * 3600e3), why: '日配额耗尽' };
+  }
+  if (rl && rl.hourRemain !== null && rl.hourRemain <= 0 && rl.hourReset > 0) {
+    return { ms: Math.min(rl.hourReset * 1000 + BUF, 3600e3), why: '小时配额耗尽' };
+  }
+  return { ms: BACKOFF_MIN * 60000, why: '无 reset 头 ⇒ 固定退避' };
+}
+
 // ── 探测素材 ──
 function tumblrConsumerKey() {
   const apps = readJson(path.join(WS, 'tumblr_apps.json'), null) || readJson(path.join(DATA_DIR, 'tumblr_apps.json'), []);
@@ -114,7 +147,7 @@ function makeAgent() {
   const user = `brd-customer-${BD_CUSTOMER}-zone-${BD_ZONE}`;
   return new ProxyAgent(`https://${encodeURIComponent(user)}:${encodeURIComponent(BD_PASSWORD)}@${BD_HOST}:${BD_TLS_PORT}`);
 }
-/** 只读探测：返回 { kind:'ok'|'limited'|'net', status, ms, detail } */
+/** 只读探测：返回 { kind:'ok'|'limited'|'net', status, ms, rl, detail } */
 async function probe() {
   const k = tumblrConsumerKey();
   const blog = sampleBlog();
@@ -125,9 +158,10 @@ async function probe() {
     const r = await ufetch(url, { dispatcher: makeAgent(), signal: AbortSignal.timeout(30000) });
     const body = await r.text();
     const ms = Date.now() - t0;
-    if (r.status === 200) return { kind: 'ok', status: 200, ms, detail: 'key 配额正常', key: k.label, blog };
-    if (r.status === 429) return { kind: 'limited', status: 429, ms, detail: body.slice(0, 120).replace(/\s+/g, ' '), key: k.label, blog };
-    return { kind: 'net', status: r.status, ms, detail: 'HTTP ' + r.status + ' ' + body.slice(0, 100).replace(/\s+/g, ' '), key: k.label, blog };
+    const rl = rlOf(r);
+    if (r.status === 200) return { kind: 'ok', status: 200, ms, rl, detail: 'key 配额正常', key: k.label, blog };
+    if (r.status === 429) return { kind: 'limited', status: 429, ms, rl, detail: body.slice(0, 120).replace(/\s+/g, ' '), key: k.label, blog };
+    return { kind: 'net', status: r.status, ms, rl, detail: 'HTTP ' + r.status + ' ' + body.slice(0, 100).replace(/\s+/g, ' '), key: k.label, blog };
   } catch (e) {
     return { kind: 'net', detail: (e.cause && e.cause.message) || e.message, ms: Date.now() - t0, key: k.label, blog };
   }
@@ -138,43 +172,47 @@ function currentRule() {
   const r = (ctl.rules || []).find((x) => x && (x.match || []).includes(RULE_HOST));
   return r || { match: [RULE_HOST], mode: 'off' };
 }
-function applyCooldown(minutes, reason) {
+function applyCooldownMs(ms, reason) {
   const ctl = loadControl();
-  const until = new Date(Date.now() + minutes * 60000).toISOString();
-  upsertRule(ctl, { match: [RULE_HOST], mode: 'cooldown', cooldownUntil: until, reason: reason || 'key[0] 配额恢复中' });
-  if (writeControl(ctl)) log(`🛑 闸门=cooldown ${minutes}min → 解禁 ${localTs(Date.parse(until))}（${reason || ''}）`);
+  const until = new Date(Date.now() + ms).toISOString();
+  upsertRule(ctl, { match: [RULE_HOST], mode: 'cooldown', cooldownUntil: until, reason: reason || '配额受限' });
+  if (writeControl(ctl)) log(`🛑 闸门=cooldown ${Math.round(ms / 60000)}min → 解禁 ${localTs(Date.parse(until))}（${reason || ''}）`);
+  return until;
 }
-function applyThrottle(reason) {
+function applyThrottle(reason, perMin, perHour) {
   const ctl = loadControl();
-  upsertRule(ctl, { match: [RULE_HOST], mode: 'throttle', maxPerMin: THROTTLE_PER_MIN, maxPerHour: THROTTLE_PER_HOUR, reason: reason || '配额已恢复，限速放行' });
-  if (writeControl(ctl)) log(`🚦 闸门=throttle ${THROTTLE_PER_MIN}/min · ${THROTTLE_PER_HOUR}/h（${reason || ''}）`);
+  upsertRule(ctl, { match: [RULE_HOST], mode: 'throttle', maxPerMin: perMin || THROTTLE_PER_MIN, maxPerHour: perHour || THROTTLE_PER_HOUR, reason: reason || '配额已恢复，限速放行' });
+  if (writeControl(ctl)) log(`🚦 闸门=throttle ${perMin || THROTTLE_PER_MIN}/min · ${perHour || THROTTLE_PER_HOUR}/h（${reason || ''}）`);
 }
 
 async function step() {
   const rule = currentRule();
+  if (rule.mode === 'cooldown' && rule.cooldownUntil) {
+    const left = Date.parse(rule.cooldownUntil) - Date.now();
+    if (left > 30 * 60 * 1000) { log(`💤 冷却剩余 ${Math.round(left / 60000)}min（>30min）→ 本轮跳过探测`); return null; }
+  }
   const p = await probe();
   const tag = `mode=${rule.mode}`;
-  log(`探测 key=${p.key || '?'} blog=${p.blog || '?'} → ${p.kind}${p.status ? '(' + p.status + ')' : ''} ${p.ms}ms · ${p.detail || ''} · ${tag}`);
+  log(`探测 key=${p.key || '?'} blog=${p.blog || '?'} → ${p.kind}${p.status ? '(' + p.status + ')' : ''} ${p.ms}ms · ${p.rl ? rlText(p.rl) : '无配额头'} · ${p.detail || ''} · ${tag}`);
 
   if (p.kind === 'ok') {
-    if (rule.mode === 'cooldown') {
-      applyThrottle('key[0] 只读端点已恢复 200 → 转限速放行');
+    const rm = p.rl && p.rl.hourRemain !== null ? p.rl.hourRemain : null;
+    const perMin = rm === null ? THROTTLE_PER_MIN : (rm < 100 ? 1 : (rm < 300 ? 2 : THROTTLE_PER_MIN));
+    const perHour = rm === null ? THROTTLE_PER_HOUR : (rm < 100 ? 20 : (rm < 300 ? 60 : THROTTLE_PER_HOUR));
+    const dayLow = !!(p.rl && p.rl.dayRemain !== null && p.rl.dayRemain < 500);
+    if (rule.mode !== 'throttle' || rule.maxPerMin !== perMin) {
+      applyThrottle(`配额恢复 200（${rlText(p.rl)}）${dayLow ? ' · ⚠️日余量<500' : ''}`, perMin, perHour);
     }
     return p;
   }
   if (p.kind === 'limited') {
-    if (rule.mode === 'throttle') {
-      applyCooldown(BACKOFF_MIN, '限速期内仍 429 → 回硬静默');
-    } else {
-      // cooldown 内继续 429：在原截止基础上再延 BACKOFF_MIN，上限 MAX_COOLDOWN_MIN
-      const cur = rule.cooldownUntil ? Date.parse(rule.cooldownUntil) : 0;
-      const base = Math.max(cur, Date.now());
-      const ext = Math.min(BACKOFF_MIN, Math.round((base + MAX_COOLDOWN_MIN * 60000 - base) / 60000));
-      const until = new Date(Math.min(base + ext * 60000, Date.now() + MAX_COOLDOWN_MIN * 60000)).toISOString();
-      const ctl = loadControl();
-      upsertRule(ctl, { match: [RULE_HOST], mode: 'cooldown', cooldownUntil: until, reason: '仍 429，冷却延长' });
-      if (writeControl(ctl)) log(`⏳ 仍 429 → 冷却延长至 ${localTs(Date.parse(until))}`);
+    const bk = smartBackoff(p.rl);
+    const cur = rule.cooldownUntil ? Date.parse(rule.cooldownUntil) : 0;
+    if (cur > Date.now() && (cur - Date.now()) >= bk.ms) {
+      log(`⏳ 冷却中（${Math.round((cur - Date.now()) / 60000)}min 后到期，已 ≥ 目标 ${Math.round(bk.ms / 60000)}min），不延长`);
+      return p;
     }
+    applyCooldownMs(bk.ms, `429(${rlText(p.rl)}) → 硬静默 ${Math.round(bk.ms / 60000)}min（${bk.why}）`);
     return p;
   }
   log('⚠️ 探测网络错误，不改状态（避免误判配额）');
@@ -194,8 +232,22 @@ async function step() {
     else log(`当前闸门 ${r.mode}`);
     return;
   }
+  if (has('--rl')) {
+    const p = await probe();
+    console.log('key      :', p.key);
+    console.log('blog     :', p.blog);
+    console.log('结果     :', p.kind, p.status ? '(' + p.status + ')' : '', p.ms + 'ms');
+    console.log('配额     :', rlText(p.rl));
+    if (p.rl) {
+      console.log('小时窗口 : 剩余 ' + p.rl.hourRemain + '/' + p.rl.hourLimit + '，重置于 ' + localTs(Date.now() + (p.rl.hourReset || 0) * 1000));
+      console.log('日窗口   : 剩余 ' + p.rl.dayRemain + '/' + p.rl.dayLimit + '，重置于 ' + localTs(Date.now() + (p.rl.dayReset || 0) * 1000));
+    }
+    const bk = smartBackoff(p.rl);
+    console.log('建议退避 :', Math.round(bk.ms / 60000) + 'min （' + bk.why + '）');
+    return;
+  }
   if (has('--cooldown')) {
-    applyCooldown(Number(val('--cooldown') || 60), '手动设定');
+    applyCooldownMs(Number(val('--cooldown') || 60) * 60000, '手动设定');
     return;
   }
   if (has('--throttle')) {
@@ -209,11 +261,10 @@ async function step() {
   }
 
   // 常驻
-  log(`配额看护启动: 探测间隔 ${PROBE_MS / 60000}min · 退避 ${BACKOFF_MIN}min · 上限 ${MAX_COOLDOWN_MIN}min · 探测 key[${KEY_INDEX}]`);
+  log(`配额看护启动: 探测间隔 ${PROBE_MS / 60000}min · 兜底退避 ${BACKOFF_MIN}min · 上限 ${MAX_COOLDOWN_MIN}min · 探测 key[${KEY_INDEX}]`);
   const first = currentRule();
   if (!first.cooldownUntil && first.mode !== 'throttle') {
-    log('控制文件无 tumblr 规则 → 按「疑似受限」起步：先设 45min 硬静默');
-    applyCooldown(BACKOFF_MIN, '启动初始化（保守起见先静默）');
+    log('控制文件无 tumblr 规则 → 按「疑似受限」起步：先探一次再决定（不再盲目先静默 45min）');
   }
   await step();
   setInterval(() => { step().catch((e) => log('step 异常: ' + (e && e.message))); }, PROBE_MS);

@@ -407,6 +407,53 @@ function _reapNow() {
 const _reapTimer = setInterval(_reapNow, REAP_MS);
 if (typeof _reapTimer.unref === 'function') _reapTimer.unref();
 
+/* ── 网络错误「cause 链」透传（2026-10-13 P0-R2）─────────────────────────────
+ * 事故：出网闸门（bd-tls-forwarder）在 CONNECT 阶段回 429 时，undici 的真实错误是
+ *   TypeError('fetch failed') → Error('Request was cancelled.')
+ *     → AbortError[UND_ERR_ABORTED]('Proxy response (429) !== 200 when HTTP Tunneling')
+ *   而调用方（tumblr-publisher.js:651）只取 `e.message` ⇒ 上层拿到的文案是
+ *   `Tumblr /blog/xxx/post fetch failed`，**不含任何限流字样**。
+ * 后果（实测 2026-10-13 单日 275 条内容被永久丢弃）：
+ *   cloud-publisher.js:1513 的限流正则 /8023|rate limit|quota|too many requests|\b429\b/i
+ *   匹配不上 ⇒ 不走账号级退避 ⇒ 发布任务被标 NO_PUBLISHABLE_BODY 并耗尽重试后 FAILED
+ *   （publishQueue 不落盘 ⇒ 内容直接消失）。
+ * 修法：在最底层把 cause 链并进 message，并把代理 CONNECT 的状态码提升为属性。
+ *   ⇒ 一处修复覆盖全部出口（postText / postPhoto / postVideo / 养号 / 回采）。
+ * 注意：状态码一律以 `proxy-429` 形态前置，避免 `PROXY_429` 里下划线破坏正则的 \b 边界。
+ */
+function _netErrChainText(err, maxDepth = 4) {
+  const parts = [];
+  let cur = err, i = 0;
+  while (cur && i < maxDepth) {
+    const m = String(cur.message || '').trim();
+    if (m && parts.indexOf(m) < 0) parts.push(m);
+    cur = cur.cause; i++;
+  }
+  return parts.join(' ← ');
+}
+function _enrichNetErr(err) {
+  if (!err || typeof err !== 'object') return err;
+  try {
+    const full = _netErrChainText(err);
+    const top = String(err.message || '');
+    if (!full || top === full) return err;          // 幂等：已是完整链则不动
+    const m = full.match(/Proxy response \((\d{3})\)/);
+    const deep = full.indexOf('fetch failed') === 0
+      ? full.slice('fetch failed'.length).replace(/^\s*←\s*/, '')
+      : '';
+    if (m) {
+      const st = Number(m[1]);
+      if (!(Number(err.status) > 0)) err.status = st;
+      if (st === 429) err.isRateLimited = true;
+      // 限流语义前置到最前面：确保上层即使只截前 80 字符也能被限流正则识别
+      err.message = deep ? `fetch failed: proxy-${st} ← ${deep}` : `fetch failed: proxy-${st} (${full})`;
+    } else {
+      err.message = full;      // parts[0] 就是原 message ⇒ 等价于「原 message ← 更深的 cause」
+    }
+  } catch (_) { /* 诊断增强绝不影响主流程 */ }
+  return err;
+}
+
 async function fetchExt(url, opts = {}, proxyUrl) {
   // ⛔ 熔断中的出口直接跳过，不再浪费 20s 超时。
   //    ⚠️ 2026-10-13 注意：这会把「经该出口」静默变成「经全局代理」——
@@ -447,7 +494,9 @@ async function fetchExt(url, opts = {}, proxyUrl) {
     return _r;
   } catch (e) {
     if (_usedPx) _noteProxyFail(_usedPx);
-    throw e;
+    // 2026-10-13 P0-R2：把 undici 的 cause 链并进 message —— 否则代理 CONNECT 的
+    //   429/407 会被上层误判成「普通网络抖动」（实测单日 275 条内容因此被丢弃）。
+    throw _enrichNetErr(e);
   } finally {
     clearTimeout(timer);
   }

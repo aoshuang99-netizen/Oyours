@@ -1548,6 +1548,40 @@ class CloudPublisher extends EventEmitter {
               task.publishNote = '该账号 token 已被平台撤销；重试/换出口/换内容均无效 → 已登记黑名单，后续发布直接跳过';
             }
           } catch (e) {
+            // ══ 2026-10-13 P0-R3：配额/限流 ⇒ 推迟，绝不判死（内容保全）══════════
+            // 事故：图文通道(上方 1443) 与文字通道(上方 1513) 命中限流后都会 throw 到这里，
+            //   而这里一律把任务标 FAILED；publishQueue 只在内存（无落盘）⇒ 任务从队列消失
+            //   = 内容被永久丢弃（实测 10-13 单日 275 条）。
+            // 但「配额耗尽」是完全可恢复的：Tumblr 的日窗口有【固定 reset】时刻
+            //   （实测 2026-10-13 -> 21:12:36 GMT+8，双探针确认 reset 不随请求滑动），
+            //   到点即恢复。既然可恢复，就没有任何理由把内容判死。
+            // 修法：① 立即激活分层冷却（账号级 30min / 多账号则全局暂停）
+            //      ② 任务改 PENDING + scheduledAt=冷却结束并重新入队（不计失败、不耗重试）
+            //      ③ 设推迟上限，防止极端情况下无限推迟。
+            const _qMsg = String((e && e.message) || '');
+            if (/8023|daily\s*post\s*limit|rate\s*limit|quota|too\s*many\s*requests|\b429\b/i.test(_qMsg)) {
+              const _qAcct = (task.account && task.account.id) || task.accountId || null;
+              try { this._maybeSetQuotaCooldown(_qMsg, task); } catch (_) { /* ignore */ }
+              task.quotaDeferCount = (task.quotaDeferCount || 0) + 1;
+              const _qMax = Number(process.env.MSCMS_QUOTA_MAX_DEFER || 48);
+              if (task.quotaDeferCount > _qMax) {
+                console.error(`[cloud-publisher] 🛑 限流推迟已达上限 ${_qMax} 次，任务 ${task.id} 转失败（防无限推迟）`);
+              } else {
+                const _qAcctUntil = _qAcct ? (this._accountCooldown.get(String(_qAcct)) || 0) : 0;
+                const _qUntil = Math.max(_qAcctUntil, this._quotaPausedUntil || 0, Date.now() + 5 * 60 * 1000);
+                task.real = false;
+                task.publishUrl = null;
+                task.status = PublishStatus.PENDING;
+                task.scheduledAt = new Date(_qUntil).toISOString();
+                task.quotaDeferNote = `限流推迟第 ${task.quotaDeferCount} 次，至 ${task.scheduledAt}：${_qMsg.slice(0, 120)}`;
+                task.error = null;   // 不是失败：清空 ⇒ finally 不会重复触发冷却
+                task.publishNote = '平台配额/限流 → 已推迟到冷却结束自动重试（不消耗重试次数、不标记失败、内容不丢）';
+                this.publishQueue.push(task);
+                console.warn(`[cloud-publisher] ⏸ 限流推迟任务 ${task.id} 至 ${task.scheduledAt}` +
+                  `（账号=${_qAcct || '?'} 第 ${task.quotaDeferCount} 次，其余账号不受影响）`);
+                return;
+              }
+            }
             console.error(`[cloud-publisher] Tumblr 真实发布失败，诚实标记未发布: ${e.message}`);
             task.real = false;
             task.publishUrl = null;

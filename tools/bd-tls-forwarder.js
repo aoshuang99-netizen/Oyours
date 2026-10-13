@@ -182,19 +182,41 @@ function gateLogLine(host, g) {
 /**
  * 统一拦截应答（CONNECT 与明文 REQUEST 共用）。
  *
- * ⚠️ 为什么是「200 后立刻关闭」而不是 429：
- *   exit-guard 的端到端探活 (tools/exit-guard.js probeRelay) 会经本转发器
- *   CONNECT api.tumblr.com:443 并**只读响应行**判断出网是否健康；若这里回 429，
- *   它会连续判"转发器假死" → taskkill 转发器并重启 → 陷入无限重启循环
- *   （而重启后的转发器仍被闸门拦 → 永远循环）。而转发器由 SYSTEM 托管，
- *   无法通过改代码/环境变量让它换判据。
- *   ⇒ 回 200 让探活通过；随即关闭连接 —— 真实请求的下一步是 TLS ClientHello，
- *     必然失败（socket hang up），因此**上游依然一个请求都收不到**，
- *     "真冷却"的目标完全达成。这是"拦请求"与"保探活"的唯一两全解。
+ * 🔴 2026-10-13 修正：CONNECT 分支**不再伪装成 200**，改为回真 429。
+ *
+ * 旧做法的由来与失效原因：
+ *   旧注释担心 exit-guard 的探活经本转发器 CONNECT api.tumblr.com:443 只读响应行，
+ *   若这里回 429 会被判「转发器假死」→ 反复 taskkill 重启 → 死循环。
+ *   但实测 exit-guard.js:57 `EXIT_PROBE_HOST || 'www.qq.com'`：
+ *     **探活目标已改为 www.qq.com（命中 DIRECT_SUFFIX('.qq.com')，根本不经过本闸门）**
+ *   ⇒ 「伪装 200」已是历史包袱，而且它造成了一个真 bug：
+ *     上层 undici 看到的是 `fetch failed`（网络错误）而非 429 ⇒
+ *     cloud-publisher.js:1513 的限流正则
+ *     (/8023|rate limit|quota|too many requests|\b429\b/) **匹配不上** ⇒
+ *     不走 _maybeSetQuotaCooldown 正确归因，而是跑满 5 次退避重试后
+ *     把 task.status 置 FAILED、reason 打成误导性的 NO_PUBLISHABLE_BODY
+ *     ⇒ **内容被当作"无正文"丢弃**（实测 10-13 单日 275 条）。
+ *
+ * 现在：回 `429 Too Many Requests` + `Retry-After`，让上层能正确归因并进入冷却。
+ * 逃生开关：BD_GATE_REPLY=reset 可退回旧的「200 后立刻关闭」行为。
  */
+const GATE_REPLY_MODE = String(process.env.BD_GATE_REPLY || '429').toLowerCase();
+log(`闸门应答模式=${GATE_REPLY_MODE}（429=回真429供上层归因 / reset=回200后关闭·旧行为）`);
 function rejectWith429(socket, g) {
   stats.gateBlocked++;
-  try { socket.write('HTTP/1.1 200 Connection established\r\n\r\n'); } catch (_) {}
+  const retry = Math.max(1, Number(g && g.retry) || 60);
+  try {
+    if (GATE_REPLY_MODE === 'reset') {
+      socket.write('HTTP/1.1 200 Connection established\r\n\r\n');
+    } else {
+      socket.write(
+        'HTTP/1.1 429 Too Many Requests\r\n'
+        + `Retry-After: ${retry}\r\n`
+        + 'X-MSCMS-Gate: bd-relay-cooldown\r\n'
+        + `X-MSCMS-Retry-After: ${retry}\r\n`
+        + 'Content-Length: 0\r\nConnection: close\r\n\r\n');
+    }
+  } catch (_) {}
   try { socket.end(); } catch (_) {}
 }
 
@@ -438,15 +460,29 @@ process.on('unhandledRejection', (e) => log('unhandledRejection: ' + (e && e.mes
  *   持久守护、且能在服务重启后自动回来的组件就是本转发器 ⇒ 把"探测 + 决策"
  *   放进来，它就能随服务自启，不依赖任何外部调度器。
  *
- * 决策状态机（只读端点探测，1 请求/10min，开销可忽略）：
- *   200（配额恢复）+ 当前 cooldown → 转 throttle（限速放行，不再静默）
+ * 决策状态机（只读端点探测；冷却剩余 >30min 时跳过探测，避免探测风暴）：
+ *   200（配额恢复）+ 当前 cooldown → 转 throttle（限速放行），**并按小时余量收紧速率**
  *   429 + 当前 throttle          → 回 cooldown（限速仍超 → 继续静默）
- *   429 + 当前 cooldown（未到期）→ 保持，**不延长**（避免冷却无界增长）
- *   429 + 冷却已到期            → 重置为 now + BACKOFF_MIN
+ *   429 + 当前 cooldown（未到期）→ 若现存冷却短于按 reset 算出的目标 ⇒ **升级**；否则保持
+ *   429 + 冷却已到期            → 重置为 now + smartBackoff（读 Tumblr 的 reset 头）
  *   网络错误                     → 不改状态（上游抖动不该误判配额）
+ *
+ * 🔴 2026-10-13 实测（推翻了此前「Tumblr 封 IP/线路不可达」的判断）：
+ *   Tumblr 的限流是【按 consumer key】的，且响应头给出精确窗口（200/429 都带）：
+ *     x-ratelimit-perhour-limit = 1000 / -remaining / -reset(秒)
+ *     x-ratelimit-perday-limit  = 5000 / -remaining / -reset(秒)
+ *   实测同刻同 IP：key[0] MSCMS Auto Poster 日余量 **0** ⇒ 一切请求（含 OAuth 签名的
+ *   发布写操作）全 429；key[1] Explore API 同刻 200。**出口链路完全健康**。
+ *   ⇒ 旧版固定退避 45min **远短于**日窗口(实测 reset 22442s ≈ 6.2h) ⇒ 冷却到期探测
+ *     必然仍 429 ⇒ 再 45min ⇒ **自持死循环（control version 已累到 36）**，
+ *     把「一次配额耗尽」放大成「连续 8h+ 零发布」。
+ *   ⇒ 故退避必须由 reset 头驱动（quotaSmartBackoff），且绝不允许缩短已设的长冷却。
  *
  * ⚠️ 探测走【BD TLS 直连】，绝不经过本机端口 —— 否则会被自己的闸门拦。
  * ⚠️ undici 缺失时优雅跳过，代理功能完全不受影响。
+ * ⚠️ 闸门只拦 api.tumblr.com，且返回「200 Connection established 后立刻关闭」
+ *    （为兼容 exit-guard 的探活判据）⇒ 上层 undici 看到的是 `fetch failed` 而非 429，
+ *    发布器日志因此**不会**出现 429 —— 排查时勿据此误判为网络故障。
  * ════════════════════════════════════════════════════════════════════════ */
 const QUOTA_ENABLE = String(process.env.BD_QUOTA_WATCH || '1') !== '0';
 const QUOTA_PROBE_MS = Number(process.env.QUOTA_PROBE_MS || 10 * 60 * 1000);
@@ -477,6 +513,47 @@ function quotaProbeBlog() {
   if (!hit) return null;
   return String(hit.blogName || hit.blog_name).replace(/\.tumblr\.com$/i, '');
 }
+/**
+ * 从响应头提取 Tumblr 配额快照（2026-10-13 实测坐实：Tumblr 按【consumer key】
+ *   限流，响应头给出精确窗口，200 与 429 都带）：
+ *     x-ratelimit-perhour-limit / -remaining / -reset   (1000 / 秒)
+ *     x-ratelimit-perday-limit  / -remaining / -reset   (5000 / 秒)
+ *   实测 key[0] 日配额 remaining=0 ⇒ 无论小时余额多少一律 429 —— 这是「429 自持」
+ *   的真正成因；而旧逻辑固定退避 45min ≪ 日窗口(≈6.2h) ⇒ 永久死循环(version 已 36)。
+ */
+function quotaRlOf(r) {
+  const num = (name) => { const v = r.headers.get(name); return v === null || v === undefined ? null : Number(v); };
+  const rl = {
+    hourLimit: num('x-ratelimit-perhour-limit'),
+    hourRemain: num('x-ratelimit-perhour-remaining'),
+    hourReset: num('x-ratelimit-perhour-reset'),
+    dayLimit: num('x-ratelimit-perday-limit'),
+    dayRemain: num('x-ratelimit-perday-remaining'),
+    dayReset: num('x-ratelimit-perday-reset'),
+  };
+  return (rl.hourLimit === null && rl.dayLimit === null) ? null : rl;
+}
+function quotaRlText(rl) {
+  if (!rl) return '无配额头';
+  const mm = (s) => (s === null ? '?' : Math.round(s / 60) + 'min');
+  return `h ${rl.hourRemain}/${rl.hourLimit}(reset ${mm(rl.hourReset)}) · d ${rl.dayRemain}/${rl.dayLimit}(reset ${mm(rl.dayReset)})`;
+}
+/**
+ * 退避时长：优先按 Tumblr 自己给的 reset，而不是拍脑袋的固定值。
+ *   日配额耗尽 ⇒ 等日窗口（上限 24h）；小时耗尽 ⇒ 等小时窗口；无头 ⇒ 老固定值。
+ *   加 120s 缓冲，避免刚过窗口边界时被"擦边 429"再次拖进循环。
+ */
+function quotaSmartBackoff(rl) {
+  const BUF = 120 * 1000;
+  if (rl && rl.dayRemain !== null && rl.dayRemain <= 0 && rl.dayReset > 0) {
+    return { ms: Math.min(rl.dayReset * 1000 + BUF, 24 * 3600e3), why: '日配额耗尽' };
+  }
+  if (rl && rl.hourRemain !== null && rl.hourRemain <= 0 && rl.hourReset > 0) {
+    return { ms: Math.min(rl.hourReset * 1000 + BUF, 3600e3), why: '小时配额耗尽' };
+  }
+  return { ms: QUOTA_BACKOFF_MIN * 60000, why: '无 reset 头 ⇒ 固定退避' };
+}
+
 async function quotaProbe() {
   if (!_undici) return { kind: 'skip' };
   const k = quotaProbeKey();
@@ -489,9 +566,10 @@ async function quotaProbe() {
   try {
     const r = await _undici.fetch(url, { dispatcher: agent, signal: AbortSignal.timeout(30000) });
     const body = await r.text();
-    if (r.status === 200) return { kind: 'ok', key: k.label };
-    if (r.status === 429) return { kind: 'limited', key: k.label, detail: body.slice(0, 90).replace(/\s+/g, ' ') };
-    return { kind: 'net', key: k.label, detail: 'HTTP ' + r.status };
+    const rl = quotaRlOf(r);
+    if (r.status === 200) return { kind: 'ok', key: k.label, rl };
+    if (r.status === 429) return { kind: 'limited', key: k.label, rl, detail: body.slice(0, 90).replace(/\s+/g, ' ') };
+    return { kind: 'net', key: k.label, rl, detail: 'HTTP ' + r.status };
   } catch (e) {
     return { kind: 'net', key: k.label, detail: (e.cause && e.cause.message) || e.message };
   } finally { try { await agent.close(); } catch (_) {} }
@@ -518,22 +596,48 @@ function quotaWriteRule(rule) {
 }
 async function quotaStep() {
   const rule = quotaRule();
+  // 冷却剩余 > 30min 时不做探测：探测请求本身也会被 Tumblr 的 429 计数，
+  //   且在日配额耗尽期内每 10min 探一次纯属浪费（旧 45min 循环正由此放大成探测风暴）。
+  if (rule.mode === 'cooldown' && rule.cooldownUntil) {
+    const left = Date.parse(rule.cooldownUntil) - Date.now();
+    if (left > 30 * 60 * 1000) { log(`配额看护: 💤 冷却剩余 ${Math.round(left / 60000)}min（>30min）→ 本轮跳过探测`); return; }
+  }
   const p = await quotaProbe();
   if (p.kind === 'skip') return;
-  log(`配额探测 key=${p.key || '?'} → ${p.kind}${p.detail ? ' · ' + p.detail : ''} · 当前规则=${rule.mode}`);
+  log(`配额探测 key=${p.key || '?'} → ${p.kind}${p.rl ? ' · ' + quotaRlText(p.rl) : ''}${p.detail ? ' · ' + p.detail : ''} · 当前规则=${rule.mode}`);
   if (p.kind === 'ok') {
-    if (rule.mode !== 'throttle') {
-      quotaWriteRule({ match: [QUOTA_RULE_HOST], mode: 'throttle', maxPerMin: QUOTA_THROTTLE_PER_MIN, maxPerHour: QUOTA_THROTTLE_PER_HOUR, reason: 'key 只读端点恢复 200 → 限速放行' });
-      log(`配额看护: 🚦 恢复 → throttle ${QUOTA_THROTTLE_PER_MIN}/min · ${QUOTA_THROTTLE_PER_HOUR}/h`);
+    // 200 也要看余量：余量低就限得更死，避免刚恢复就被再次打爆（自持 429 的复发路径）
+    const rm = p.rl && p.rl.hourRemain !== null ? p.rl.hourRemain : null;
+    const perMin = rm === null ? QUOTA_THROTTLE_PER_MIN : (rm < 100 ? 1 : (rm < 300 ? 2 : QUOTA_THROTTLE_PER_MIN));
+    const perHour = rm === null ? QUOTA_THROTTLE_PER_HOUR : (rm < 100 ? 20 : (rm < 300 ? 60 : QUOTA_THROTTLE_PER_HOUR));
+    const dayLow = !!(p.rl && p.rl.dayRemain !== null && p.rl.dayRemain < 500);
+    if (rule.mode !== 'throttle' || rule.maxPerMin !== perMin) {
+      quotaWriteRule({
+        match: [QUOTA_RULE_HOST], mode: 'throttle', maxPerMin: perMin, maxPerHour: perHour,
+        reason: `配额恢复 200（${quotaRlText(p.rl)}）→ 限速放行${dayLow ? ' · ⚠️日余量<500' : ''}`,
+      });
+      log(`配额看护: 🚦 恢复 → throttle ${perMin}/min · ${perHour}/h${dayLow ? ' · ⚠️ 日余量 <500，已收紧' : ''}`);
     }
     return;
   }
   if (p.kind === 'limited') {
     const until = rule.cooldownUntil ? Date.parse(rule.cooldownUntil) : 0;
     const inCooldown = rule.mode === 'cooldown' && until > Date.now();
-    if (inCooldown) { log(`配额看护: ⏳ 冷却中（${Math.round((until - Date.now()) / 60000)}min 后到期），不延长`); return; }
-    quotaWriteRule({ match: [QUOTA_RULE_HOST], mode: 'cooldown', cooldownUntil: new Date(Date.now() + QUOTA_BACKOFF_MIN * 60000).toISOString(), reason: `探测得 429 → 硬静默 ${QUOTA_BACKOFF_MIN}min` });
-    log(`配额看护: 🛑 进入 cooldown ${QUOTA_BACKOFF_MIN}min`);
+    const bk = quotaSmartBackoff(p.rl);
+    if (inCooldown) {
+      // 已被更聪明的逻辑设过更长冷却 ⇒ 不缩短；仅当现存冷却短于目标时才升级
+      //   （这正是旧版 45min 死循环的补丁点：45min ≪ 日窗口 6.2h ⇒ 永远探不到 200）
+      if (until - Date.now() < bk.ms) {
+        const newUntil = new Date(Date.now() + bk.ms).toISOString();
+        quotaWriteRule({ match: [QUOTA_RULE_HOST], mode: 'cooldown', cooldownUntil: newUntil, reason: `429(${quotaRlText(p.rl)}) → 冷却升级至 ${Math.round(bk.ms / 60000)}min（${bk.why}）` });
+        log(`配额看护: 🔧 冷却过短（剩 ${Math.round((until - Date.now()) / 60000)}min）→ 升级至 ${Math.round(bk.ms / 60000)}min（${bk.why}）`);
+      } else {
+        log(`配额看护: ⏳ 冷却中（${Math.round((until - Date.now()) / 60000)}min 后到期），不延长`);
+      }
+      return;
+    }
+    quotaWriteRule({ match: [QUOTA_RULE_HOST], mode: 'cooldown', cooldownUntil: new Date(Date.now() + bk.ms).toISOString(), reason: `探测得 429(${quotaRlText(p.rl)}) → 硬静默 ${Math.round(bk.ms / 60000)}min（${bk.why}）` });
+    log(`配额看护: 🛑 进入 cooldown ${Math.round(bk.ms / 60000)}min（${bk.why}）`);
     return;
   }
   log('配额看护: ⚠️ 探测网络错误，不改状态');
