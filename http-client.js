@@ -379,7 +379,12 @@ function _reapNow() {
   for (const k of [..._DEAD_PROXY_FAILS.keys()]) if (!_DEAD_PROXY_FAILS.get(k)) _DEAD_PROXY_FAILS.delete(k);
   _diagTicks++;
   if (_diagTicks % DIAG_EVERY_TICKS !== 0) return;
-  console.log(`[http-client] agent缓存 size=${_agentCache.size}/${MAX_PROXY_AGENTS === Infinity ? '∞' : MAX_PROXY_AGENTS} created=${_agentCreated} retired=${_agentRetired} 待硬销毁=${_retiring.length} 熔断表=${_DEAD_PROXY_UNTIL.size} 熔断累计=${_circuitTotal}`);
+  // P0-5b（2026-10-13）：诊断行加入真实内存构成 —— 只报 Map 大小无法解释
+  //   「size 恒 ≤24 但 RSS 仍涨到 3.9GB」。heapUsed 增长 ⇒ JS 对象泄漏（查 Map/闭包）；
+  //   external/arrayBuffers 增长 ⇒ undici socket/buffer 未归还（查 agent destroy 路径）。
+  const _mu = process.memoryUsage();
+  const _mb = (x) => Math.round((x || 0) / 1048576);
+  console.log(`[http-client] agent缓存 size=${_agentCache.size}/${MAX_PROXY_AGENTS === Infinity ? '∞' : MAX_PROXY_AGENTS} created=${_agentCreated} retired=${_agentRetired} 待硬销毁=${_retiring.length} 熔断表=${_DEAD_PROXY_UNTIL.size} 熔断累计=${_circuitTotal} | rss=${_mb(_mu.rss)}MB heapUsed=${_mb(_mu.heapUsed)}MB heapTotal=${_mb(_mu.heapTotal)}MB external=${_mb(_mu.external)}MB arrayBuffers=${_mb(_mu.arrayBuffers)}MB`);
 }
 const _reapTimer = setInterval(_reapNow, REAP_MS);
 if (typeof _reapTimer.unref === 'function') _reapTimer.unref();

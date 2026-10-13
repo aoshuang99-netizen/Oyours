@@ -26,6 +26,19 @@ const SOURCES = [
 const DEFAULT_RELAY = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || 'http://127.0.0.1:10808';
 const POOL_FILE = path.join(WS, '_working_proxies.json');
 
+// ── P0-5b：死亡记忆 + 单轮探测上限（2026-10-13）───────────────────────────
+// 背景：本模块每 60s 拉一次免费列表并逐个探测（_check → fetchExt → new ProxyAgent）。
+//   免费代理绝大多数已失效 ⇒ 每轮要探上百个才凑够 40 个可用；而列表每轮内容几乎相同，
+//   同一批死代理被**反复探测**。实测一夜 11.7h 创建了 76,413 个 ProxyAgent（≈1.8/s）
+//   ⇒ 即使 LRU 已把 _agentCache 钉在 24，创建/销毁的残留仍让 3002 RSS 涨回 3.9GB。
+//   即：P0-5 治好了「缓存无界」，但没治「churn 无界」。
+// 修法：① 探测失败的出口记入 _dead，TTL 内不再探测（默认 2h）；
+//       ② 单轮探测总量设上限，并用游标轮转，保证候选遍历公平
+//          （不会永远只探列表头部同一批）；③ _dead 自身也有容量上限，防止变成新泄漏。
+const PROXY_DEAD_TTL_MS = Number(process.env.MSCMS_PROXY_DEAD_TTL_MS || 2 * 60 * 60 * 1000);
+const MAX_PROBE_PER_SCAN = Number(process.env.MSCMS_MAX_PROBE_PER_SCAN || 96);
+const DEAD_MAP_MAX = Number(process.env.MSCMS_PROXY_DEAD_MAX || 20000);
+
 function fnv1a(str) {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -44,6 +57,8 @@ class FreeProxyRotator {
     this._verifying = false;
     this._timer = null;
     this._scanning = false;
+    this._dead = new Map();   // proxyUrl -> 解禁时间戳（P0-5b：探测失败记忆）
+    this._cursor = 0;         // P0-5b：单轮探测窗口的轮转游标
     this._seed();
   }
 
@@ -73,19 +88,58 @@ class FreeProxyRotator {
     return [...new Set(out)];
   }
 
+  /** P0-5b：该出口是否在死亡记忆 TTL 内（顺手清掉已过期项） */
+  _isDead(px) {
+    const t = this._dead.get(px);
+    if (t === undefined) return false;
+    if (Date.now() >= t) { this._dead.delete(px); return false; }
+    return true;
+  }
+
+  /** P0-5b：登记一个失效出口；死亡表本身也必须是有界的 */
+  _markDead(px) {
+    this._dead.set(px, Date.now() + PROXY_DEAD_TTL_MS);
+    if (this._dead.size > DEAD_MAP_MAX) {
+      const now = Date.now();
+      for (const [k, v] of this._dead) { if (v <= now) this._dead.delete(k); }
+      while (this._dead.size > DEAD_MAP_MAX) {
+        const k = this._dead.keys().next().value;
+        if (k === undefined) break;
+        this._dead.delete(k);
+      }
+    }
+  }
+
   async _check(px) {
     try {
       const r = await fetchExt(this.checkUrl, { method: 'GET', timeout: 8000 }, px);
       // 任何 HTTP 状态码（含 401/429/500）都说明代理把请求送达了 Tumblr
-      return typeof r.status === 'number';
-    } catch (e) { return false; }
+      const ok = typeof r.status === 'number';
+      if (!ok) this._markDead(px);
+      return ok;
+    } catch (e) {
+      this._markDead(px);   // P0-5b：失败即入死亡记忆，TTL 内不再重复探测
+      return false;
+    }
   }
 
   async scan() {
     if (this._scanning) return this.pool;
     this._scanning = true;
     try {
-      const candidates = await this._fetchLists();
+      const all = await this._fetchLists();
+      // P0-5b：① 跳过死亡记忆 TTL 内的出口；② 单轮探测设上限 + 游标轮转（保证遍历公平）
+      const fresh = all.filter(p => !this._isDead(p));
+      const n = fresh.length;
+      const candidates = [];
+      if (n) {
+        const take = Math.min(MAX_PROBE_PER_SCAN, n);
+        for (let k = 0; k < take; k++) candidates.push(fresh[(this._cursor + k) % n]);
+        this._cursor = (this._cursor + take) % n;
+      }
+      if (all.length) {
+        console.log(`[proxy-rotator] 候选 ${all.length} → 跳过死亡 ${all.length - n} → 本轮探测 ${candidates.length}（死亡表 ${this._dead.size}）`);
+      }
       const working = [];
       // 并发探测（限流 16 路），快速筛出可用代理
       const batch = 16;
@@ -134,8 +188,8 @@ class FreeProxyRotator {
     if (this._verifying) return this.verified;
     this._verifying = true;
     try {
-      const pool = this.pool.slice();
-      if (!pool.length) { this.verified = []; return this.verified; }
+      const pool = this.pool.filter((p) => !this._isDead(p));   // P0-5b：跳过死亡记忆内的出口
+      if (!pool.length) { this.verified = []; this._verifiedAt = Date.now(); return this.verified; }
       const alive = [];
       const batch = 16;
       for (let i = 0; i < pool.length; i += batch) {
