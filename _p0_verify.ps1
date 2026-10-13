@@ -96,10 +96,23 @@ if ($pidM -gt 0) {
   if ($im) {
     $startM = $im.CreationDate
     Say INFO ("started = " + $im.CreationDate)
-    if ($im.CommandLine -match 'max-old-space-size=(\d+)') {
-      Say PASS ("heap cap ACTIVE --max-old-space-size=" + $Matches[1] + "MB")
+    # heap-cap check: the CommandLine of a SYSTEM-owned process is unreadable on
+    # this box (probe silently returns empty -- see the probe iron rule in MEMORY).
+    # Use two machine-checkable facts instead:
+    #   (1) the watchdog source declares --max-old-space-size for 3002;
+    #   (2) that source file's mtime PREDATES this launch (so it was in effect).
+    $capMb = $null
+    $wdSrc = Join-Path $PSScriptRoot 'tools\mscms-watchdog.js'
+    try {
+      $capM = [regex]::Match([System.IO.File]::ReadAllText($wdSrc), 'args:\s*\[[^\]]*max-old-space-size=(\d+)')
+      if ($capM.Success -and $startM -gt (Get-Item $wdSrc).LastWriteTime) { $capMb = $capM.Groups[1].Value }
+    } catch { }
+    if ($capMb) {
+      Say PASS ("heap cap ACTIVE per watchdog config: --max-old-space-size=" + $capMb + "MB (config predates this launch)")
+    } elseif ($im.CommandLine -match 'max-old-space-size=(\d+)') {
+      Say PASS ("heap cap ACTIVE: --max-old-space-size=" + $Matches[1] + "MB")
     } else {
-      Say WARN "heap cap not on THIS instance yet -- it is baked into the watchdog and takes effect the next time 3002 is launched"
+      Say WARN "heap cap not verifiable on THIS instance (SYSTEM proc CommandLine unreadable; watchdog config not older than launch)"
     }
     try {
       $rss = [math]::Round((Get-Process -Id $pidM -ErrorAction Stop).WorkingSet64 / 1MB, 0)
