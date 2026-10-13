@@ -59,6 +59,7 @@ class FreeProxyRotator {
     this._scanning = false;
     this._dead = new Map();   // proxyUrl -> 解禁时间戳（P0-5b：探测失败记忆）
     this._cursor = 0;         // P0-5b：单轮探测窗口的轮转游标
+    this._emptyRounds = 0;    // P0-5b：连续 0 产出轮数（驱动自适应退避）
     this._seed();
   }
 
@@ -155,9 +156,11 @@ class FreeProxyRotator {
         this.verified = working;
         this._verifiedAt = Date.now();
         try { fs.writeFileSync(POOL_FILE, JSON.stringify(working, null, 2)); } catch (e) {}
+        this._emptyRounds = 0;   // P0-5b：有产出 → 重置退避
         console.log(`[proxy-rotator] 刷新完成：可用代理 ${working.length}/${candidates.length}`);
       } else {
-        console.log('[proxy-rotator] 本轮无可用代理（免费代理波动），保留旧池');
+        this._emptyRounds++;     // P0-5b：连续空轮累计 → 自适应退避（见 _scheduleNext）
+        console.log(`[proxy-rotator] 本轮无可用代理（连续 ${this._emptyRounds} 轮），保留旧池`);
       }
     } catch (e) {
       console.error('[proxy-rotator] 扫描异常:', e.message);
@@ -172,11 +175,31 @@ class FreeProxyRotator {
     // _working_proxies.json 是上次运行留下的快照，重启时其中大部分往往已失效
     // （实测 5 条里 4 条不可达）——若直接拿去分配，发布请求必定 fetch failed。
     this.verifyPool().then(() => this.scan()).catch(() => this.scan());
-    if (!this._timer) this._timer = setInterval(() => this.scan(), this.refreshMs);
+    this._scheduleNext();
     return this;
   }
 
-  stop() { if (this._timer) { clearInterval(this._timer); this._timer = null; } }
+  /**
+   * P0-5b：自适应轮询（替代固定 setInterval）。
+   * 免费代理池实测 3197 个候选、连续多轮 **0 产出**（可用率 <1/96），却仍每 60s
+   * 固定探测一轮 ⇒ 纯资源消耗。改为：连续空轮按 2^n 退避（上限 30min），
+   * 一旦有产出立即回到基础间隔 —— 「池子健康时灵敏、池子死透时安静」。
+   */
+  _scheduleNext() {
+    if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    const backoff = Math.min(this._emptyRounds, 8);
+    const delay = Math.min(this.refreshMs * Math.pow(2, backoff), 30 * 60 * 1000);
+    if (this._emptyRounds) console.log(`[proxy-rotator] 退避中：连续 ${this._emptyRounds} 轮空，下次扫描 ${Math.round(delay / 1000)}s 后`);
+    this._timer = setTimeout(() => {
+      Promise.resolve()
+        .then(() => this.scan())
+        .catch(() => {})
+        .finally(() => this._scheduleNext());
+    }, delay);
+    if (typeof this._timer.unref === 'function') this._timer.unref();
+  }
+
+  stop() { if (this._timer) { clearTimeout(this._timer); this._timer = null; } }
 
   getPool() { return this.pool; }
 
