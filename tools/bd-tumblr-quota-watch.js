@@ -62,7 +62,12 @@ const BACKOFF_MIN = Number(process.env.QUOTA_BACKOFF_MIN || 45);          // 仅
 const MAX_COOLDOWN_MIN = Number(process.env.QUOTA_MAX_COOLDOWN_MIN || 1440);
 const THROTTLE_PER_MIN = Number(process.env.QUOTA_THROTTLE_PER_MIN || 6);
 const THROTTLE_PER_HOUR = Number(process.env.QUOTA_THROTTLE_PER_HOUR || 120);
-const KEY_INDEX = Number(process.env.QUOTA_KEY_INDEX || 0);   // 0 = MSCMS Auto Poster
+const KEY_INDEX = Number(process.env.QUOTA_KEY_INDEX || 0);   // 0 = MSCMS Auto Poster（发布 App）
+// 对照 key：主探针非 ok 时自动补探，用于区分「本 key 配额耗尽」与「线路/IP 故障」。
+// 教训来源（2026-10-13）：只测 key[0] 的 429 就推及「*.tumblr.com 全域不可达 / 出口失效」，
+//   而 key[1] 同刻同 IP 返回 200 ⇒ 原结论完全错误（差点去买新住宅 IP，纯属无效功）。
+//   铁律：单探针不下结论，必须带对照组。
+const CROSS_KEY_INDEX = Number(process.env.QUOTA_CROSS_KEY_INDEX || (KEY_INDEX === 0 ? 1 : 0));
 
 function log(...a) {
   const line = `[${new Date().toISOString()}] [quota-watch] ${a.join(' ')}`;
@@ -127,12 +132,12 @@ function smartBackoff(rl) {
 }
 
 // ── 探测素材 ──
-function tumblrConsumerKey() {
+function tumblrConsumerKey(idx = KEY_INDEX) {
   const apps = readJson(path.join(WS, 'tumblr_apps.json'), null) || readJson(path.join(DATA_DIR, 'tumblr_apps.json'), []);
   const arr = Array.isArray(apps) ? apps : (apps.apps || []);
-  const a = arr[KEY_INDEX];
+  const a = arr[idx];
   if (!a) return null;
-  return { key: a.consumerKey || a.consumer_key, label: a.label || a.name || ('app#' + KEY_INDEX) };
+  return { key: a.consumerKey || a.consumer_key, label: a.label || a.name || ('app#' + idx), idx };
 }
 function sampleBlog() {
   const accts = readJson(path.join(DATA_DIR, 'accounts.json'), null) || readJson(path.join(WS, 'accounts.json'), []);
@@ -147,11 +152,11 @@ function makeAgent() {
   const user = `brd-customer-${BD_CUSTOMER}-zone-${BD_ZONE}`;
   return new ProxyAgent(`https://${encodeURIComponent(user)}:${encodeURIComponent(BD_PASSWORD)}@${BD_HOST}:${BD_TLS_PORT}`);
 }
-/** 只读探测：返回 { kind:'ok'|'limited'|'net', status, ms, rl, detail } */
-async function probe() {
-  const k = tumblrConsumerKey();
+/** 单次只读探测（无重试）：返回 { kind:'ok'|'limited'|'net', status, ms, rl, detail, key, blog, probeIdx } */
+async function probeOnce(idx = KEY_INDEX) {
+  const k = tumblrConsumerKey(idx);
   const blog = sampleBlog();
-  if (!k || !blog) return { kind: 'net', detail: '缺少 consumerKey 或 blog 样本', ms: 0 };
+  if (!k || !blog) return { kind: 'net', detail: '缺少 consumerKey 或 blog 样本', ms: 0, probeIdx: idx };
   const url = `https://api.tumblr.com/v2/blog/${blog}.tumblr.com/info?api_key=${encodeURIComponent(k.key)}`;
   const t0 = Date.now();
   try {
@@ -159,12 +164,60 @@ async function probe() {
     const body = await r.text();
     const ms = Date.now() - t0;
     const rl = rlOf(r);
-    if (r.status === 200) return { kind: 'ok', status: 200, ms, rl, detail: 'key 配额正常', key: k.label, blog };
-    if (r.status === 429) return { kind: 'limited', status: 429, ms, rl, detail: body.slice(0, 120).replace(/\s+/g, ' '), key: k.label, blog };
-    return { kind: 'net', status: r.status, ms, rl, detail: 'HTTP ' + r.status + ' ' + body.slice(0, 100).replace(/\s+/g, ' '), key: k.label, blog };
+    const base = { ms, rl, key: k.label, blog, probeIdx: idx };
+    if (r.status === 200) return Object.assign(base, { kind: 'ok', status: 200, detail: 'key 配额正常' });
+    if (r.status === 429) return Object.assign(base, { kind: 'limited', status: 429, detail: body.slice(0, 120).replace(/\s+/g, ' ') });
+    return Object.assign(base, { kind: 'net', status: r.status, detail: 'HTTP ' + r.status + ' ' + body.slice(0, 100).replace(/\s+/g, ' ') });
   } catch (e) {
-    return { kind: 'net', detail: (e.cause && e.cause.message) || e.message, ms: Date.now() - t0, key: k.label, blog };
+    return { kind: 'net', detail: (e.cause && e.cause.message) || e.message, ms: Date.now() - t0, key: k.label, blog, probeIdx: idx };
   }
+}
+
+/**
+ * 抗抖动重试包装（2026-10-13）：纯网络抖动（无 HTTP 状态码）时重试一次。
+ * 依据：BD TLS 隧道实测会出现 10s+ 的偶发失败（同刻同端点重测即 429 / <5s），
+ *   单次 `net` 就下「探测失败」结论属于**探测器局限**，不是被测对象行为。
+ */
+async function probe(idx = KEY_INDEX) {
+  let r = await probeOnce(idx);
+  if (r.kind === 'net' && !r.status) {
+    await new Promise((res) => setTimeout(res, 1500));
+    const r2 = await probeOnce(idx);
+    r2.retried = true;
+    return r2;
+  }
+  return r;
+}
+
+/**
+ * 交叉探针（2026-10-13 新增）：主 key 非 ok 时自动补探对照 key，据此判别归因。
+ *   verdict='key-quota'  主 key 受限 + 对照 key 200  ⇒ 本 key 配额耗尽；线路/IP/GFW 全部无辜
+ *   verdict='line-wide'  两个 key 同时 429          ⇒ 疑似线路/IP 层（须另查，不可直接下「封禁」结论）
+ *   verdict='probe-net'  对照也报网络错             ⇒ 探测器局限，禁止据此下配额结论
+ *   verdict='healthy'    主 key 200                 ⇒ 不发对照探针（省配额）
+ */
+async function probeCross() {
+  const main = await probe(KEY_INDEX);
+  if (main.kind === 'ok') return { main, cross: null, verdict: 'healthy' };
+  if (!tumblrConsumerKey(CROSS_KEY_INDEX)) return { main, cross: null, verdict: 'probe-net' };
+  const cross = await probe(CROSS_KEY_INDEX);
+  let verdict;
+  if (cross.kind === 'ok') verdict = 'key-quota';
+  else if (cross.kind === 'limited') verdict = 'line-wide';
+  else verdict = 'probe-net';
+  return { main, cross, verdict };
+}
+const VERDICT_TEXT = {
+  healthy: '主 key 正常',
+  'key-quota': '本 key 配额耗尽（对照 key 健康 ⇒ 线路/IP/GFW 无辜）',
+  'line-wide': '两个 key 同时受限 ⇒ 疑似线路/IP 层，须另查',
+  'probe-net': '对照探针也报网络错 ⇒ 探测器局限，不下配额结论',
+};
+function crossText(pc) {
+  if (!pc.cross) return VERDICT_TEXT[pc.verdict] || pc.verdict;
+  const c = pc.cross;
+  return `对照 key=${c.key} → ${c.kind}${c.status ? '(' + c.status + ')' : ''}${c.rl ? ' · ' + rlText(c.rl) : ''}` +
+    ` ⇒ ${VERDICT_TEXT[pc.verdict] || pc.verdict}`;
 }
 
 function currentRule() {
@@ -191,9 +244,11 @@ async function step() {
     const left = Date.parse(rule.cooldownUntil) - Date.now();
     if (left > 30 * 60 * 1000) { log(`💤 冷却剩余 ${Math.round(left / 60000)}min（>30min）→ 本轮跳过探测`); return null; }
   }
-  const p = await probe();
+  const pc = await probeCross();
+  const p = pc.main;
   const tag = `mode=${rule.mode}`;
   log(`探测 key=${p.key || '?'} blog=${p.blog || '?'} → ${p.kind}${p.status ? '(' + p.status + ')' : ''} ${p.ms}ms · ${p.rl ? rlText(p.rl) : '无配额头'} · ${p.detail || ''} · ${tag}`);
+  if (pc.verdict !== 'healthy') log(`   ↳ 归因: ${crossText(pc)}`);
 
   if (p.kind === 'ok') {
     const rm = p.rl && p.rl.hourRemain !== null ? p.rl.hourRemain : null;
@@ -212,7 +267,7 @@ async function step() {
       log(`⏳ 冷却中（${Math.round((cur - Date.now()) / 60000)}min 后到期，已 ≥ 目标 ${Math.round(bk.ms / 60000)}min），不延长`);
       return p;
     }
-    applyCooldownMs(bk.ms, `429(${rlText(p.rl)}) → 硬静默 ${Math.round(bk.ms / 60000)}min（${bk.why}）`);
+    applyCooldownMs(bk.ms, `429(${rlText(p.rl)}) → 硬静默 ${Math.round(bk.ms / 60000)}min（${bk.why} · ${VERDICT_TEXT[pc.verdict] || pc.verdict}）`);
     return p;
   }
   log('⚠️ 探测网络错误，不改状态（避免误判配额）');
@@ -233,7 +288,8 @@ async function step() {
     return;
   }
   if (has('--rl')) {
-    const p = await probe();
+    const pc = await probeCross();
+    const p = pc.main;
     console.log('key      :', p.key);
     console.log('blog     :', p.blog);
     console.log('结果     :', p.kind, p.status ? '(' + p.status + ')' : '', p.ms + 'ms');
@@ -242,8 +298,20 @@ async function step() {
       console.log('小时窗口 : 剩余 ' + p.rl.hourRemain + '/' + p.rl.hourLimit + '，重置于 ' + localTs(Date.now() + (p.rl.hourReset || 0) * 1000));
       console.log('日窗口   : 剩余 ' + p.rl.dayRemain + '/' + p.rl.dayLimit + '，重置于 ' + localTs(Date.now() + (p.rl.dayReset || 0) * 1000));
     }
-    const bk = smartBackoff(p.rl);
-    console.log('建议退避 :', Math.round(bk.ms / 60000) + 'min （' + bk.why + '）');
+    if (p.kind === 'net' && !p.rl) {
+      // ⚠️ 防误导：探测没取到响应 ⇒ 语义是「不改状态」，不是「退避 45min」。
+      //    若这里照旧打印 45min，会让人以为系统又落回「固定 45min 退避」的老病。
+      console.log('建议退避 : —（探测未取到响应 ⇒ 不改状态；绝不落下 45min 固定退避的自持死循环）');
+    } else {
+      const bk = smartBackoff(p.rl);
+      console.log('建议退避 :', Math.round(bk.ms / 60000) + 'min （' + bk.why + '）');
+    }
+    console.log('---- 对照组（单探针不下结论）----');
+    console.log('归因     :', VERDICT_TEXT[pc.verdict] || pc.verdict);
+    if (pc.cross) {
+      console.log('对照 key :', pc.cross.key, '→', pc.cross.kind, pc.cross.status ? '(' + pc.cross.status + ')' : '');
+      console.log('对照配额 :', rlText(pc.cross.rl));
+    }
     return;
   }
   if (has('--cooldown')) {

@@ -444,6 +444,14 @@ class CloudPublisher extends EventEmitter {
     this.requireBoundDevice = !!opts.requireBoundDevice;   // 全局「强制一机一号」开关（env REQUIRE_BOUND_DEVICE）
 
     this.publishQueue = [];
+    // 【P0-Q1 · 2026-10-13】队列落盘路径。
+    //   背景：publishQueue 此前纯内存 ⇒ 重启即丢（含「限流推迟」的任务）。
+    //   10-13 实测：38 个 deferred 任务在内存里等 6h 冷却，任何一次重启即全灭。
+    try {
+      const _qdir = (this.dataStore && this.dataStore.dataDir)
+        || process.env.MSCMS_DATA_DIR || 'D:/mscms-ws/data';
+      this._queueFile = path.join(_qdir, 'publish_queue.json');
+    } catch (_) { this._queueFile = null; }
     this.publishHistory = [];
     this.activePublishes = new Map();  // deviceId -> publish task
     this.maxConcurrent = opts.maxConcurrent || 3;
@@ -519,10 +527,153 @@ class CloudPublisher extends EventEmitter {
     return null;
   }
 
+  // ── 【P0-Q1 · 2026-10-13】发布队列落盘 / 恢复 ────────────────────────
+  /**
+   * 队列落盘（原子写：tmp + rename）。落盘失败绝不影响发布主流程。
+   * 只落 JSON 安全字段 —— content/account 本身就是 JSON 文件里的对象引用。
+   */
+  _persistQueue() {
+    if (!this._queueFile || this._persistDisabled) return;
+    try {
+      const items = [];
+      for (const t of this.publishQueue) {
+        if (!t || !t.id) continue;
+        items.push({
+          id: t.id,
+          content: t.content || null,
+          account: t.account || null,
+          platform: t.platform || null,
+          deviceId: t.deviceId != null ? t.deviceId : null,
+          requireBoundDevice: !!t.requireBoundDevice,
+          priority: t.priority || 'normal',
+          scheduledAt: t.scheduledAt || null,
+          status: t.status || null,
+          retryCount: t.retryCount || 0,
+          maxRetries: t.maxRetries != null ? t.maxRetries : 2,
+          createdAt: t.createdAt || null,
+          quotaDeferCount: t.quotaDeferCount || 0,
+          publishNote: t.publishNote || null,
+          opts: t.opts || {},
+        });
+      }
+      const tmp = this._queueFile + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify({
+        savedAt: new Date().toISOString(),
+        count: items.length,
+        items,
+      }), 'utf8');
+      fs.renameSync(tmp, this._queueFile);
+    } catch (e) {
+      // 磁盘满/权限异常等：只降级为「不落盘」，不打断发布
+      this._persistDisabled = true;
+      console.warn('[cloud-publisher] 队列落盘失败（已降级为纯内存）:', e.message);
+    }
+  }
+
+  /**
+   * 启动恢复：**只恢复「已被限流/配额推迟且仍在等冷却」的任务**。
+   *
+   * 为什么只恢复这一类：
+   *   · deferred 任务在限流时【根本没有发出发布请求】（请求被闸门/配额拦在上游）
+   *     ⇒ 恢复它绝对安全，不存在重复外发。
+   *   · 普通「排队中」任务不恢复：它们对应的 content 仍是 'ready'，由
+   *     _recoverStaleQueued() 回收后经因果链重投（既有机制）；若从队列快照强行恢复，
+   *     无法证明「重启前是否已成功外发」（发布器从不回写 content.published）
+   *     ⇒ 会有重复发布风险，宁可不恢复。
+   * 三重防护：① 只取 scheduledAt 在未来或刚过期的 ② 按 id 去重
+   *           ③ 回查 publish.json 确认该 (account, content) 尚未发布过。
+   */
+  _restoreQueue() {
+    if (!this._queueFile) return 0;
+    let raw;
+    try {
+      if (!fs.existsSync(this._queueFile)) return 0;
+      raw = JSON.parse(fs.readFileSync(this._queueFile, 'utf8'));
+    } catch (e) {
+      console.warn('[cloud-publisher] 队列快照读取失败:', e.message);
+      return 0;
+    }
+    const items = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.items) ? raw.items : []);
+    if (!items.length) return 0;
+
+    // 已发布台账（24h 内），用于拒绝「可能已外发」的任务
+    const publishedPairs = new Set();
+    try {
+      if (this.dataStore && this.dataStore.list) {
+        const res = this.dataStore.list('publish', { limit: 20000 });
+        const list = (res && (res.items || res)) || [];
+        const cutoff = Date.now() - 24 * 3600e3;
+        for (const p of list) {
+          const ts = (() => {
+            const m = String(p.id || '').match(/pub_(\d{10,})_/);
+            if (m) return Number(m[1]);
+            const t = p.createdAt || p.created_at || p.published_at;
+            return t ? Date.parse(t) : 0;
+          })();
+          if (ts >= cutoff) publishedPairs.add(`${p.account_id || p.accountId}|${p.content_id || p.contentId}`);
+        }
+      }
+    } catch (_) { /* 台账不可用则退化为不加此防护（其余两重仍在） */ }
+
+    const seen = new Set();
+    const restored = [];
+    const now = Date.now();
+    for (const it of items) {
+      if (!it || !it.id || seen.has(it.id)) continue;
+      const acctId = (it.account && it.account.id) || null;
+      const contId = (it.content && it.content.id) || null;
+      if (!acctId || !contId) continue;
+      if (publishedPairs.has(`${acctId}|${contId}`)) continue;   // ③ 已外发 ⇒ 不恢复
+      // ① 只恢复「被推迟」的任务（有 scheduledAt）；普通排队任务交给回收机制
+      if (!it.scheduledAt) continue;
+      seen.add(it.id);
+      // 用当前 dataStore 重新取内容/账号，避免使用陈旧快照
+      let content = it.content, account = it.account;
+      try {
+        const c = this.dataStore.get('content', contId);
+        if (c && c.id) content = c;
+        const a = this.dataStore.get('accounts', acctId);
+        if (a && a.id) account = a;
+      } catch (_) { /* 取不到就用快照 */ }
+      const schedMs = Date.parse(it.scheduledAt);
+      const task = {
+        id: it.id,
+        content,
+        account,
+        platform: it.platform,
+        deviceId: it.deviceId != null ? it.deviceId : null,
+        requireBoundDevice: !!it.requireBoundDevice,
+        priority: it.priority || 'normal',
+        // 冷却已过期 ⇒ 立即执行（now）；否则保持原定时刻
+        scheduledAt: new Date(Math.max(Number.isFinite(schedMs) ? schedMs : now, 0)).toISOString(),
+        status: it.status || PublishStatus.PENDING,
+        retryCount: it.retryCount || 0,
+        maxRetries: it.maxRetries != null ? it.maxRetries : 2,
+        createdAt: it.createdAt || new Date().toISOString(),
+        quotaDeferCount: it.quotaDeferCount || 0,
+        restoredAt: new Date().toISOString(),
+        publishNote: '从队列快照恢复（限流推迟任务，重启未丢）',
+        opts: it.opts || {},
+      };
+      restored.push(task);
+    }
+    if (restored.length) {
+      this.publishQueue.push(...restored);
+      console.log(`[cloud-publisher] ♻️ 队列恢复：从快照重入 ${restored.length} 个被推迟任务` +
+        `（快照 savedAt=${raw && raw.savedAt || '?'}, 原 count=${items.length}）`);
+    }
+    return restored.length;
+  }
+
   // 启动发布处理器
   start() {
     if (this.processing) return;
     this.processing = true;
+    // 【P0-Q1】启动即恢复上轮未到期的「限流推迟」任务（在回收孤儿之前，避免被误判）
+    setTimeout(() => { try { this._restoreQueue(); } catch (e) { console.warn('[cloud-publisher] 队列恢复失败:', e.message); } }, 5000);
+    // 【P0-Q1】周期落盘（30s）：崩溃最多丢 30s 内的队列变更
+    this._persistTimer = setInterval(() => { try { this._persistQueue(); } catch (_) {} }, 30000);
+    if (this._persistTimer.unref) this._persistTimer.unref();
     this._processorInterval = setInterval(() => this._processQueue(), 10000);
     // 【2026-09-10 新增】启动时回收「孤儿 queued」内容。
     // 背景：发布队列(publishQueue)只在内存里。进程重启后，队列中尚未执行的任务会丢失
@@ -1065,7 +1216,7 @@ class CloudPublisher extends EventEmitter {
       scanned++;
       if (scanned > 500) break;
     }
-    if (deferred.length) this.publishQueue.push(...deferred);
+    if (deferred.length) { this.publishQueue.push(...deferred); try { this._persistQueue(); } catch (_) {} }
   }
 
   // 执行发布
@@ -1577,6 +1728,7 @@ class CloudPublisher extends EventEmitter {
                 task.error = null;   // 不是失败：清空 ⇒ finally 不会重复触发冷却
                 task.publishNote = '平台配额/限流 → 已推迟到冷却结束自动重试（不消耗重试次数、不标记失败、内容不丢）';
                 this.publishQueue.push(task);
+                try { this._persistQueue(); } catch (_) {}   // 【P0-Q1】推迟任务立即落盘，重启不丢
                 console.warn(`[cloud-publisher] ⏸ 限流推迟任务 ${task.id} 至 ${task.scheduledAt}` +
                   `（账号=${_qAcct || '?'} 第 ${task.quotaDeferCount} 次，其余账号不受影响）`);
                 return;
